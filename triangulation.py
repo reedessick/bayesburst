@@ -212,3 +212,4 @@ if __name__ == "__main__":
 		posterior[:,1] /= sum(posterior[:,1])
 
 		### write/plot posteriors into FITs format
+		raise StandardError, "write code that plots posteriors and saves them into FITs format!"
