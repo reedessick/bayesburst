@@ -113,14 +113,26 @@ if __name__ == "__main__":
 
 	parser.add_option("-n", "--nside", default=128, type="int", help="HEALPix NSIDE parameter for pixelization")
 
-	parser.add_option("-p", "--plot-posteriors", default=False, action="store_true", help="generate plots for posteriors as well as FITs files")
+	parser.add_option("-w", "--write-posteriors", default=False, action="store_true", help="generate FITs files for posteriors")
+	parser.add_option("-p", "--plot-posteriors", default=False, action="store_true", help="generate plots for posteriors")
+
 	parser.add_option("-o", "--output-dir", default="./", type="string")
 	parser.add_option("-t", "--tag", default="", type="string")
+
+	parser.add_option("", "--time", default=False, action="store_true")
 
 	opts, args = parser.parse_args()
 	args = sorted(args)
 	if opts.tag:
 		opts.tag = "_%s"%opts.tag
+
+	if opts.plot_posteriors:
+		import matplotlib
+		matplotlib.use("Agg")
+		import matplotlib.pyplot as plt
+
+	if opts.time:
+		import time
 
 	#=========================================================================
 	### for starters, we only consider LHO-LLO networks, so let's demand that from our input arguments
@@ -129,7 +141,9 @@ if __name__ == "__main__":
 	#=========================================================================
 
 	### get list of detectors from arguments
-	if opts.verbose: print "building TimingNetwork"
+	if opts.verbose: 
+		print "loading list of detectors"
+		if opts.time: to=time.time()
 	detectors = []
 	for arg in args:
 		if arg == "LHO":
@@ -140,15 +154,28 @@ if __name__ == "__main__":
 			detectors.append( utils.Virgo )
 		else:
 			raise ValueError, "detector=%s not understood"%arg
+	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
 	### get set of timing errors from error_cache
 	### we should select only those errors which are relevant to this network
-	#========================================================================
+#=================================================================================================================
+#
+#
 	### for testing purposes, we take a short cut and don't implement this right away
-	errs = {(utils.LHO, utils.LLO):0.003}
-	#========================================================================
+	if opts.verbose:
+		print "loading error distributions"
+		if opts.time: to = time.time()
+	errs = {(utils.LHO, utils.LLO):0.0005}
+#	errs = {(utils.LHO, utils.LLO):0.0030}
+	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+#
+#
+#=================================================================================================================
 
 	### build the network
+	if opts.verbose:
+		print "building TimingNetwork"
+		if opts.time: to=time.time()
 	network = TimingNetwork(errs)
 	for (detector1,detector2),err in errs.items():
 		network.set_err(detector1.name, detector2.name, err)
@@ -156,18 +183,25 @@ if __name__ == "__main__":
 	ndetectors = len(network)
 	ntof = ndetectors*(ndetectors-1)/2 # number of combinations of detectors
 
-	if opts.verbose: print "\t", network
+	if opts.verbose: 
+		print "\t", network
+		if opts.time: print "\t", time.time()-to, "sec"
 
 	### number of pixels in the sky map
 	npix = hp.nside2npix(opts.nside)
-        if opts.verbose: print "pixelating the sky with nside=%d ==> %d pixels"%(opts.nside,npix)
+        if opts.verbose: 
+		print "pixelating the sky with nside=%d ==> %d pixels"%(opts.nside,npix)
+		if opts.time: to = time.time()
 	pixarray = np.zeros((npix,3))
 	for ipix in np.arange(npix):
 		theta, phi = hp.pix2ang(opts.nside, ipix)
 		pixarray[ipix,:] = np.array([ipix, theta, phi])
+	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
 	### build sky map of expected time-of-flights and expected errors
-	if opts.verbose: print "computing tof_map and err_map"
+	if opts.verbose: 
+		print "computing tof_map and err_map"
+		if opts.time: to=time.time()
 	tof_map = np.zeros((npix,1+ntof)) # ipix, tau for each combination of detectors
 	tof_map[:,0] = pixarray[:,0]
 	err_map = np.zeros((npix,1+ntof)) # ipix, tau for each combination of detectors
@@ -177,9 +211,12 @@ if __name__ == "__main__":
 		for ind, (name1,name2) in enumerate(network.get_tof_names()):
                         tof_map[ipix,1+ind] = network.get_tof(name1,name2,theta,phi)
 			err_map[ipix,1+ind] = network.get_err(name1,name2,theta,phi)
-
+	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+	
 	### build sky map of antenna patterns
-	if opts.verbose: print "computing ap_map"
+	if opts.verbose: 
+		print "computing ap_map"
+		if opts.time: to=time.time()
 	ap_map = np.zeros((npix,2)) # ipix, |F|
 	for ipix, theta, phi in pixarray:
 		a = network.A(theta, phi, 0.0, no_psd=True) # get sensitivity matrix with psi set to 0.0 for convenience. Also, do not include time shifts or psd in antenna patterns
@@ -189,15 +226,30 @@ if __name__ == "__main__":
 		a10 = a[1,0]
 		F = 0.5*(a00+a11+((a00-a11)**2 + 4*a01*a10)**0.5) # maximum eigenvalue of the sensitivity matrix
 	        ap_map[ipix] = np.array([ipix,F])
+	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
+#===========================================================================================================
+#
+#
 	### load in list of arrival times
-	if opts.verbose: print "loading a_cache"
-	a_cache = [{"LLO":0.0, "LHO":0.001}] # needs to match ndetectors
+	if opts.verbose: 
+		print "loading a_cache"
+		if opts.time: to=time.time()
+	a_cache = []
+	for dt in np.arange(-0.0195, +0.0200, 0.0005):
+		a_cache.append( {"LLO":dt, "LHO":0.0000} ) # needs to match ndetectors
+	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+#
+#
+#===========================================================================================================
 
 	### compute posteriors for each event in a_cache
 	if opts.verbose: print "computing posteriors"
-	for toa in a_cache:
-		if opts.verbose: print "toa =", toa
+	for toa_ind, toa in enumerate(a_cache):
+		if opts.verbose: 
+			print "toa =", toa
+			if opts.time: to=time.time()
+
 		### build observed time-of-flight vector
 		toa = np.array([toa[name2]-toa[name1] for name1,name2 in network.get_tof_names()])
 
@@ -209,5 +261,21 @@ if __name__ == "__main__":
 		### normalize posterior
 		posterior[:,1] /= sum(posterior[:,1])
 
-		### write/plot posteriors into FITs format
-		raise StandardError, "write code that plots posteriors and saves them into FITs format!"
+		### plot posteriors
+		if opts.plot_posteriors:
+                        figname = "posterior-%d.png"%toa_ind
+			title = "$t_{LHO}-t_{LLO}=%.4f\,\mathrm{sec}$"%(toa[0])
+			unit = "probability per steradian"
+
+			fig = plt.figure(toa_ind)
+			view = hp.mollview(posterior[:,1], fig=toa_ind, title=title, unit=unit)
+			if opts.verbose: 
+				print "\tsaving", figname
+			fig.savefig(figname)
+			plt.close(fig)
+
+		### write posteriors into FITs format
+		if opts.write_posteriors:
+			raise StandardError, "write code that plots posteriors and saves them into FITs format!"
+
+		if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
