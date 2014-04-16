@@ -111,7 +111,7 @@ if __name__ == "__main__":
 	parser.add_option("-a", "--arrivals-cache", dest="a_cache", default="arrivals.cache", type="string", help="a cache file containing the times-of-arrival for the detectors in this network")
 	parser.add_option("-e", "--errors-cache", dest="e_cache", default="errors.cache", type="string", help="a cache file containing errors in time-of-flight measurements between detectors")
 
-	parser.add_option("-n", "--nside", default=128, type="int", help="HEALPix NSIDE parameter for pixelization")
+	parser.add_option("-n", "--nside-exp", default=7, type="int", help="HEALPix NSIDE parameter for pixelization is 2**opts.nside_exp")
 
 	parser.add_option("-w", "--write-posteriors", default=False, action="store_true", help="generate FITs files for posteriors")
 	parser.add_option("-p", "--plot-posteriors", default=False, action="store_true", help="generate plots for posteriors")
@@ -123,6 +123,9 @@ if __name__ == "__main__":
 
 	opts, args = parser.parse_args()
 	args = sorted(args)
+
+	nside = 2**opts.nside_exp
+
 	if opts.tag:
 		opts.tag = "_%s"%opts.tag
 
@@ -165,8 +168,10 @@ if __name__ == "__main__":
 	if opts.verbose:
 		print "loading error distributions"
 		if opts.time: to = time.time()
-	errs = {(utils.LHO, utils.LLO):0.0005}
-#	errs = {(utils.LHO, utils.LLO):0.0030}
+#	errs = {(utils.LHO, utils.LLO):0.0001}
+#	errs = {(utils.LHO, utils.LLO):0.0005}
+#	errs = {(utils.LHO, utils.LLO):0.0010}
+	errs = {(utils.LHO, utils.LLO):0.0030}
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 #
 #
@@ -188,13 +193,13 @@ if __name__ == "__main__":
 		if opts.time: print "\t", time.time()-to, "sec"
 
 	### number of pixels in the sky map
-	npix = hp.nside2npix(opts.nside)
+	npix = hp.nside2npix(nside)
         if opts.verbose: 
-		print "pixelating the sky with nside=%d ==> %d pixels"%(opts.nside,npix)
+		print "pixelating the sky with nside=%d ==> %d pixels"%(nside,npix)
 		if opts.time: to = time.time()
 	pixarray = np.zeros((npix,3))
 	for ipix in np.arange(npix):
-		theta, phi = hp.pix2ang(opts.nside, ipix)
+		theta, phi = hp.pix2ang(nside, ipix)
 		pixarray[ipix,:] = np.array([ipix, theta, phi])
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
@@ -236,7 +241,7 @@ if __name__ == "__main__":
 		print "loading a_cache"
 		if opts.time: to=time.time()
 	a_cache = []
-	for dt in np.arange(-0.0195, +0.0200, 0.0005):
+	for dt in np.arange(-0.0120, +0.0121, 0.0001):
 		a_cache.append( {"LLO":dt, "LHO":0.0000} ) # needs to match ndetectors
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 #
@@ -263,7 +268,7 @@ if __name__ == "__main__":
 
 		### plot posteriors
 		if opts.plot_posteriors:
-                        figname = "posterior-%d.png"%toa_ind
+                        figname = "%s/posterior-%d%s.png"%(opts.output_dir, toa_ind, opts.tag)
 			title = "$t_{LHO}-t_{LLO}=%.4f\,\mathrm{sec}$"%(toa[0])
 			unit = "probability per steradian"
 
