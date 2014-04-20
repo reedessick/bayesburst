@@ -10,6 +10,9 @@ import healpy as hp
 #                  utilities
 #
 #=================================================
+deg2rad = np.pi/180
+
+###
 def likelihood(toa, tof_map, err_map):
 	"""
 	computes the likelihood that a signal came from the points in tof_map and produced toa, assuming gaussian errors defined in err_map
@@ -115,6 +118,9 @@ if __name__ == "__main__":
 
 	parser.add_option("-w", "--write-posteriors", default=False, action="store_true", help="generate FITs files for posteriors")
 	parser.add_option("-p", "--plot-posteriors", default=False, action="store_true", help="generate plots for posteriors")
+	parser.add_option("-s", "--stats", default=False, action="store_true", help="compute basic statistics about the reconstruction.")
+
+	parser.add_option("", "--scatter", default=False, action="store_true", help="generate a scatter plot of the entire population")
 
 	parser.add_option("-o", "--output-dir", default="./", type="string")
 	parser.add_option("-t", "--tag", default="", type="string")
@@ -168,10 +174,19 @@ if __name__ == "__main__":
 	if opts.verbose:
 		print "loading error distributions"
 		if opts.time: to = time.time()
+	err_file = open(opts.e_cache, "r")
+	for line in err_file:
+		if line[:4] == "stdv":
+			errs = {(utils.LHO, utils.LLO):float(line.strip().split()[-1])}
+			break
+	else:
+		raise ValueError, "could not find \"stdv\" in %s"%opts.e_cache
+	err_file.close()
+
 #	errs = {(utils.LHO, utils.LLO):0.0001}
 #	errs = {(utils.LHO, utils.LLO):0.0005}
 #	errs = {(utils.LHO, utils.LLO):0.0010}
-	errs = {(utils.LHO, utils.LLO):0.0030}
+#	errs = {(utils.LHO, utils.LLO):0.0030}
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 #
 #
@@ -194,6 +209,8 @@ if __name__ == "__main__":
 
 	### number of pixels in the sky map
 	npix = hp.nside2npix(nside)
+	pixarea = hp.nside2pixarea(nside)
+	pixarea_deg = pixarea/deg2rad**2
         if opts.verbose: 
 		print "pixelating the sky with nside=%d ==> %d pixels"%(nside,npix)
 		if opts.time: to = time.time()
@@ -231,6 +248,7 @@ if __name__ == "__main__":
 		a10 = a[1,0]
 		F = 0.5*(a00+a11+((a00-a11)**2 + 4*a01*a10)**0.5) # maximum eigenvalue of the sensitivity matrix
 	        ap_map[ipix] = np.array([ipix,F])
+	prior_map = prior(ap_map)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
 #===========================================================================================================
@@ -241,8 +259,17 @@ if __name__ == "__main__":
 		print "loading a_cache"
 		if opts.time: to=time.time()
 	a_cache = []
-	for dt in np.arange(-0.0120, +0.0121, 0.0001):
-		a_cache.append( {"LLO":dt, "LHO":0.0000} ) # needs to match ndetectors
+	toa_file = open(opts.a_cache, "r")
+	ifo_names = toa_file.readline().strip().split()
+	nifo = len(ifo_names)
+	for line in toa_file:
+		toas = [float(l) for l in line.strip().split()]
+		inj_theta, inj_phi = toas[nifo:]
+		toas = toas[:nifo]
+		a_cache.append( (dict( (ifo_name, toa) for ifo_name, toa in zip(ifo_names, toas) ), (inj_theta*deg2rad, inj_phi*deg2rad)) )
+	toa_file.close()
+#	for dt in np.arange(-0.0120, +0.0121, 0.0001):
+#		a_cache.append( {"LLO":dt, "LHO":0.0000} ) # needs to match ndetectors
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 #
 #
@@ -250,9 +277,13 @@ if __name__ == "__main__":
 
 	### compute posteriors for each event in a_cache
 	if opts.verbose: print "computing posteriors"
-	for toa_ind, toa in enumerate(a_cache):
+	n_toa = len(a_cache)
+	if opts.scatter:
+		estangs = np.empty((n_toa,2),np.float)
+		injangs = np.empty((n_toa,2),np.float)
+	for toa_ind, (toa, (inj_theta, inj_phi)) in enumerate(a_cache):
 		if opts.verbose: 
-			print "toa =", toa
+			print "%d / %d\ntoa ="%(toa_ind+1,n_toa), toa
 			if opts.time: to=time.time()
 
 		### build observed time-of-flight vector
@@ -261,10 +292,20 @@ if __name__ == "__main__":
 		### build posteriors for each point in the sky
 		posterior = np.zeros((npix,2)) # ipix, p(ipix|d)
 		posterior[:,0] = pixarray[:,0]
-		posterior[:,1] = likelihood(toa, tof_map, err_map).flatten() * prior(ap_map) # flatten() is to make the shapes compatible
+		posterior[:,1] = likelihood(toa, tof_map, err_map).flatten() * prior_map # flatten() is to make the shapes compatible
 		
 		### normalize posterior
 		posterior[:,1] /= sum(posterior[:,1])
+
+		### find the posterior's mode
+		if opts.plot_posteriors or opts.stats or opts.scatter:
+			estpix = int(posterior[:,1].argmax())
+			est_theta, est_phi = hp.pix2ang(nside, estpix)
+
+		### record positions for scatter
+		if opts.scatter:
+			estangs[toa_ind] = np.array([est_theta, est_phi])
+			injangs[toa_ind] = np.array([inj_theta, inj_phi])
 
 		### plot posteriors
 		if opts.plot_posteriors:
@@ -273,7 +314,15 @@ if __name__ == "__main__":
 			unit = "probability per steradian"
 
 			fig = plt.figure(toa_ind)
-			view = hp.mollview(posterior[:,1], fig=toa_ind, title=title, unit=unit)
+			hp.mollview(posterior[:,1]/pixarea, fig=toa_ind, title=title, unit=unit, flip="geo", min=0.0)
+			ax = fig.gca()
+			hp.graticule()
+			est_marker = ax.projplot((est_theta, est_phi), "wo", markeredgecolor="w", markerfacecolor="none")[0]
+			est_marker.set_markersize(10)
+			est_marker.set_markeredgewidth(2)
+			inj_marker = ax.projplot((inj_theta, inj_phi), "wx")[0]
+			inj_marker.set_markersize(10)
+			inj_marker.set_markeredgewidth(2)
 			if opts.verbose: 
 				print "\tsaving", figname
 			fig.savefig(figname)
@@ -281,6 +330,65 @@ if __name__ == "__main__":
 
 		### write posteriors into FITs format
 		if opts.write_posteriors:
-			raise StandardError, "write code that plots posteriors and saves them into FITs format!"
+			#print "WARNING: posteriors currently written to *.npy files, not FITs format"
+			filename = "%s/posterior-%d%s.npy"%(opts.output_dir, toa_ind, opts.tag)
+			if opts.verbose:
+				print "\tsaving", filename
+			np.save(filename, posterior)
+
+#			raise StandardError, "write code that plots posteriors and saves them into FITs format!"
+
+		### compute basic statistics about the reconstruction
+		if opts.stats:
+			statsfilename = "%s/stats-%d%s.txt"%(opts.output_dir, toa_ind, opts.tag)
+			if opts.verbose: print "\twriting stats into %s"%statsfilename
+		
+			### angular offset between max of the posterior and injection
+			cosDtheta = np.cos(est_theta)*np.sin(inj_theta) - np.sin(est_theta)*np.sin(inj_theta)*np.cos(est_phi - inj_phi)
+			### searched area
+			injpix = hp.ang2pix(nside, inj_theta, inj_phi)
+			posterior = posterior[posterior[:,1].argsort()[::-1]] # sort by posterior weight
+			n_sapix = 0
+			for ipix, p in posterior:
+				n_sapix += 1
+				if ipix == injpix:
+					break
+			else:
+				raise ValueError, "could not find injpix=%d in posterior"%injpix
+			searched_area = pixarea_deg*n_sapix
+
+			statsfile = open(statsfilename, "w")
+			print >> statsfile, "cos(ang_offset) = %.6f\nsearched_area = %.6f deg2"%(cosDtheta, searched_area)
+			statsfile.close()
+			if opts.verbose: print "\t\tcos(ang_offset) = %.6f\n\t\tsearched_area = %.6f deg2"%(cosDtheta, searched_area)
 
 		if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+
+	### generate scatter plot
+	if opts.scatter:
+		if opts.verbose: 
+			print "generating population scatter plots"
+			if opts.time:
+				to = time.time()
+		fig = plt.figure(n_toa)
+		hp.mollview(prior_map/(sum(prior_map)*pixarea), fig=n_toa, title="prior", unit="probability per steradian", flip="geo", min=0.0)
+                hp.graticule()
+		ax = fig.gca()
+
+		est_marker = ax.projplot(estangs[:,0], estangs[:,1], "wo", markerfacecolor="none", markeredgecolor="w")[0]
+		est_marker.set_markersize(1)
+		est_marker.set_markeredgewidth(1)
+
+		inj_marker = ax.projplot(injangs[:,0], injangs[:,1], "wx")[0]
+		inj_marker.set_markersize(1)
+		inj_marker.set_markeredgewidth(1)
+
+		figname = "%s/populations%s.png"%(opts.output_dir,opts.tag)
+		if opts.verbose: 
+			print "saving %s"%figname
+		fig.savefig(figname)
+		plt.close(fig)
+		if opts.time and opts.verbose:
+			print time.time()-to, "sec"
+
+

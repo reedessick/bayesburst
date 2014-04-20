@@ -45,12 +45,12 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 	cos_psi = np.cos(psi)
 	sin_psi = np.sin(psi)
 
-	Xx = sin_theta*cos_psi - cos_theta*cos_phi*sin_psi
-	Xy = -cos_theta*(cos_psi + sin_phi*sin_psi)
-	Xz = sin_theta*sin_psi
+	Xx = sin_phi*cos_psi - sin_psi*cos_phi*cos_theta
+	Xy = -cos_phi*cos_psi - sin_psi*sin_phi*cos_theta
+	Xz = sin_psi*sin_theta
 
-	Yx = -sin_phi*sin_psi - cos_theta*cos_phi*cos_psi
-	Yy = cos_phi*sin_psi - cos_theta*sin_phi*cos_psi
+	Yx = -sin_phi*sin_psi - cos_psi*cos_phi*cos_theta
+	Yy = cos_phi*sin_psi - cos_psi*sin_phi*cos_theta
 	Yz = sin_theta*cos_psi
 
         X = (Xx, Xy, Xz)
