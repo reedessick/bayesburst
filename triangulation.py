@@ -1,3 +1,5 @@
+### written by R.Essick (ressick@mit.edu)
+
 usage = """triangulation.py [--options] detector_name1 detector_name2 detector_name3 ...
 written to compute posteriors over the sky using triangulation and modulation with antenna patterns"""
 
