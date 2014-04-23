@@ -1,0 +1,489 @@
+\documentclass[10pt]{article}
+
+\usepackage{color}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{fullpage}
+\usepackage{pdflscape}
+
+\newcommand\D{\ensuremath{\mathrm{d}}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\pagestyle{empty}
+
+\begin{document}
+%\begin{landscape}
+
+\title{BAYESBurst?}
+\author{Reed Essick}
+\maketitle
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{itemize}
+	\item{Work out priors on signal carefully. These include 
+		\begin{itemize}
+			\item{localized in time in wave-frame (transient) : $h_j(t) = \left(\theta(t+\Delta t) - \theta(t-\Delta t)\right) h_j(t)$}
+			\item{localized in frequency in wave-frame (band-limitted) : $h_j(f) = \left(\theta(f+\Delta f) - \theta(t-\Delta f)\right) h_j(f)$}
+			\item{signals are distributed uniformly in volume, and all observed strain comes from a single event (astrophysically distributed)}
+		\end{itemize}
+	     }
+	\item{Work out carefully and consider the case of a single polarization. Show the dependence on the antenna patterns with and without a prior on $h_j$.}
+	\item{Work out the case when $A_{jk}$ is singular, and how we should approach that.
+		\begin{itemize}
+			\item{Project onto a subspace with lower rank than $N_p$ when reconstructing the signal?}
+			\item{When marginalizing over the possible waveforms, we simply integrate the prior for the missing polarization(s)?}
+		\end{itemize}
+	     }
+	\item{Propose implementation
+		\begin{itemize}
+			\item{position-space $(\theta, \phi)$ or spherical-harmonics $(Y_{lm})$?}
+			\item{time-domain $(h_j(t))$ or frequency domain $(h_j(f))$?}
+		\end{itemize}
+	     }
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\thispagestyle{empty}
+\tableofcontents
+\newpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Notation}
+
+Throughout these notes I adopt the following notation. 
+\begin{itemize}
+	\item{all sky positions will be given in Earth-fixed coordinates $(\theta, \phi)$. These are the standard polar coordinates, with polar angle $\theta$ and azimuthal angle $\phi$.}
+	\item{antenna patterns are functions of souce position $\vec{\Omega}\equiv(\theta,\phi) \in \mathbb{R}^2$ as well as frequency. Most analyses treate the antenna patterns as independent of frequency, but we want to wrap the time-shifts caused by different times-of-arival at different points on the Earth into the antenna patterns. In the frequency domain, this is simlpy a shift in phase $e^{-2\pi i f\Delta t}$.}
+        \item{we work in the frequency domain because the antenna patterns, including time delays, are trivial in that basis. We avoid shifting data streams by applying phases in the frequency domain.}
+	\item{lower case greek indicies will represent interferometers (ifos). eg: $\beta\in\{L, H, V\}$}
+	\item{latin indicies will represent polarization states. eg: $j \in \{+,\times\}$}
+	\item{upper case greek indicies will represent sky positions. eg: $\Omega = (\theta,\phi)$ or $\Omega = (l,m)$ as appropriate.}
+	\item{we adopt the einstein summation notation for repeated indicies unless otherwise noted. If there is any ambiguity, we'll explicitly write the sums with $\Sigma$ notation}
+\end{itemize}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{preliminaries: uncorrelated gaussian noise}
+
+We assume that the probability for observing a set of complex noise amplitudes in the fourier domain is
+
+\begin{equation}
+p(n_\beta(f)) = \frac{1}{N}\mathrm{exp}\left( -\int\mathrm{d}f\, \sum_\beta \frac{n_\beta \cdot n_\beta^\ast}{S_\beta} \right)
+\end{equation}
+
+where we define the gaussian noise power spectrum as
+
+\begin{eqnarray}
+\left< n_\beta(f) \right> & = & 0 \\
+\left< n_\beta(f) n_\alpha^\ast (f^\prime)\right> & = & \frac{1}{2} S_\beta(f) \delta_{\beta\alpha} \delta(f-f^\prime)
+\end{eqnarray}
+
+Note that the probability is simply the noise weighted inner product of the noise realization.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Point sources}\label{section:point sources}
+
+Here we examine a non-parametric bayesian approach to signal reconstruction for \emph{point sources}. Extended sources are considered in Section \ref{section:extended sources}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{maximum likelihood estimators}
+
+We can define the likelihood ratio as
+
+\begin{eqnarray}
+\mathcal{L} = \frac{p(d_\beta - F_{\beta j}h_j)}{p(d_\beta)} & = & \mathrm{exp}\left(\int\mathrm{d}f\, \sum_\beta \frac{\left|d_\beta\right|^2 - \left|d_\beta - F_{\beta j}h_j\right|^2}{S_\beta} \right) \\
+                                              & = & \mathrm{exp}\left(\int\mathrm{d}f\, \sum_\beta \frac{d_\beta F_{\beta j}^\ast h_j^\ast + d_\beta^\ast F_{\beta j}h_j - h_kF_{\beta k} F_{\beta j}^\ast h_j^\ast}{S_\beta} \right)
+\end{eqnarray}
+
+To obtain our maximum likelihood estimator, we vary this functional with respect to $h_j^\ast(f)$, treating $h_j$ and $h_j^\ast$ as independent variables. Euler-Lagrange equations yield
+
+\begin{eqnarray}
+\frac{\delta}{\delta h_m^\ast} \log \mathcal{L} & = & \frac{\delta}{\delta h_m^\ast} \int\mathrm{d}f\, \sum_\beta \frac{d_\beta F_{\beta j}^\ast h_j^\ast + d_\beta^\ast F_{\beta j}h_j - F_{\beta k}h_k F_{\beta j}^\ast h_j^\ast}{S_\beta} = 0 \\
+\Rightarrow 0 & = & \frac{\mathrm{d}}{\mathrm{d}f}\left(\frac{\partial}{\partial (\mathrm{d}h_m^\ast/\mathrm{d}f)} \sum_\beta \frac{d_\beta F_{\beta j}^\ast h_j^\ast + d_\beta^\ast F_{\beta j}h_j - F_{\beta k}h_k F_{\beta j}^\ast h_j^\ast}{S_\beta} \right) \nonumber \\
+              &   &\ \ \  - \frac{\mathrm{d}}{\mathrm{d} h_m^\ast} \left( \sum_\beta \frac{d_\beta F_{\beta j}^\ast h_j^\ast + d_\beta^\ast F_{\beta j}h_j - F_{\beta k}h_k F_{\beta j}^\ast h_j^\ast}{S_\beta} \right) \\
+              & = & - \sum_\beta \frac{\left(d_\beta F_{\beta k}^\ast - h_j F_{\beta j} F_{\beta k}^\ast\right)\delta_{km}}{S_\beta} \\
+\Rightarrow \sum_\beta \frac{d_\beta F_{\beta k}^\ast}{S_\beta} & = & \sum_\beta \frac{F_{\beta k}^\ast F_{\beta j} h_j}{S_\beta}
+\end{eqnarray}
+
+We now make the following definitions of convenience
+
+\begin{eqnarray}
+A_{kj} & \equiv & \sum_\beta \frac{F_{\beta k}^\ast F_{\beta j}}{S_\beta} = A_{jk}^\ast \\
+B_{j\beta} & \equiv & \frac{F_{\beta j}^\ast}{S_\beta}\ \ \ \ \ (\mathrm{no\ sum\ over}\ \beta)
+\end{eqnarray}
+
+where $A_{kj}$ is an $N_{polarizations} \times N_{polarizations}$ matrix and $B_{\beta j}$ is a $N_{ifos} \times N_{polarizations}$ matrix. With this in hand, we can write the Euler-Lagrange equations in the simple form
+
+\begin{eqnarray}
+A_{kj}h_j & = & B_{k\beta}d_\beta \\
+\Rightarrow \hat{h}_j & = & \left(A^{-1}\right)_{jk}B_{k\beta}d_\beta
+\end{eqnarray}
+
+We should note that $A_{kj}$ is singular for at certain sky locations for a single interferometer, but it should never be singular for two (even-slightly) mis-aligned interferometers. Let us now consider the properties of this estimator. If the data contains a true signal $d_\beta = F_{\beta j}h_j + n_\beta$, we have
+
+\begin{eqnarray}
+\hat{h}_j & = & \left(A^{-1}\right)_{jk}B_{k\beta}\left(F_{\beta m}h_m + n_\beta \right)\\
+          & = & \left(A^{-1}\right)_{jk}\left(B_{k\beta}F_{\beta m}\right)h_m + \left(A^{-1}\right)_{jk}B_{k\beta}n_\beta
+\end{eqnarray}
+
+We note that 
+
+\begin{equation}
+B_{k\beta}F_{\beta m} = \sum_\beta \frac{F_{\beta k}^\ast}{S_\beta} F_{\beta_m} = A_{km}
+\end{equation}
+
+which yields the pleasant simplification
+
+\begin{eqnarray}
+\hat{h}_j & = & \left(A^{-1}\right)_{jk}A_{km} h_m + \left(A^{-1}\right)_{jk}B_{k\beta}n_\beta \\
+          & = & \delta_{jm}h_m + \left(A^{-1}\right)_{jk}B_{k\beta}n_\beta \\
+\Rightarrow h_j - \hat{h}_j \equiv \epsilon_j & = & \left(A^{-1}\right)_{jk}B_{k\beta}n_\beta 
+\end{eqnarray}
+
+and we see that the estimator is \emph{unbiased} with gaussian errors around the actual signal.\footnote{The errors in the reconstructed polarization are functions of the noise in each detector, so they must also be gaussian distributed.}
+Explicitly, we can compute the expected distributions of the reconstructed errors as
+
+\begin{eqnarray}
+\left<\epsilon_j\right> & = & \left< \left(A^{-1}\right)_{jk}B_{k\beta}n_\beta \right> \\
+                        & = & \left(A^{-1}\right)_{jk}B_{k\beta} \left< n_\beta \right> \\
+                        & = & 0 \\
+\left<\epsilon_j^\ast \epsilon_k\right> & = & \left< n_\alpha^\ast B_{n\alpha}^\ast \left(A^{-1}\right)_{jn}^\ast \left(A^{-1}\right)_{km}B_{m\beta}n_\beta \right> \\
+                                        & = & B_{n\alpha}^\ast \left(A^{-1}\right)_{jn}^\ast \left(A^{-1}\right)_{km}B_{m\beta} \left< n_\alpha^\ast n_\beta \right> \\
+                                        & = & B_{n\alpha}^\ast \left(A^{-1}\right)_{jn}^\ast \left(A^{-1}\right)_{km}B_{m\beta} \left(\frac{1}{2}S_\beta\delta_{\alpha\beta} \right) \\
+                                        & = & \frac{1}{2} \left(A^{-1}\right)_{jn}^\ast \left(A^{-1}\right)_{km}  \sum_\beta \left\{B_{n\beta}^\ast B_{m\beta} S_\beta\right\} \\
+                                        & = & \frac{1}{2} \left(A^{-1}\right)_{jn}^\ast \left(A^{-1}\right)_{km}  A_{mn} \\
+                                        & = & \frac{1}{2} \left(A^{-1}\right)_{jn}^\ast \delta_{kn} \\
+                                        & = & \frac{1}{2} \left(A^{-1}\right)_{jk}^\ast
+\end{eqnarray}
+
+Note that the standard deviation increases when the antenna patterns are small. This is because the network is less sensitive to the actual strain signal and we should expect larger errors in the reconstruction.
+
+This also means that we can write the likelihood as 
+
+\begin{eqnarray}
+\mathcal{L}  & = & \mathrm{exp}\left( \int\mathrm{d}f\, \sum_\beta \frac{\left|d_\beta\right|^2 - \left|d_\beta - F_{\beta j}\left(\hat{h}_j+\epsilon_j\right)\right|^2}{S_\beta} \right) \\
+& = & \mathrm{exp}\left( \int\mathrm{d}f\, d_\beta B_{\beta j}\left(\hat{h}_j+\epsilon_j\right)^\ast + d_\beta^\ast B_{\beta j}^\ast\left(\hat{h}_j+\epsilon_j\right) - \left(\hat{h}_j+\epsilon_j\right)^\ast A_{jk} \left(\hat{h}_k+\epsilon_k\right) \right) \\
+& = & \mathrm{exp}\left( \int\mathrm{d}f\, 
+  d_\beta      B_{\beta j}      \left(A^{-1}\right)_{jk}^\ast B_{k\alpha}^\ast d_\alpha^\ast
++ d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk}      B_{k\alpha}      d_\alpha  
+- d_\beta^\ast B_{m\beta}^\ast\left(A^{-1}\right)_{mj}^\ast A_{jk} \left(A^{-1}\right)_{kn}B_{n\alpha}d_\alpha
+\right. \nonumber \\
+&  & \left. \ \ \ \ \ \ \ \ \ \ \ 
+- \epsilon_j^\ast                                            A_{jk} \epsilon_k
++ d_\beta      B_{\beta j}      \epsilon_j^\ast 
++ d_\beta^\ast B_{\beta j}^\ast \epsilon_j 
+- d_\beta^\ast B_{m\beta}^\ast \left(A^{-1}\right)^\ast_{jm} A_{jk} \epsilon_k  
+- \epsilon_j^\ast                                            A_{jk} \left(A^{-1}\right)_{kn} B_{n\alpha} d_\alpha 
+\right) 
+\end{eqnarray}
+
+Exchanging dummy indicies and using the fact that $A_{jk}$ is Hermitian shows that many terms cancel, including all linear terms in $\epsilon_j$, and the final likelihood ratio can be written as
+
+\begin{equation}
+\mathcal{L} = \frac{p(d_\beta - F_{\beta j}h_j)}{p(d_\beta)} = \mathrm{exp}\left( \int\mathrm{d}f\, d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk} B_{k\alpha} d_\alpha - \epsilon_j^\ast A_{jk} \epsilon_k \right)
+\end{equation}
+
+which has a pleasing form. We see that the likelihood ratio is gaussian distributed around it's maximum value.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{posterior probabilities}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{sky position}
+
+The useful distributions are the posteriors for the signal parameters. In this case, the full posterior can be written as
+
+\begin{equation}
+p(h_j, \theta, \phi|d_\beta) = \frac{p(d_\beta|h_j, \theta, \phi)p(h_j, \theta, \phi)}{p(d_\beta)}
+\end{equation}
+
+In general, this is a very difficult function to compute. However, if we restrict ourselves to the posterior for the sky position
+
+\begin{equation}
+p(\theta, \phi|d_\beta) = \int\mathcal{D}h_j\, \frac{p(d_\beta|h_j, \theta, \phi)p(h_j, \theta, \phi)}{p(d_\beta)}
+\end{equation}
+
+where the integral is taken over all possible signals $h_j = \hat{h}_j +\epsilon_j$. This means that, at a given $(\theta, \phi)$, we can exchange the measure for something tractable : $\mathcal{D}h_j = \mathcal{D}\epsilon_j$. Furthermore, each frequency is independent in this integral, so we can exchange the order of the marginalization over $h_j$ and the integration over $f$. This means we can analytically compute the posterior sky map
+
+\begin{eqnarray}
+p(\theta, \phi|d_\beta) & = & \int\mathcal{D}\epsilon_j\, \mathrm{exp}\left( \int\mathrm{d}f\, d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk} B_{k\alpha} d_\alpha - \epsilon_j^\ast A_{jk} \epsilon_k \right) p(h, \theta, \phi) \\
+ & = & \prod\limits_{f} \mathrm{exp}\left( d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk} B_{k\alpha} d_\alpha \right) \int\limits_{-\infty}^{\infty}\mathrm{d}^{N_p} \epsilon_j\, \mathrm{exp}\left(- \epsilon_j^\ast A_{jk} \epsilon_k \right) p(\hat{h}_j + \epsilon_j, \theta, \phi) 
+\end{eqnarray}
+
+where $N_p$ is the number of polarization states. The only barrier to evaluating these integrals analytically is the prior $p(h_j, \theta, \phi)$, which we can reasonably assume will take the form
+
+\begin{equation}
+p(h_j, \theta, \phi) = p(h_j) p(\theta,\phi) = p(h_j) \frac{1}{4\pi}
+\end{equation}
+
+where we've assumed the prior on $(\theta, \phi)$ is uniform across the sky (constant probability per steradian)\footnote{This assumption is easily relaxed and does not affect the marginalization. Any prior is allowed on $(\theta,\phi)$ and it will simply come outside the integral.} Furthermore, we can assume the most uninformative prior on $h_j$, so that
+
+\begin{equation}
+p(h_j) = constant
+\end{equation}
+
+Under these assumptions\footnote{Other assumptions may render this integral untractable analytically, but we could, for example, choose a gaussian on $h_j$ and still evaluate the integral analytically.}, we have a very simple form for the posterior
+
+\begin{eqnarray}
+p(\theta, \phi|d_\beta) & = & \frac{constant}{4\pi}\prod\limits_{f} \mathrm{exp}\left( d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk} B_{k\alpha} d_\alpha \right) \int\limits_{-\infty}^{\infty}\mathrm{d}^{N_p} \epsilon_j\, \mathrm{exp}\left(- \epsilon_j^\ast A_{jk} \epsilon_k \right) \\
+ & = & \frac{constant}{4\pi}\prod\limits_{f} \mathrm{exp}\left( d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk} B_{k\alpha} d_\alpha \right) \sqrt{(2\pi)^{N_p}\left|\left(A^{-1}\right)_{jk}\right|}
+\end{eqnarray}
+
+Importantly, the marginalization preferentially gives more posterior probability to locations with \emph{lower} antenna patterns, and therefore locations that are \emph{less sensitive} to true gravitaitonal wave signals. This is counter intuitive (one expects there to be more posterior where the network is more sensitive), and is an artifact of the assumption $h_j = constant$. If all signals are equally likely, then the marginalization will select those regions with more allowed ``volume'' in the space of possible signals. This corresponds to locations with larger errors in the reconstructed signals, which are locations with \emph{smaller} antenna patterns. However, applying even a somewhat arbitrary prior on $h_j$ that favors smaller signals can fix this problem.
+
+We should note that the only dependence on the data streams $d_\beta$ comes from the maximum likelihood estimate, which is quadratic in the data. Everything else can be computed \emph{exactly once} for all sky positions $(\theta, \phi)$ and then used to filter the data. 
+
+We also note that the antenna patters \emph{naturally} modulate the posterior through the marginalization. This means that when $N_p=N_{ifo}$ (and for any $(\theta, \phi)$ the maximum likelihood estimator exactly reproduces the data streams) and the likelihood ratio is unity for all $(\theta,\phi)$, \emph{the posterior will not be uniform}. This non-uniformity is independent of the data streams and reflects the different sensitivities of the detector network at different points in the sky. Without a prior, this marginalization favors locations with \emph{low} antenna patters and very little sensitivity to actual signals. Adding a realistic prior on $h_j$ should allow us to include effects like triangulation by assigning higher priors to signals with less total energy. However, the prior will contain terms which depend on the data and may complicate the simple form of our current posterior. Furthermor, the exact form for this prior is uncertain. However, to obtain different posteriors for different data streams, we will have to impose some prior when $N_p=N_{ifo}$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{priors on $h_j$}
+
+A prior on $h_j$ is required to give posteriors that depend on the data in 2-detector networks. Some possible examples are
+
+\begin{equation}
+p(h_j) \propto \mathrm{exp}\left( -h_k^\ast Z_{kj} h_j \right)
+\end{equation}
+
+where $Z_{jk} = Z_{kj}^\ast$. This has been called a \emph{white-noise prior}. Choice of $Z_{kj}$ is arbitrary. This prior is not particularly well motivated beyond the fact that the marginalization is still tractable. With such a prior, we can write
+
+\begin{eqnarray}
+p(\theta, \phi|d_\beta) & \propto & p(\theta,\phi) \int\mathcal{D}h_j\, \mathrm{exp}\left( \int\mathrm{d}f\, \hat{h}_j^\ast A_{jk} \hat{h}_k - \epsilon_j^\ast A_{jk} \epsilon_k - \hat{h}_j^\ast Z_{jk} \hat{h}_k - \hat{h}_j^\ast Z_{jk} \epsilon_k - \epsilon_k^\ast Z_{jk} \hat{h}_k - \epsilon_j^\ast Z_{jk} \epsilon_k \right) \nonumber \\
+& = & p(\theta, \phi) \int\mathcal{D}h_j\, \mathrm{exp}\left( \int\mathrm{d}f\, \hat{h}_j^\ast \left(A-Z\right)_{jk} \hat{h}_k - \left[ \epsilon_j^\ast \left(A+Z\right)_{jk}\epsilon_k +\hat{h}_j^\ast Z_{jk} \epsilon_k + \epsilon_k^\ast Z_{jk} \hat{h}_k^\ast \right] \right) \nonumber \\ 
+& = & p(\theta, \phi) \int\mathcal{D}h_j\, \mathrm{exp}\left( \int\mathrm{d}f\, \hat{h}_j^\ast \left(A-Z\right)_{jk} \hat{h}_k + \zeta_j^\ast \Phi_{jk} \zeta_k - \left(\zeta_j + \epsilon_j\right)^\ast \Phi_{jk} \left(\zeta_k + \epsilon_k\right) \right)
+\end{eqnarray}
+
+where $\zeta_k = \left(\Phi^{-1}\right)_{kj}Z_{jm}\hat{h}_m$ and $\Phi_{jk} = \left(A+Z\right)_{jk}$. WE can shift the marginalization measure to integrate over the gaussian terms independent of $\hat{h}_j$ to obtain
+
+\begin{eqnarray}
+p(\theta, \phi| d_\beta) & = & p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A-Z\right)_{jk} \hat{h}_k + \zeta_j^\ast \Phi_{jk} \zeta_k \right) \sqrt{(2\pi)^{N_p} \left|\Phi^{-1}\right|} \\
+& = & p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A-Z\right)_{jk} \hat{h}_k + \hat{h}_m^\ast Z_{mj} \left(A+Z\right)^{-1}_{jk} Z_{kn} \hat{h}_n \right) \sqrt{(2\pi)^{N_p} \left|\left(A+Z\right)^{-1}_{jk}\right|} \nonumber \\
+& = & p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left( \left(A-Z\right)_{jk} + Z_{jm} \left(A+Z\right)^{-1}_{mn} Z_{nk} \right) \hat{h}_k \right) \sqrt{(2\pi)^{N_p} \left|\left(A+Z\right)^{-1}_{jk}\right|}
+\end{eqnarray}
+
+Similarly, if we assume a gaussian prior on $h_j$ with some non-zero mean $H_j$, so that
+
+\begin{equation}
+p(h_j) \propto \mathrm{exp}\left( -(h_k-H_k)^\ast Z_{kj} (h_j-H_j) \right)
+\end{equation}
+
+ we obtain the following
+
+\begin{equation}
+p(\theta, \phi| d_\beta) = p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - (\hat{h}_j-H_j)^\ast \left(Z_{jk} - Z_{jm} \Phi^{-1}_{mn} Z_{nk} \right) (\hat{h}_k+H_k) \right) \sqrt{(2\pi)^{N_p} \left|\Phi^{-1}\right|}
+\end{equation}
+
+Furthermore, we may consider linear combinations of gaussians
+
+\begin{equation}
+p(h_j) = \sum_{N} C_N \cdot \mathrm{exp}\left( -\left(h_k-H^{(N)}_k\right)^\ast Z_{kj}^{(N)} \left(h_j-H^{(N)}_j\right) \right)
+\end{equation}
+
+where $N$ indexes the gaussian. Again, choice of the $Z_{kj}^{(N)}$ are somewhat arbitrary, but each term in this sum can be evaluated through the marginalization. We might be able to decompose more general priors into this form, which will then give us an analytic forumla for the posterior in terms of the decomposition. Explicitly, this is\footnote{With clever algebra, we may be able to cast this into something more recognizable. For instance, the sum of the products should be the product of the sums and we can exchange the order of the $\sum_{N}$ and $\prod_{f}$.}
+
+\begin{eqnarray}
+p(\theta, \phi|d_\beta) & = & p(\theta, \phi) \sum\limits_{N} C_N \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - \left(\hat{h}_j-H^{(N)}_j\right)^\ast \left(Z^{(N)}_{jk} - Z^{(N)}_{jm} \left(A+Z^{(N)}\right)^{-1}_{mn} Z^{(N)}_{nk} \right) \left(\hat{h}_k+H^{(N)}_k\right) \right) \nonumber \\
+                        &   & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \times\ \sqrt{(2\pi)^{N_p} \left|\left(A+Z^{(N)}\right)^{-1}_{jk}\right|}
+\end{eqnarray}
+
+Importantly, if we choose many narrow gaussians we can approximate an arbitrary prior (sum of $\delta$-functions). We can also endow $Z^{(N)}_{jk}$, $H^{(N)}_{j}$ with frequency dependence without any major modifications. This means we can demand that there is equal energy in each frequency bin so that $h\propto1/f$, or something similar, with appropriate definitions for $Z^{(N)}_{jk}$ and/or $H^{(N)}_j$. Note that this looks like the prior with modifications to the coefficients $C_N$ based on the marginalization over $\epsilon_j$. It may not be possible to re-sum these terms analytically to explicitly state the posterior in closed form (assuming we've expanded a closed form prior into gaussians). \emph{Importantly}, this gives us a way to explicitly compute the posterior without sampling the parameters space of possible signals. All computations are done analytically assuming constant $(\theta,\phi)$, which could provide large speed-ups computationally over Monte-Carlo Markov-Chain algorithms.
+
+Alternatively, we can write down some astrophysically motivated prior, such as uniform in co-moving volume. However, for burst signals, we do not immediately have a good estimate for the distance $D$. We can relate this to the observed data through
+
+\begin{equation}
+\frac{E_{GW}}{D_L^2} \propto \int\mathrm{d}f\, f^2 h_j^\ast h_j
+\end{equation}
+
+To obtain a prior on $h_j$, we should marginalize over all possible $D_L$ and $E_{GW}$\footnote{This assumes all signals have the same intrinsic \emph{standard candle} $E_{GW}$ regardless of their frequency content, which may not be true.}
+
+\begin{eqnarray}
+p(h_j) & \propto & \int p(h_j|D_L, E_{GW})p(D_L)p(E_{GW})\mathrm{d}D_L\mathrm{d}E_{GW} \\
+& = & \int \delta\left( D_L - \sqrt{\frac{E_{GW}}{\int\mathrm{d}f\,f^2h_j^\ast h_j}} \right) p(D_L) p(E_{GW})\mathrm{d}D_L\mathrm{d}E_{GW} \nonumber \\
+& = & \int \delta\left( D_L - \sqrt{\frac{E_{GW}}{\int\mathrm{d}f\,f^2h_j^\ast h_j}} \right) (4\pi D_L^2) p(E_{GW})\mathrm{d}D_L\mathrm{d}E_{GW} \ \ \ (\mathrm{for}\ z\ll 1) \nonumber\\
+& = & \int 4\pi \frac{E_{GW}}{\int\mathrm{d}f\, f^2h_j^\ast h_j}p(E_{GW})\mathrm{d}E_{GW} \nonumber \\
+& = & \frac{4\pi \left<E_{GW}\right>}{\int\mathrm{d}f\, f^2h_j^\ast h_j}
+\end{eqnarray}
+
+Notice that this does the something reasonable in that it prefers signals with smaller $h_j$, because they're likely to have come from farther away. However, this renders the posterior nearly impossible to compute analytically:
+
+\begin{equation}
+p(\theta,\phi|d_\beta) = p(\theta,\phi)\int\mathcal{D}\epsilon_j \mathrm{exp}\left( \int\mathrm{d}f\, d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk} B_{\alpha k} d_\alpha - \epsilon_j^\ast A_{jk} \epsilon_k \right) \frac{4\pi \left<E_{GW}\right>}{\int\mathrm{d}f\, f^2 (\hat{h}_j^\ast+\epsilon_j^\ast) (\hat{h}_j+\epsilon_j)}
+\end{equation}
+
+In fact, we can do a little better than this by expanding the denomenator of the prior in a power series and noting that all odd powers of $\epsilon_j$ will vanish? At least this is true of the linear terms. Depending on the width $A_{jk}$ and the energy contained in the maximum likelihood estimate, we may be able to truncate the series after a few terms, which we can evaluate analtyically. 
+
+\begin{itemize}
+	\item{separate into different frequency components? $\Rightarrow$ make the measure a product?}
+	\item{Can we Taylor expand the integral with respect to each frequency component?}
+\end{itemize}
+
+Using this as motivation, we may be able to expand this prior into a sum of gaussians and use our previous result to evaluate the marginalization analytically.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{signal morphology}
+
+Alternatively, we can attempt to calculate the posterior for the actual signal $h_j$, which we obtain through marginalization over $(\theta, \phi)$. This means computing the following
+
+\begin{equation}
+p(h_j|d_\beta) = \int\mathrm{d}\cos\theta\mathrm{d}\phi\, \frac{p(d_\beta|h_j, \theta, \phi)p(h_j, \theta, \phi)}{p(d_\beta)}
+\end{equation}
+
+This is a much more difficult problem, and unfortunately it may not be tractable analytically. We can always compute a \emph{p-value} for the null hypothesis : $p(h_j=0\, \forall\, f|d_\beta)$, but this is simply a statement about the likelihood of a particular noise realization. The more interesting computation is to find the maximum (maxima?) of the posterior and set confidence regions around it (them). An all-sky search can then be performed by monitoring the lower bound on this confidence region. Furthermore, because we have not assumed anything about the \emph{shape} of the waveform, this posterior should cover the entire signal-space and include every possible waveform.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Singular antenna matricies $A_{jk}$ and reduction of number of polarizations}
+
+\textcolor{red}{\textbf{FIGURE OUT HOW TO DO THIS TRANSPARENTLY AND WRITE UP}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Example: single polarization}
+
+For a single polarization, $A_{jk}=A \rightarrow (A^{-1}) = 1/A$. Therefore, we can write our estimator as
+
+\begin{equation}
+\hat{h} = \frac{1}{A}B_\beta d_\beta = \left( \sum\limits_{\alpha}\frac{F_\alpha F_\alpha^\ast}{S_\alpha}\right)^{-1} \sum\limits_\beta \frac{F_\beta^\ast d_\beta}{S_\beta}
+\end{equation}
+
+If we assume there are only two detectors with identical noise (H,L), then we have
+
+\begin{equation}
+\hat{h} = \frac{F_H^\ast d_H + F_L^\ast d_L}{|F_H|^2 + |F_L|^2} = h + \frac{F_H^\ast n_H + F_L^\ast n_L}{|F_H|^2 + |F_L|^2} 
+\end{equation}
+
+This means that the maximum likelihood statistic can be written as
+
+\begin{equation}
+\log \mathcal{L} = \frac{\left|F_H^\ast d_H + F_L d_L^\ast\right|^2}{S\left(|F_H|^2 + |F_L|^2\right)}
+\end{equation}
+
+which is weird. We notice that there may be a very strong dependence on the source direction, which comes from amplitude-consistency checks between H and L. These checks are possible because $N_{ifos} > N_{p}$. Perhaps more interestingly, we can consider the marginalization with a uniform prior on $h$. The posterior for $(\theta,\phi)$ in this case is
+
+\begin{equation}
+p(\theta,\phi|d_\beta) = p(\theta, \phi) \mathrm{exp}\left( \frac{\left|F_H^\ast d_H + F_L d_L^\ast\right|^2}{S\left(|F_H|^2 + |F_L|^2\right)} \right) \left[2\pi\frac{S/2}{|F_H|^2 + |F_L|^2}\right]
+\end{equation}
+
+Notice that the term in the brackets decreases when the antenna patterns increase. This means that with a uniform prior in $h$, the marginalization prefers positions with low antenna patterns. This is because the errors are larger in those regions, so the marginalization picks up more weight. If we instead use a gaussian prior on $h$ such that
+
+\begin{equation}
+p(h) \propto \mathrm{exp} \left( h^\ast Z h \right) = \mathrm{exp} \left( |h|^2/2\sigma^2 \right)
+\end{equation}
+
+we can write the posterior as
+
+\begin{eqnarray}
+p(\theta,\phi|d_\beta) & = & p(\theta, \phi) \mathrm{exp}\left( \frac{\left|F_H^\ast d_H + F_L d_L^\ast\right|^2}{S\left(|F_H|^2 + |F_L|^2\right)} \right) \left[2\pi\frac{S/2}{|F_H|^2 + |F_L|^2}\right] \nonumber \\
+                       &   & \times\ \mathrm{exp}\left( -h^\ast Z h + h^\ast\frac{Z^2}{A+Z} h \right)\sqrt{\frac{A}{A+Z}}
+\end{eqnarray}
+
+and the modification to the poserterior is
+
+\begin{equation}
+\mathrm{exp}\left( -\frac{|\hat{h}|^2}{2\sigma^2}\frac{|F_H|^2+|F_L|^2}{|F_H|^2+|F_L|^2+S/2\sigma^2}\right) \sqrt{\frac{|F_H|^2+|F_L|^2}{|F_H|^2+|F_L|^2 + S/2\sigma^2}}
+\end{equation}
+
+Importantly, we see that this factor seems reasonable. For each location, the numerator in the exponential's argument should be roughly the same. This means that for larger antenna patterns, the gaussian widthd increases and there is more weight assigned to that location. This gaussian weighting should overwhelm the contribution from marginalization without a prior with appropriate $\sigma$. Therefore, we expect the posterior to follow the antenna patterns for appropriate choice of $\sigma$.\footnote{Note that in the limit of $\sigma\rightarrow\infty$, we recover the posterior obtained with a uniform prior on $h$, as expected.}
+
+If we additionally assume that there is only one detector, then this further simplifies to
+
+\begin{equation}
+\mathrm{exp}\left( -\frac{|d|^2}{2\sigma^2}\frac{|F|^2}{|F|^2+S/2\sigma^2}\right)\sqrt{\frac{|F|^2}{|F|^2+S/2\sigma^2}}
+\end{equation}
+
+Here, it is entirely clear that regions with large antenna patterns (with respect to $S/2\sigma^2$) are favored. This gives us modulation along the antenna patterns controlled by one parameter: $\sigma$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Extended sources}\label{section:extended sources}
+
+\emph{Point sources} were described in Section \ref{section:point sources}. Here we consider extended sources which may come from distant parts of the sky simultaneously. This modifies the way in which the strain enters our data streams, although all we really have to do is add a few more indicies. 
+
+\subsection{maximum likelihood estimators}
+
+Consider the position-space integral
+
+\begin{eqnarray}
+\int \mathrm{d}\cos\theta \mathrm{d}\phi\, F_{\beta j}\left(\theta,\phi\right) h_{j}\left(\theta,\phi\right) & = & \int \mathrm{d}\cos\theta \mathrm{d}\phi\, \left( \sum\limits_{lm} Y_{lm} F_{\beta j (lm)} \right) \left( \sum\limits_{l^\prime m^\prime} Y_{l^\prime m^\prime} h_{j (l^\prime m^\prime)} \right) \\
+& = & \sum\limits_{l m l^\prime m^\prime} F_{\beta j (lm)}  h_{j (l^\prime m^\prime)} \int \mathrm{d}\cos\theta \mathrm{d}\phi Y_{lm} Y_{l^\prime m^\prime} \\
+& = & \sum\limits_{lm} F_{\beta j (l m)} h_{j (l m)}
+\end{eqnarray}
+
+which is the equivalent of parseval's theorem for spherical harmonics. Now, this summation is technically over an infinite series, but we can always truncate the series at high order $(l,m)$ to make this tractable. Furthermore, a similar summation is reasonable if we pixelate the sky in
+to a set of discrete points. The mathematics that follows is independent of the decomposition (position-space or spherical harmonics), so we simply refer to the postion tuple with a single \emph{upper case greek letter}.
+
+
+Now, our likelihood functional is modified as follows
+
+\begin{eqnarray}
+\mathcal{L} = \frac{p(d_\beta - F_{\beta j}h_j)}{p(d_\beta)} & = & \mathrm{exp}\left(\int\mathrm{d}f\, \sum_\beta \frac{\left|d_\beta\right|^2 - \left|d_\beta - F_{\beta j \Omega}h_{j \Omega}\right|^2}{S_\beta} \right) \\
+                                              & = & \mathrm{exp}\left(\int\mathrm{d}f\, \sum_\beta \frac{d_\beta F_{\beta j \Omega}^\ast h_{j \Omega}^\ast + d_\beta^\ast F_{\beta j \Omega}h_{j \Omega} - h_{k \Omega} F_{\beta k \Omega} F_{\beta j \Psi}^\ast h_{j \Psi}^\ast}{S_\beta} \right)
+\end{eqnarray}
+
+where summation over sky positions $\Omega$, $\Psi$ are implied.
+
+If we vary this functional with respect to $h^\ast_{j\Omega}$, we obtain the following Euler equations.
+
+\begin{equation}
+\sum\limits_\beta \frac{F_{\beta \Omega j}^\ast d_\beta}{S_\beta} = \sum\limits_{\beta\Psi} \frac{F_{\beta\Omega j}^\ast F_{\beta \Psi k} h_{k \Psi}}{S_\beta}
+\end{equation}
+
+and we can define analogous matricies as before
+
+\begin{eqnarray}
+A_{\Omega\Psi j k} & \equiv & \sum\limits_\beta \frac{F_{\beta\Omega j}^\ast F_{\beta \Psi k}}{S_\beta} \\
+B_{\beta\Omega j} & \equiv & \frac{F_{\beta\Omega j}^\ast}{S_\beta}
+\end{eqnarray}
+
+which allows us to solve explicitly for the maximum likelihood estimator
+
+\begin{equation}
+\hat{h}_{\Psi k} = \left(A^{-1}\right)_{\Psi\Omega k j} B_{\beta \Omega j} d_\beta
+\end{equation}
+
+Note, the size of these matricies depends on the number of sky positions included. This means that the matrix inversion may be non-trivial computationally, or poorly defined in the continuum limit. However, if we limit ourselves to a finite number of sky locations this should be reasonable, if expensive.\footnote{For any practical search, we're only interested in the approximate posterior anyway. We won't be able to resolve the source perfectly in any case, so this slight pixelization should not affect the search in any meaningful way.}
+
+Now, the errors associated with this estimator are
+
+\begin{eqnarray}
+\hat{h}_{\Psi k} & = & \left(A^{-1}\right)_{\Psi\Omega k j} B_{\beta \Omega j} \left( F_{\beta \Upsilon i} h_{i\Upsilon} + n_\beta \right) \\
+                 & = & \left(A^{-1}\right)_{\Psi\Omega k j} \left( B_{\beta \Omega j} F_{\beta \Upsilon i} \right) h_{i\Upsilon} +  \left(A^{-1}\right)_{\Psi\Omega k j} B_{\beta \Omega j} n_\beta \\
+                 & = & \left(A^{-1}\right)_{\Psi\Omega k j} A_{\Omega\Upsilon j i} h_{i\Upsilon} +  \left(A^{-1}\right)_{\Psi\Omega k j} B_{\beta \Omega j} n_\beta \\
+\Rightarrow \hat{h}_{\Psi k} - h_{\Psi k} \equiv \epsilon_{\Psi k} & = & \left(A^{-1}\right)_{\Psi\Omega k j} B_{\beta \Omega j} n_\beta
+\end{eqnarray}
+
+and we see that the errors are gaussian around the maximum likelihood estimator.
+
+\textcolor{red}{\textbf{NOTE THAT THE SKY POSTION AND THE POLARIZATION INDICIES LIKE TO GO TOGETHER. In particular, with this inversion we have a summation over both which yields the kroniker delta. This implies that we should group them together into a tuple of three, indexed by a single letter rather than two indicies.}}
+
+If we plug this into our likelihood functional, we obtain the following 
+
+\begin{equation}
+\log \mathcal{L} = \int\mathrm{d}f\, d_\beta^\ast B_{\beta\Omega j}^\ast \left( A^{-1}\right)_{\Omega\Psi j k} B_{\alpha\Psi k} d_\alpha - \epsilon_{k\Omega}^\ast A_{\Omega\Psi k j} \epsilon_{\Psi k}
+\end{equation}
+
+and indeed, the probability is gaussian in the errors. Note, we are summing over all sky positions implicitly with repeated capital greek indicies. 
+
+\subsection{posterior probabilities}
+
+We now ask the question, how do we compute the posterior using this likelihood, and in what way is this most efficient.
+
+\textcolor{red}{\textbf{We can decompose the posterior in either position-space or spherical harmonics. This may yield simplification of the formula to compute the posterior, but it is not immediately apparent how this comes into play.}}
+
+Again, we can write the posterior as 
+
+\begin{equation}
+p(\Omega|d_\beta) = \int\mathcal{D}h_{j\Omega}\, \frac{p(d_\beta|h_{j\Omega}, \Omega)p(h_{j\Omega}, \Omega)}{p(d_\beta)}
+\end{equation}
+
+\textcolor{red}{and note that $\Omega$ is \emph{fixed} in the integration? Can we represent the likelihood as a sum over independent sky position/polarization channels? If that's the case, we simply have to decompose the posterior into this diagonal basis and compute each term. The total posterior will come from re-summing the decomposition. When we write $p(\Omega|d_\beta)$, we mean the posterior that the signal came from that sky postion and only that sky position? In which case, my nice summations over source location should be broken and we use a single sky position. Indeed, this seems reasonable. We can then use the \emph{point estimate} forumation from this point onward. The crucial step will be when we consider $p(\theta,\phi|d_\beta)$ after computing $p(l,m|d_\beta)$, which should simply be a re-summation weighted by spherical harmonics. There should also be strong reality constraints that should help us reduce the number of spherical harmonics that need to be considered.}
+
+\textcolor{green}{Actually, the summation in the integrand comes from considering all possible sky postions. This is appropriate when computing $p(h_{j\Omega}|d_\beta)$. \textbf{WE NEED TO DETERMINE THE EXTENT TO WHICH THERE IS MIXING BETWEEN POLARIZATION CHANNELS CAUSED BY THE SUMMATION OVER SKY POSITIONS.} If there is a better basis, we should work in that. What we want is to separate the sums, which makes this analysis much more straightforward.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}

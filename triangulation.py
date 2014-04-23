@@ -344,7 +344,7 @@ if __name__ == "__main__":
 			if opts.verbose: print "\twriting stats into %s"%statsfilename
 		
 			### angular offset between max of the posterior and injection
-			cosDtheta = np.cos(est_theta)*np.sin(inj_theta) - np.sin(est_theta)*np.sin(inj_theta)*np.cos(est_phi - inj_phi)
+			cosDtheta = np.cos(est_theta)*np.cos(inj_theta) + np.sin(est_theta)*np.sin(inj_theta)*np.cos(est_phi - inj_phi)
 			### searched area
 			injpix = hp.ang2pix(nside, inj_theta, inj_phi)
 			posterior = posterior[posterior[:,1].argsort()[::-1]] # sort by posterior weight
