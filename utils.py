@@ -1,3 +1,5 @@
+### written by R.Essick (ressick@mit.edu)
+
 usage = """ a general utilities module for sky localization. All distances are measured in seconds """
 
 import numpy as np
