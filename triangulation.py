@@ -6,14 +6,13 @@ written to compute posteriors over the sky using triangulation and modulation wi
 import utils
 np = utils.np
 import healpy as hp
+import pickle
 
 #=================================================
 #
 #                  utilities
 #
 #=================================================
-deg2rad = np.pi/180
-
 ###
 def likelihood(toa, tof_map, err_map):
 	"""
@@ -46,12 +45,7 @@ class TimingNetwork(utils.Network):
 
 	def __init__(self, errs={}):
 		for (detector1,detector2), err in errs.items():
-			name1 = detector1.name
-			name2 = detector2.name
-			self.detectors[name1] = detector1
-			self.detectors[name2] = detector2
-			names = tuple(sorted([name1,name2]))
-			self.errors[names] = err
+			self.add_err(detector1,detector2,err)
 		self.check()
 
 	def check(self):
@@ -64,6 +58,14 @@ class TimingNetwork(utils.Network):
 				if not self.errors.has_key(names):
 					raise KeyError, "TimingNetwork is missing err for %s and %s"%(name1,all_names[ind2])
 
+	def add_err(self, detector1, detector2, err):
+		"""adds detector1,detector2 with err to the network. DOES NOT CHECK TO MAKE SURE ALL POSSIBLE DETECTOR COMBINATIONS ARE PRESENT"""
+		name1 = detector1.name
+		name2 = detector2.name
+		self.detectors[name1] = detector1
+		self.detectors[name2] = detector2
+		names = tuple(sorted([name1,name2]))
+		self.errors[names] = err
 
 	def set_err(self, name1, name2, err, theta=0.0, phi=0.0):
 		"""associates err with name1 and name2. Does not checks whether they are in the network first"""
@@ -95,12 +97,18 @@ class TimingNetwork(utils.Network):
 
 	def get_tof(self, name1, name2, theta, phi):
 		"""compute the expected time-of-flight from name1 -> name2"""
-		dr = self.detectors[name2].dr - self.detectors[name1].dr
 		return utils.time_of_flight(theta, phi, self.detectors[name2].dr - self.detectors[name1].dr)
 
-	def get_tof_names(self):
+	def get_tof_names(self, names=[]):
 		"""returns an ordered list of detector combinations"""
-		return sorted(self.errors.keys())
+		if len(names):
+			keys = []
+			for ind, name1 in enumerate(names):
+				for name2 in names[ind+1:]:
+					keys.append( tuple(sorted([name1,name2])) )
+			return sorted(keys)
+		else:
+			return sorted(self.errors.keys())
 
 #=================================================
 #
@@ -114,7 +122,10 @@ if __name__ == "__main__":
 	parser.add_option("-v", "--verbose", dest="verbose", default=False, action="store_true")
 
 	parser.add_option("-a", "--arrivals-cache", dest="a_cache", default="arrivals.cache", type="string", help="a cache file containing the times-of-arrival for the detectors in this network")
+	parser.add_option("", "--deg", default=False, action="store_true", help="if True, we convert injected phi,theta to radians. only important for --arrivals-cache (for which posteriors are calculated).")
+
 	parser.add_option("-e", "--errors-cache", dest="e_cache", default="errors.cache", type="string", help="a cache file containing errors in time-of-flight measurements between detectors")
+	parser.add_option("", "--hist-errors", default=False, action="store_true", help="histogram the tof errors observed in --errors-cache")
 
 	parser.add_option("-n", "--nside-exp", default=7, type="int", help="HEALPix NSIDE parameter for pixelization is 2**opts.nside_exp")
 
@@ -145,74 +156,81 @@ if __name__ == "__main__":
 	if opts.time:
 		import time
 
-	#=========================================================================
-	### for starters, we only consider LHO-LLO networks, so let's demand that from our input arguments
-	if args != sorted(["LHO", "LLO"]):
-		raise ValueError, "we only consider LHO and LLO networks for now, so please supply exactly those two detector names"
-	#=========================================================================
+	if opts.hist_errors:
+		import matplotlib
+		matplotlib.use("Agg")
+		from matplotlib import pyplot as plt
 
 	### get list of detectors from arguments
 	if opts.verbose: 
 		print "loading list of detectors"
 		if opts.time: to=time.time()
-	detectors = []
+	detectors = {}
 	for arg in args:
-		if arg == "LHO":
-			detectors.append( utils.LHO )
-		elif arg == "LLO":
-			detectors.append( utils.LLO )
-		elif arg == "Virgo":
-			detectors.append( utils.Virgo )
+		if arg == "H1": #"LHO":
+			detectors[arg] = utils.LHO
+		elif arg == "L1": #"LLO":
+			detectors[arg] = utils.LLO
+		elif arg == "V1": #"Virgo":
+			detectors[arg] = utils.Virgo
 		else:
 			raise ValueError, "detector=%s not understood"%arg
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
+	ndetectors = len(detectors) # number of detectors
+        ntof = ndetectors*(ndetectors-1)/2 # number of combinations of detectors
+
+	### instantiate an empty TimingNetwork to use some functions
+	network = TimingNetwork()
+
 	### get set of timing errors from error_cache
 	### we should select only those errors which are relevant to this network
-#=================================================================================================================
-#
-#
-	### for testing purposes, we take a short cut and don't implement this right away
 	if opts.verbose:
-		print "loading error distributions"
+		print "computing error distributions from", opts.e_cache
 		if opts.time: to = time.time()
 	err_file = open(opts.e_cache, "r")
-	for line in err_file:
-		if line[:4] == "stdv":
-			errs = {(utils.LHO, utils.LLO):float(line.strip().split()[-1])}
-			break
-	else:
-		raise ValueError, "could not find \"stdv\" in %s"%opts.e_cache
+	e_cache = pickle.load(err_file)
 	err_file.close()
 
-#	errs = {(utils.LHO, utils.LLO):0.0001}
-#	errs = {(utils.LHO, utils.LLO):0.0005}
-#	errs = {(utils.LHO, utils.LLO):0.0010}
-#	errs = {(utils.LHO, utils.LLO):0.0030}
-	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
-#
-#
-#=================================================================================================================
+	n_err = len(e_cache)
+	errs = {}
+	for name1, name2 in network.get_tof_names(names=detectors.keys()):
+		tof_err = np.empty((n_err,))
+		for ind, toa_event in enumerate(e_cache):	
+			### recovered tof
+			tof = toa_event[name1] - toa_event[name2]
+			### injected tof
+			tof_inj = toa_event[name1+"_inj"] - toa_event[name2+"_inj"]
+			### error in tof
+			tof_err[ind] = tof - tof_inj
+		if opts.hist_errors: # generate histogram of errors
+			if opts.verbose: print "\thistogram for %s-%s"%(name1,name2)
+			fig = plt.figure()
+			ax  = plt.subplot(1,1,1)
+			ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True)
+			ax.grid(True)
+			ax.set_xlabel("t_%s - t_%s [ms]"%(name1,name2))
+			ax.set_ylabel("count")
+			figname = opts.output_dir+"/tof-err_%s-%s%s.png"%(name1,name2,opts.tag)
+			if opts.verbose: print "\tsaving", figname
+			plt.savefig(figname)
+			plt.close(fig)
 
-	### build the network
+		m = np.mean(tof_err)
+		e = np.std(tof_err) # get standard deviation of this distribution
+		if abs(m) > e:
+			raise ValueError, "measured mean (%f) is larger than the standard deviation (%f) for tof:%s-%s"%(m,e,name1,name2)
+		network.add_err(detectors[name1],detectors[name2],e)
+	network.check() # checks network for consistency. If it isn't consistent, raises a KeyError
+	
 	if opts.verbose:
-		print "building TimingNetwork"
-		if opts.time: to=time.time()
-	network = TimingNetwork(errs)
-	for (detector1,detector2),err in errs.items():
-		network.set_err(detector1.name, detector2.name, err)
-
-	ndetectors = len(network)
-	ntof = ndetectors*(ndetectors-1)/2 # number of combinations of detectors
-
-	if opts.verbose: 
-		print "\t", network
+		print "built TimingNetwork\n\t", network
 		if opts.time: print "\t", time.time()-to, "sec"
 
 	### number of pixels in the sky map
 	npix = hp.nside2npix(nside)
 	pixarea = hp.nside2pixarea(nside)
-	pixarea_deg = pixarea/deg2rad**2
+	pixarea_deg = pixarea/utils.deg2rad**2
         if opts.verbose: 
 		print "pixelating the sky with nside=%d ==> %d pixels"%(nside,npix)
 		if opts.time: to = time.time()
@@ -221,6 +239,7 @@ if __name__ == "__main__":
 		theta, phi = hp.pix2ang(nside, ipix)
 		pixarray[ipix,:] = np.array([ipix, theta, phi])
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+
 
 	### build sky map of expected time-of-flights and expected errors
 	if opts.verbose: 
@@ -253,29 +272,15 @@ if __name__ == "__main__":
 	prior_map = prior(ap_map)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
-#===========================================================================================================
-#
-#
 	### load in list of arrival times
 	if opts.verbose: 
-		print "loading a_cache"
+		print "loading a_cache from", opts.a_cache
 		if opts.time: to=time.time()
-	a_cache = []
 	toa_file = open(opts.a_cache, "r")
-	ifo_names = toa_file.readline().strip().split()
-	nifo = len(ifo_names)
-	for line in toa_file:
-		toas = [float(l) for l in line.strip().split()]
-		inj_theta, inj_phi = toas[nifo:]
-		toas = toas[:nifo]
-		a_cache.append( (dict( (ifo_name, toa) for ifo_name, toa in zip(ifo_names, toas) ), (inj_theta*deg2rad, inj_phi*deg2rad)) )
+	a_cache = pickle.load(toa_file)
 	toa_file.close()
-#	for dt in np.arange(-0.0120, +0.0121, 0.0001):
-#		a_cache.append( {"LLO":dt, "LHO":0.0000} ) # needs to match ndetectors
+
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
-#
-#
-#===========================================================================================================
 
 	### compute posteriors for each event in a_cache
 	if opts.verbose: print "computing posteriors"
@@ -283,13 +288,21 @@ if __name__ == "__main__":
 	if opts.scatter:
 		estangs = np.empty((n_toa,2),np.float)
 		injangs = np.empty((n_toa,2),np.float)
-	for toa_ind, (toa, (inj_theta, inj_phi)) in enumerate(a_cache):
+
+	for toa_ind, toa_event in enumerate(a_cache):
+		inj_theta = toa_event['theta_inj'] # deg
+		inj_phi = toa_event['phi_inj'] # deg
+		if opts.deg:
+			inj_theta *= utils.deg2rad
+			inj_phi   *= utils.deg2rad
+
 		if opts.verbose: 
-			print "%d / %d\ntoa ="%(toa_ind+1,n_toa), toa
+			print "%d / %d\ntoa ="%(toa_ind+1,n_toa), toa_event
 			if opts.time: to=time.time()
 
 		### build observed time-of-flight vector
-		toa = np.array([toa[name2]-toa[name1] for name1,name2 in network.get_tof_names()])
+#		toa = np.array([toa_event[name1+"_inj"]-toa_event[name2+"_inj"] for name1,name2 in network.get_tof_names()])
+		toa = np.array([toa_event[name1]-toa_event[name2] for name1,name2 in network.get_tof_names()])
 
 		### build posteriors for each point in the sky
 		posterior = np.zeros((npix,2)) # ipix, p(ipix|d)
@@ -311,8 +324,9 @@ if __name__ == "__main__":
 
 		### plot posteriors
 		if opts.plot_posteriors:
+#                        figname = "%s/posterior-%d%sINJ.png"%(opts.output_dir, toa_ind, opts.tag)
                         figname = "%s/posterior-%d%s.png"%(opts.output_dir, toa_ind, opts.tag)
-			title = "$t_{LHO}-t_{LLO}=%.4f\,\mathrm{sec}$"%(toa[0])
+			title = "$t_{LHO}-t_{LLO}=%.3f\,\mathrm{ms}$"%(toa[0]*1e3)
 			unit = "probability per steradian"
 
 			fig = plt.figure(toa_ind)
