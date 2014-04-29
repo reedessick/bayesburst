@@ -10,6 +10,8 @@ from numpy import linalg
 #            general utilities
 #
 #=================================================
+deg2rad = np.pi/180
+rad2deg = 1.0/deg2rad
 
 #========================
 # timing utilities
@@ -367,17 +369,20 @@ empty_psd = PSD(np.array([0]), np.array([np.infty]))
 __H_dr__ = np.array((-2.161415, -3.834695, +4.600350))*1e6/c # sec
 __H_nx__ = np.array((-0.2239, +0.7998, +0.5569))
 __H_ny__ = np.array((-0.9140, +0.0261, -0.4049))
-LHO = Detector("LHO", __H_dr__, __H_nx__, __H_ny__, empty_psd)
+#LHO = Detector("LHO", __H_dr__, __H_nx__, __H_ny__, empty_psd)
+LHO = Detector("H1", __H_dr__, __H_nx__, __H_ny__, empty_psd)
 
 __L_dr__ = np.array((-0.074276, -5.496284, +3.224257))*1e6/c # sec
 __L_nx__ = np.array((-0.9546, -0.1416, -0.2622))
 __L_ny__ = np.array((+0.2977, -0.4879, -0.8205))
-LLO = Detector("LLO", __L_dr__, __L_nx__, __L_ny__, empty_psd)
+#LLO = Detector("LLO", __L_dr__, __L_nx__, __L_ny__, empty_psd)
+LLO = Detector("L1", __L_dr__, __L_nx__, __L_ny__, empty_psd)
 
 __V_dr__ = np.array((+4.546374, +0.842990, +4.378577))*1e6/c # sec
 __V_nx__ = np.array((-0.7005, +0.2085, +0.6826))
 __V_ny__ = np.array((-0.0538, -0.9691, +0.2408))
-Virgo = Detector("Virgo", __V_dr__, __V_nx__, __V_ny__, empty_psd)
+#Virgo = Detector("Virgo", __V_dr__, __V_nx__, __V_ny__, empty_psd)
+Virgo = Detector("V1", __V_dr__, __V_nx__, __V_ny__, empty_psd)
 
 
 
