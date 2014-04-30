@@ -203,23 +203,24 @@ if __name__ == "__main__":
 			tof_inj = toa_event[name1+"_inj"] - toa_event[name2+"_inj"]
 			### error in tof
 			tof_err[ind] = tof - tof_inj
+		m = np.mean(tof_err)
+		e = np.std(tof_err) # get standard deviation of this distribution
+		if abs(m) > e:
+			raise ValueError, "measured mean (%f) is larger than the standard deviation (%f) for tof:%s-%s"%(m,e,name1,name2)
 		if opts.hist_errors: # generate histogram of errors
 			if opts.verbose: print "\thistogram for %s-%s"%(name1,name2)
 			fig = plt.figure()
 			ax  = plt.subplot(1,1,1)
-			ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True)
+			ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, label=r"$\mu=%.3f$ $\sigma=%.3f"%(m*1e3, e*1e3))
 			ax.grid(True)
 			ax.set_xlabel("t_%s - t_%s [ms]"%(name1,name2))
 			ax.set_ylabel("count")
+			ax.legend(loc="upper left")
 			figname = opts.output_dir+"/tof-err_%s-%s%s.png"%(name1,name2,opts.tag)
 			if opts.verbose: print "\tsaving", figname
 			plt.savefig(figname)
 			plt.close(fig)
 
-		m = np.mean(tof_err)
-		e = np.std(tof_err) # get standard deviation of this distribution
-		if abs(m) > e:
-			raise ValueError, "measured mean (%f) is larger than the standard deviation (%f) for tof:%s-%s"%(m,e,name1,name2)
 		network.add_err(detectors[name1],detectors[name2],e)
 	network.check() # checks network for consistency. If it isn't consistent, raises a KeyError
 	
