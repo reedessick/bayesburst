@@ -216,7 +216,7 @@ if __name__ == "__main__":
 			if opts.verbose: print "\thistogram for %s-%s"%(name1,name2)
 			fig = plt.figure()
 			ax  = plt.subplot(1,1,1)
-			ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, label=r"$\mu=%.3f$ $\sigma=%.3f"%(m*1e3, e*1e3))
+			ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, label=r"$\mu=%.3f$ $\sigma=%.3f$"%(m*1e3, e*1e3))
 			ax.grid(True)
 			ax.set_xlabel("t_%s - t_%s [ms]"%(name1,name2))
 			ax.set_ylabel("count")
