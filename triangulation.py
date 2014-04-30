@@ -35,9 +35,11 @@ def prior(ap_map):
 	"""
 	### no prior
 #	return np.ones((len(ap_map[:,-1]),))
+
 	### uniform in volume (prior follows maximum eigenvalue of sensitivity matrix)
 	return ap_map[:,-1] # shells in the sky
 
+#	return ap_map[:,-1]**(3/2) # spheres in the sky
 
 class TimingNetwork(utils.Network):
 	"""
@@ -369,8 +371,10 @@ if __name__ == "__main__":
 			injpix = hp.ang2pix(nside, inj_theta, inj_phi)
 			posterior = posterior[posterior[:,1].argsort()[::-1]] # sort by posterior weight
 			n_sapix = 0
+			cum = 0.0
 			for ipix, p in posterior:
 				n_sapix += 1
+				cum += p
 				if ipix == injpix:
 					break
 			else:
@@ -378,7 +382,7 @@ if __name__ == "__main__":
 			searched_area = pixarea_deg*n_sapix
 
 			statsfile = open(statsfilename, "w")
-			print >> statsfile, "cos(ang_offset) = %.6f\nsearched_area = %.6f deg2"%(cosDtheta, searched_area)
+			print >> statsfile, "cos(ang_offset) = %.6f\nsearched_area = %.6f deg2\np_value = %.6f"%(cosDtheta, searched_area, cum)
 			statsfile.close()
 			if opts.verbose: print "\t\tcos(ang_offset) = %.6f\n\t\tsearched_area = %.6f deg2"%(cosDtheta, searched_area)
 
