@@ -33,6 +33,9 @@ def prior(ap_map):
 	"""
 	computes the prior assigned to each point using the antenna patterns stored in ap_map
 	"""
+	### no prior
+#	return np.ones((len(ap_map[:,-1]),))
+	### uniform in volume (prior follows maximum eigenvalue of sensitivity matrix)
 	return ap_map[:,-1] # shells in the sky
 
 
