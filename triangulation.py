@@ -27,7 +27,8 @@ def likelihood(toa, tof_map, err_map):
 	elif N != len(toa)+1:
 		raise ValueError, "shape mismatch between toa and tof_map"
 
-	return (2*np.pi*err_map[:,1:]**2)**0.5 * np.exp( -(toa-tof_map[:,1:])**2/(2*err_map[:,1:]**2) )
+	return np.exp( -0.5*sum(np.transpose( ((toa-tof_map[:,1:])/err_map[:,1:])**2 )) ) # transposition allows us to sum over detector pairs
+#	return (2*np.pi*err_map[:,1:]**2)**0.5 * np.exp( -(toa-tof_map[:,1:])**2/(2*err_map[:,1:]**2) )
 
 def prior(ap_map):
 	"""
@@ -313,7 +314,8 @@ if __name__ == "__main__":
 		### build posteriors for each point in the sky
 		posterior = np.zeros((npix,2)) # ipix, p(ipix|d)
 		posterior[:,0] = pixarray[:,0]
-		posterior[:,1] = likelihood(toa, tof_map, err_map).flatten() * prior_map # flatten() is to make the shapes compatible
+		posterior[:,1] = likelihood(toa, tof_map, err_map) * prior_map # flatten() is to make the shapes compatible
+#		posterior[:,1] = likelihood(toa, tof_map, err_map).flatten() * prior_map # flatten() is to make the shapes compatible
 		
 		### normalize posterior
 		posterior[:,1] /= sum(posterior[:,1])
