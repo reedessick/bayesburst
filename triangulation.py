@@ -146,6 +146,8 @@ if __name__ == "__main__":
 
 	parser.add_option("", "--time", default=False, action="store_true")
 
+	parser.add_option("", "--no-prior", default=False, action="store_true")
+
 	opts, args = parser.parse_args()
 	args = sorted(args)
 
@@ -265,18 +267,21 @@ if __name__ == "__main__":
 	
 	### build sky map of antenna patterns
 	if opts.verbose: 
-		print "computing ap_map"
+		print "computing prior_map"
 		if opts.time: to=time.time()
-	ap_map = np.zeros((npix,2)) # ipix, |F|
-	for ipix, theta, phi in pixarray:
-		a = network.A(theta, phi, 0.0, no_psd=True) # get sensitivity matrix with psi set to 0.0 for convenience. Also, do not include time shifts or psd in antenna patterns
-		a00 = a[0,0]
-		a11 = a[1,1]
-		a01 = a[0,1]
-		a10 = a[1,0]
-		F = 0.5*(a00+a11+((a00-a11)**2 + 4*a01*a10)**0.5) # maximum eigenvalue of the sensitivity matrix
-	        ap_map[ipix] = np.array([ipix,F])
-	prior_map = prior(ap_map)
+	if not opts.no_prior:
+		ap_map = np.zeros((npix,2)) # ipix, |F|
+		for ipix, theta, phi in pixarray:
+			a = network.A(theta, phi, 0.0, no_psd=True) # get sensitivity matrix with psi set to 0.0 for convenience. Also, do not include time shifts or psd in antenna patterns
+			a00 = a[0,0]
+			a11 = a[1,1]
+			a01 = a[0,1]
+			a10 = a[1,0]
+			F = 0.5*(a00+a11+((a00-a11)**2 + 4*a01*a10)**0.5) # maximum eigenvalue of the sensitivity matrix
+		        ap_map[ipix] = np.array([ipix,F])
+		prior_map = prior(ap_map)
+	else:
+		prior_map = np.ones((npix,))
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
 	### load in list of arrival times
