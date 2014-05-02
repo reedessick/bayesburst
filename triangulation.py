@@ -310,6 +310,7 @@ if __name__ == "__main__":
 
 		if opts.verbose: 
 			print "%d / %d\ntoa ="%(toa_ind+1,n_toa), toa_event
+			print "\tcomputing posterior"
 			if opts.time: to=time.time()
 
 		### build observed time-of-flight vector
@@ -325,6 +326,8 @@ if __name__ == "__main__":
 		### normalize posterior
 		posterior[:,1] /= sum(posterior[:,1])
 
+                if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+
 		### find the posterior's mode
 		if opts.plot_posteriors or opts.stats or opts.scatter:
 			estpix = int(posterior[:,1].argmax())
@@ -337,6 +340,9 @@ if __name__ == "__main__":
 
 		### plot posteriors
 		if opts.plot_posteriors:
+			if opts.verbose:
+				print "\tplotting posterior"
+				if opts.time: to=time.time()
 #                        figname = "%s/posterior-%d%sINJ.png"%(opts.output_dir, toa_ind, opts.tag)
                         figname = "%s/posterior-%d%s.png"%(opts.output_dir, toa_ind, opts.tag)
 			title = "$t_{LHO}-t_{LLO}=%.3f\,\mathrm{ms}$"%(toa[0]*1e3)
@@ -353,24 +359,31 @@ if __name__ == "__main__":
 			inj_marker.set_markersize(10)
 			inj_marker.set_markeredgewidth(2)
 			if opts.verbose: 
-				print "\tsaving", figname
+				print "\t\t", figname
 			fig.savefig(figname)
 			plt.close(fig)
+			if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
 
 		### write posteriors into FITs format
 		if opts.write_posteriors:
 			#print "WARNING: posteriors currently written to *.npy files, not FITs format"
+			if opts.verbose:
+				print "\twriting posterior"
+				if opts.time: to=time.time()
 			filename = "%s/posterior-%d%s.npy"%(opts.output_dir, toa_ind, opts.tag)
 			if opts.verbose:
-				print "\tsaving", filename
+				print "\t\t", filename
 			np.save(filename, posterior)
+			if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
 
 #			raise StandardError, "write code that plots posteriors and saves them into FITs format!"
 
 		### compute basic statistics about the reconstruction
 		if opts.stats:
+			if opts.verbose: 
+				print "\tcomputing statistics"
+				if opts.time: to=time.time()
 			statsfilename = "%s/stats-%d%s.txt"%(opts.output_dir, toa_ind, opts.tag)
-			if opts.verbose: print "\twriting stats into %s"%statsfilename
 		
 			### angular offset between max of the posterior and injection
 			cosDtheta = np.cos(est_theta)*np.cos(inj_theta) + np.sin(est_theta)*np.sin(inj_theta)*np.cos(est_phi - inj_phi)
@@ -391,9 +404,10 @@ if __name__ == "__main__":
 			statsfile = open(statsfilename, "w")
 			print >> statsfile, "cos(ang_offset) = %.6f\nsearched_area = %.6f deg2\np_value = %.6f"%(cosDtheta, searched_area, cum)
 			statsfile.close()
-			if opts.verbose: print "\t\tcos(ang_offset) = %.6f\n\t\tsearched_area = %.6f deg2"%(cosDtheta, searched_area)
-
-		if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+			if opts.verbose: 
+				print "\t\t", statsfilename
+				print "\t\tcos(ang_offset) = %.6f\n\t\tsearched_area = %.6f deg2"%(cosDtheta, searched_area)
+				if opts.time: print "\t\t", time.time()-to, "sec"
 
 	### generate scatter plot
 	if opts.scatter:
