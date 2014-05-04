@@ -79,7 +79,10 @@ def prior(ap_map, which="shells"):
 	elif which == "spheres":
 		return ap_map[:,-1]**(3/2) # spheres in the sky
 	else:
-		raise ValueError, "type=%s not understood"%which 
+		try:
+			return ap_map[:,-1]**float(which)
+		except:
+			raise ValueError, "type=%s not understood"%which 
 
 ###
 class IndependentKDE(object):
@@ -218,7 +221,7 @@ if __name__ == "__main__":
 
 	parser.add_option("", "--time", default=False, action="store_true")
 
-	parser.add_option("", "--no-prior", default=False, action="store_true")
+	parser.add_option("", "--prior", default="shells", type="string", help="flat, shells, spheres, or a float")
 
 	opts, args = parser.parse_args()
 	if not len(args):
@@ -322,7 +325,8 @@ if __name__ == "__main__":
 			if opts.e_approx == "singlekde":
 				ylim = ax.get_ylim()
 				xlim = ax.get_xlim()
-				ax.plot(samples*1e3, kde(samples), color="r", alpha=0.5, label="kde estimate")
+				estimate = kde(samples)
+				ax.plot(samples*1e3, estimate, color="r", alpha=0.5, label="kde estimate")
 				ax.set_ylim(ymin=ylim[0])
 				ax.set_xlim(xlim)
                         ax.grid(True)
@@ -396,21 +400,18 @@ if __name__ == "__main__":
 	
 	### build sky map of antenna patterns
 	if opts.verbose: 
-		print "computing prior_map"
+		print "computing prior_map :",opts.prior
 		if opts.time: to=time.time()
-	if not opts.no_prior:
-		ap_map = np.zeros((npix,2)) # ipix, |F|
-		for ipix, theta, phi in pixarray:
-			a = network.A(theta, phi, 0.0, no_psd=True) # get sensitivity matrix with psi set to 0.0 for convenience. Also, do not include time shifts or psd in antenna patterns
-			a00 = a[0,0]
-			a11 = a[1,1]
-			a01 = a[0,1]
-			a10 = a[1,0]
-			F = 0.5*(a00+a11+((a00-a11)**2 + 4*a01*a10)**0.5) # maximum eigenvalue of the sensitivity matrix
-		        ap_map[ipix] = np.array([ipix,F])
-		prior_map = prior(ap_map)
-	else:
-		prior_map = np.ones((npix,))
+	ap_map = np.zeros((npix,2)) # ipix, |F|
+	for ipix, theta, phi in pixarray:
+		a = network.A(theta, phi, 0.0, no_psd=True) # get sensitivity matrix with psi set to 0.0 for convenience. Also, do not include time shifts or psd in antenna patterns
+		a00 = a[0,0]
+		a11 = a[1,1]
+		a01 = a[0,1]
+		a10 = a[1,0]
+		F = 0.5*(a00+a11+((a00-a11)**2 + 4*a01*a10)**0.5) # maximum eigenvalue of the sensitivity matrix
+	        ap_map[ipix] = np.array([ipix,F])
+	prior_map = prior(ap_map, which=opts.prior)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
 	### load in list of arrival times
