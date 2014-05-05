@@ -321,7 +321,7 @@ if __name__ == "__main__":
                         if opts.verbose: print "\thistogram for %s-%s"%(name1,name2)
                         fig = plt.figure()
                         ax  = plt.subplot(1,1,1)
-                        ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, normed=True, label=r"$N=%d$ $\mu=%.3f$ $\sigma=%.3f$"%(len(tof_err), m*1e3, e*1e3))
+                        ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, normed=True, label="$N=%d$\n$\mu=%.3f$\n$\sigma=%.3f$"%(len(tof_err), m*1e3, e*1e3))
 			if opts.e_approx == "singlekde":
 				ylim = ax.get_ylim()
 				xlim = ax.get_xlim()
