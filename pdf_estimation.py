@@ -125,7 +125,7 @@ def fixed_bandwidth_gaussian_kde(eval, observ, v=0.01):
   for e in eval:
     kde += [sum([__Nd_gaussian_kernel(e, o, v) for o in observ]) / (len(observ) * (2.*np.pi)**(n_dims/2.) * np.linalg.det(np.matrix(v))**(1/2.) )]
   
-  return kde
+  return np.array(kde)
 
 
 def ballooning_gaussian_kde(eval, observ, pilot_interp='NONE', pilot_x='NONE', pilot_y='NONE', s=0.1):
@@ -183,7 +183,7 @@ def ballooning_gaussian_kde(eval, observ, pilot_interp='NONE', pilot_x='NONE', p
     else:    
       kde += [sum([__Nd_gaussian_kernel(e, o, s_optimal**2) for o in observ]) / ((2.*np.pi)**0.5 * len(observ) * s_optimal) ]
 
-  return kde
+  return np.array(kde)
 
 
 def __ballooning_optimal_s(eval, n_samples, pdf):
@@ -252,9 +252,10 @@ def point_wise_gaussian_kde(eval, observ, scale=0.1, pilot_interp='NONE', pilot_
   len_observ = len(observ)
   for e in eval:
 #    s_optimal = __point_wise_optimal_s(e, scale, pilot_interp)
+#    print s_optimal
     kde.append( sum([__Nd_gaussian_kernel(e, o, s_optimal[ind]**2) / ((2.*np.pi)**0.5 * len_observ * s_optimal[ind]) for ind, o in enumerate(observ)]) )
 
-  return kde
+  return np.array(kde)
 
 def __point_wise_optimal_s(eval, scale, pdf):
  # computes the optimal choice of standard deviation for a point-wise gaussian kde based on a pilot distribution (pdf), an evaluation point (eval), and a universal scale parameter (scale)
@@ -264,11 +265,14 @@ def __point_wise_optimal_s(eval, scale, pdf):
   # n_samples is an int
   # pdf is an instance of scipy.interpolate.InterpolatedUnivariateSpline
 
-  if pdf(eval) != 0:
-    return scale*(max([pdf(eval)[0], 0]))**(-0.5)
+  if pdf(eval) > 0:
+#    print pdf(eval)
+    return scale*(pdf(eval))**(-0.5)
+#    return scale*(max([pdf(eval)[0], 0]))**(-0.5)
   else:
     print "ERROR: pilot_interp pdf vanishes. Optimal bandwidth is not defined"
-    return False
+    return scale
+#    return False
 
 
 def k_th_neighbor_gaussian_kde(eval, observ, k=1):
