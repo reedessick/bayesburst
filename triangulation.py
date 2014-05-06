@@ -307,15 +307,45 @@ if __name__ == "__main__":
 			network.add_err(detectors[name1],detectors[name2],e)
 
 		elif opts.e_approx == "singlekde": ### single kde estimate for the entire sky
-			num_samples = 1001 # number of samples used in kde estimate
+			num_samples = 10001 # number of samples used in kde estimate
 			bound = 0.040 # 40 ms as maximum error... should be ~twice the possible error
 			samples = np.linspace(-bound, bound, num_samples)
 
 			### build kde estimate
 			frac = (0.005)**2 # the fraction of the entire distribution's width used in kde estimate
-			kde = pdfe.scipy.interpolate.interp1d(samples, pdfe.fixed_bandwidth_gaussian_kde(samples, tof_err, v=frac*e), kind="linear")
+			if opts.verbose: 
+				print "\tfixed_bandwidth kde"
+				if opts.time:
+					t1=time.time()
+			### fixed_bandwidth to start
+			samples_kde = pdfe.fixed_bandwidth_gaussian_kde(samples, tof_err, v=frac*e)
+			fbw_samples_kde = samples_kde
+			if opts.verbose and opts.time: print "\t\t", time.time()-t1, "sec"
 
-			network.add_err(detectors[name1],detectors[name2],kde)
+			### iterate with point_wide kde and look for convergence
+			precision_limit = 0.005 # maximum allowable precision
+			max_iters = 5
+			for _ in range(max_iters):
+				if opts.verbose: 
+					print "\tpoint_wise kde"
+					if opts.time: t1=time.time()
+				old_samples_kde = samples_kde
+				samples_kde = pdfe.point_wise_gaussian_kde(samples, tof_err, scale=10.0*e, pilot_x=samples, pilot_y=samples_kde)
+				precision = 1 - sum(samples_kde*old_samples_kde)/(sum(samples_kde**2) * sum(old_samples_kde**2))**0.5
+				if opts.verbose:
+					print "\t\tprecision=%.6f"%precision
+					if opts.time: print "\t\t", time.time()-t1, "sec"
+
+				if precision_limit > precision:
+					break
+			else:
+				if opts.verbose:
+					print "\tprecision_limit=%.6f not reached after %d iterations. Falling back to fixed_bandwidth kde"%(precision_limit, max_iters)
+				samples_kde = fbw_samples_kde
+
+			### build interpolation object and add it to the network
+			kde = pdfe.scipy.interpolate.interp1d(samples, samples_kde, kind="linear")
+			network.add_err(detectors[name1], detectors[name2], kde)
 
 		elif opts.e_approx == "kde_map": ### kde estimates for each point in the sky
 			raise StandardError, "write kde_map"
