@@ -296,7 +296,7 @@ if __name__ == "__main__":
 
 		z = 0.1 # consistency check to make sure the tof errors are not crazy
 		if abs(m) > z*e:
-			ans = raw_input("measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s\n\tcontinue? [Y/n]"%(m,z,e,name1,name2))
+			ans = raw_input("measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s\n\tcontinue? [Y/n] "%(m,z,e,name1,name2))
 			if ans != "Y":
 				raise ValueError, "measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s"%(m,z,e,name1,name2)
 			else:
