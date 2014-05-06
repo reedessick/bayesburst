@@ -293,9 +293,13 @@ if __name__ == "__main__":
 			tof_err[ind] = tof - tof_inj
 		m = np.mean(tof_err)
 		e = np.std(tof_err) # get standard deviation of this distribution
-		z = 0.1 # consistency check to make sure the tof errors are not crazy
+#		z = 0.1 # consistency check to make sure the tof errors are not crazy
 		if abs(m) > z*e:
-			raise ValueError, "measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s"%(m,z,e,name1,name2)
+			ans = raw_input("measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s\n\tcontinue? [Y/n]"%(m,z,e,name1,name2))
+			if ans != "Y":
+				raise ValueError, "measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s"%(m,z,e,name1,name2)
+			else:
+				pass
 
 		### add errors to the network
 		if opts.e_approx == "gaussian":
