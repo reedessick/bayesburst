@@ -1,5 +1,7 @@
 \documentclass[10pt]{article}
 
+\bibliographystyle{plain}
+
 \usepackage{color}
 \usepackage{amsmath}
 \usepackage{amsfonts}
@@ -27,13 +29,6 @@
 			\item{localized in time in wave-frame (transient) : $h_j(t) = \left(\theta(t+\Delta t) - \theta(t-\Delta t)\right) h_j(t)$}
 			\item{localized in frequency in wave-frame (band-limitted) : $h_j(f) = \left(\theta(f+\Delta f) - \theta(t-\Delta f)\right) h_j(f)$}
 			\item{signals are distributed uniformly in volume, and all observed strain comes from a single event (astrophysically distributed)}
-		\end{itemize}
-	     }
-	\item{Work out carefully and consider the case of a single polarization. Show the dependence on the antenna patterns with and without a prior on $h_j$.}
-	\item{Work out the case when $A_{jk}$ is singular, and how we should approach that.
-		\begin{itemize}
-			\item{Project onto a subspace with lower rank than $N_p$ when reconstructing the signal?}
-			\item{When marginalizing over the possible waveforms, we simply integrate the prior for the missing polarization(s)?}
 		\end{itemize}
 	     }
 	\item{Propose implementation
@@ -67,7 +62,12 @@ Throughout these notes I adopt the following notation.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\section{preliminaries: uncorrelated gaussian noise}
+\section{preliminaries}
+
+We begin our analysis with several basic assumptions about interferometric gravitational wave detectors. These include characterizing the noise in the instruments and the detectors' sensitivities to different polarizations and source positions.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{uncorrelated gaussian noise}
 
 We assume that the probability for observing a set of complex noise amplitudes in the fourier domain is
 
@@ -83,6 +83,33 @@ where we define the gaussian noise power spectrum as
 \end{eqnarray}
 
 Note that the probability is simply the noise weighted inner product of the noise realization.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{antenna patterns and time delays}
+
+We follow the conventions used in ~\cite{PhysRevD.63.042003} when defining our antenna patterns. Their equation B7 describes the analytic form for the antenna patterns, which are complicated, but they depend on three parameters.\footnote{Antenna patterns can be defined for other polarizations that are not predicted by General Relativity. Our analysis is general enough to encompass these cases, but we only explicitly consider the case of 2 polarizations.}
+
+\begin{eqnarray}
+\mathcal{F}_+ = \mathcal{F}_+(\theta,\phi,\psi) \nonumber\\
+\mathcal{F}_\times = \mathcal{F}_\times(\theta,\phi,\psi) \nonumber\\
+\end{eqnarray}
+
+where $\theta$ and $\phi$ are the normal spherical coordinates in an Earth-fixed frame. $\psi$ is the ``polarization angle'' and is poorly defined for bursts. Physically, it reflects the relative rotation of the coordinate systems in which we define the gravitational wave and the Earth-fixed frame. Therefore, a rotation of $\psi$ simply mixes the different polarization states and does not affect the signal physically. If we have not model for the signal a priori, we can reconstruct our signal in any coordinate system we choose. This means that we can select $\psi$ arbitrarily without affecting our reconstruction.
+
+Furthermore, because detectors are spatially separated and gravitational waves are expected to travel at the speed of light, true signals will arrive in different detectors at different times. If a source comes from the direction $(\theta,\phi)$, we expect
+
+\begin{eqnarray}
+\Delta t_{12} \equiv t_{ifo1} - t_{ifo2} & = & \hat{\Omega}\cdot(\vec{r}_{ifo1}-\vec{r}_{ifo2}) \nonumber \\
+                                         & = & \sin\theta\cos\phi(x_{ifo1}-x_{ifo2}) + \sin\theta\sin\phi(y_{ifo1}-y_{ifo2}) + \cos\theta(z_{ifo1}-z_{ifo2})
+\end{eqnarray}
+
+Therefore, when accounting for the different times of arrival at various detectors, we can either shift the observed data in time or shift the reconstructed signal as needed. We choose the latter, and furthermore we work in the frequency domain to obviate the shifts in time. One can consider this to be reconstructing the signal as it arrives at the Earth's center (geocenter) rather than at any particular detector.
+
+For each detector, we define the \emph{total} antenna pattern to be the combination of these two effects: sensitivity changes based on relative orientations and time of arrival differences based on relative locations. Therefore, throughout this note we refer to the antenna patterns as 
+
+\begin{equation}
+F_{\beta i}(\theta,\phi,\psi) = \mathcal{F}_{\beta i}(\theta,\phi,\psi) \cdot e^{-2\pi i f (t_{\beta}(\theta,\phi) - t_{geo})} = \mathcal{F}_{\beta i} \cdot e^{-2\pi i f \Delta t_{\beta\oplus}}
+\end{equation}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -189,6 +216,38 @@ Exchanging dummy indicies and using the fact that $A_{jk}$ is Hermitian shows th
 \end{equation}
 
 which has a pleasing form. We see that the likelihood ratio is gaussian distributed around it's maximum value.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{dominant polarization frame}
+
+As we've written $A_{jk}$, the off-diagnal components will most likely be non-zero. However, we also have freedom to choose the coordinate system in which we reconstruct the signal. This is controlled by the choice of polarization angle ($\psi$) in the definition of the antenna patterns. It can be shown that changing $\psi$ is equivalent to rotating the wave-frame coordinate system and therefore mixing $h_j \rightarrow h_j^\prime = U(1)h_j$. By appropriate choice of $\psi$, we can diagonalize $A_{jk}$. This is appealing for several reasons, not the least of which is lower computational complexity. It also allows us to easily identify some interesting featurs of networks of interferometric gravitational wave-detectors. In general, we can write
+
+\begin{equation}
+A_{jk} = s_{j} \delta_{jk}
+\end{equation}
+
+where some of the $s_{j}$ may be vanishingly small, but the set satisfies
+
+\begin{equation}
+\sum\limits_i s_i = \sum\limits_{i,\beta} \frac{F_{\beta i}^\ast F_{\beta i}}{S_\beta}
+\end{equation}
+
+This choice of coordinate system, in which $A_{jk}$ is diagonal, is often called the \emph{dominant polarization frame.} We should also note that this is a feature of the relative orientations of the detectors and not their relative locations. The time of arrival difference cancel out because of the complex conjugation involved in the definition of $A_{jk}$, and therefore this matrix only depends on the detectors' orientations.
+
+\subsubsection{singular $A_{jk}$ and effective number of polarizations}
+
+We note that $s_{j}$ may not be non-zero for all source positions. In fact, for a single detector and two polarizations, it is straightforward to show that
+
+\begin{eqnarray}
+s_{0} & = & \frac{\left|F_0(\theta,\phi,\psi=\psi_o)\right|^2 + \left|F_1(\theta,\phi,\psi=\psi_o)\right|^2}{S} \\
+s_{1} & = & 0 \\
+\end{eqnarray}
+
+where we've explicitly stated the ``original'' antenna patterns in a frame defined by $\psi_o$. Here, we notice that $A_{jk}$ is \emph{singular}. Whenever $A_{jk}$ is singular, it means the detector network is effectively insensitive to one or more polarization channels. Therefore, a single detector is effectively sensitive to only a single polarization channel for all source positions. These eigenvalues may vary over the sky for more complicated detector networks. 
+
+An interesting case is a two-detector network with slightly mis-aligned detectors. In this case, $s_1 \sim |F_{1j}-F_{2j}|^2$ to lowest order in mis-alignment. If the detectors are only slightly mis-aligned, the network's sensitivity to the second polarization is very small but \emph{non vanishing.}
+
+In practice, if $A_{jk}$ is singular for a set of points on the sky, we simply restrict our reconstruction to a subset of polarization channels to which the network is sensitive. This defines the \emph{effective number of polarizations} to which the network is sensitive from any direction in the sky.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -325,6 +384,16 @@ In fact, we can do a little better than this by expanding the denomenator of the
 
 Using this as motivation, we may be able to expand this prior into a sum of gaussians and use our previous result to evaluate the marginalization analytically.
 
+\subsubsection{singular $A_{jk}$ and priors on $h_j$}
+
+If $A_{jk}$ is singular, then the network is insensitive to at least one polarization. We can simply restrict ourselves to a subset of polarizations to which the detector network is sensitive if we properly normalize our priors so that
+
+\begin{equation}
+\int\mathcal{D}h_j\ p(h_j) = 1
+\end{equation}
+
+This means that we can simply neglect the polarizations we cannot detect without worrying about differences in normalizations between different parts of the sky. The marginalization of the polarizations to which the network is insensitive will simply contribute a factor of unity.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \subsubsection{signal morphology}
@@ -339,12 +408,7 @@ This is a much more difficult problem, and unfortunately it may not be tractable
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\subsection{Singular antenna matricies $A_{jk}$ and reduction of number of polarizations}
-
-\textcolor{red}{\textbf{FIGURE OUT HOW TO DO THIS TRANSPARENTLY AND WRITE UP}}
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\subsection{Example: single polarization}
+\subsection{Example: one polarization, two detectors}
 
 For a single polarization, $A_{jk}=A \rightarrow (A^{-1}) = 1/A$. Therefore, we can write our estimator as
 
@@ -398,6 +462,75 @@ If we additionally assume that there is only one detector, then this further sim
 \end{equation}
 
 Here, it is entirely clear that regions with large antenna patterns (with respect to $S/2\sigma^2$) are favored. This gives us modulation along the antenna patterns controlled by one parameter: $\sigma$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Example: 2 polarizations, 2 (nearly aligned) detectors}
+
+If we have two nearly aligned detectors and work in the dominant polarization frame, we can write
+
+\begin{equation}
+A_{ij} = s_i \delta_{ij}\ |\ s_0 \gg s_1 \cap s_0+s_1 = \frac{F_{A0}^2 + F_{A1}^2}{S_A} + \frac{F_{B0}^2+F_{B1}^2}{S_B}
+\end{equation}
+
+Notice that as long as $s_1 \geq 0$ the network is still sensitive to \emph{both} polarizations. This means that without a prior on the singal ($h_j$), the likelihood will be degenerate across the entire sky. This is because we can always find some combination of reconstructed strains that will exactly reproduce the observed data streams.
+
+However, if we apply even a simple gaussian prior with zero-mean, we can break this degeneracy. This is equivalent to claiming that small-amplitude signals are more likely than large-amplitude signals, which is not an unreasonable statment.
+
+Let us assume a simple gaussian as the prior on $h_j$:
+
+\begin{equation}
+Z_{jk} = z \delta_{ij} = \frac{1}{2\sigma^2} \delta_{ij}
+\end{equation}
+
+and note that this prior is independent of the coordinate system chosen, ie: it is invarient under changes in $\psi$. If this is the case, then marginalization yields a simple posterior
+
+\begin{eqnarray}
+p(\theta, \phi| d_\beta) & = & p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left( \left(A-Z\right)_{jk} + Z_{jm} \left(A+Z\right)^{-1}_{mn} Z_{nk} \right) \hat{h}_k \right) \sqrt{(2\pi)^{N_p} \left|\left(A+Z\right)^{-1}_{jk}\right|} \\
+& = & p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left( \left(s_j-z\right) + \left(\frac{z^2}{s_j+z}\right) \right)\delta_{jk} \hat{h}_k \right) \sqrt{(2\pi)^{N_p} \prod\limits_j (s_j+z)^{-1}} \\
+& = & p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left( \frac{s_j^2}{s_j+z} \right)\delta_{jk} \hat{h}_k \right) \sqrt{(2\pi)^{N_p} \prod\limits_j (s_j+z)^{-1}}
+\end{eqnarray}
+
+We can separate this into separate components, each depending on only a single polarization. We then have, writing the estimators explicitly in terms of the data
+
+\begin{eqnarray}
+p(\theta,\phi|d_\beta)_j & = & \prod\limits_f \mathrm{exp}\left( \left|\frac{B_{j\beta}d_\beta}{s_j}\right|^2 \left( \frac{s_j^2}{s_j+z} \right) \right) \sqrt{(2\pi)^{N_p} (s_j+z)^{-1}} \\
+                         & = & \prod\limits_f \mathrm{exp}\left( \frac{\left|B_{j\beta}d_\beta\right|^2}{s_j+z} \right) \sqrt{(2\pi)^{N_p} (s_j+z)^{-1}} \\
+                         & = & \prod\limits_f \mathrm{exp}\left( \left|\frac{F_{jA}}{S_A} d_A + \frac{F_{jB}}{S_B} d_B\right|^2\left(s_j+z\right)^{-1} \right) \sqrt{(2\pi)^{N_p} (s_j+z)^{-1}}
+\end{eqnarray}
+
+Furthermore, if we assume the detectors have similar noise curves so that $S_A = S_B = S$, we can simplify further.
+
+\begin{eqnarray}
+p(\theta,\phi|d_\beta)_j & = & \prod\limits_f \mathrm{exp}\left( \left|F_{jA} \frac{d_A}{\sqrt{S}} + F_{jB} \frac{d_B}{\sqrt{S}}\right|^2 \frac{1}{S\left(s_j+z\right)} \right) \sqrt{(2\pi)^{N_p} (s_j+z)^{-1}} \\
+                         & = & \prod\limits_f \mathrm{exp}\left( \frac{\left|F_{jA} \frac{d_A}{\sqrt{S}} + F_{jB} \frac{d_B}{\sqrt{S}}\right|^2}{\mathbb{F}_j+S/2\sigma^2} \right) \sqrt{(2\pi)^{N_p} \frac{S}{\mathbb{F}_j+S/2\sigma^2}}
+\end{eqnarray}
+
+where $\mathbb{F}_j \equiv S\cdot s_j \sim O(1)$ for the large eigenvalue and $\mathbb{F}_j \ll 1$ for the small eigenvalue. We can now, naturally, explore what happens when we turn this prior on and off, which corresonds to $2\sigma^2 \leq S$ and $2\sigma^2 \gg S$, respectively.
+
+If the \emph{prior is turned off} ($2\sigma^2 \gg S$), we obtain
+
+\begin{equation}
+p(\theta,\phi|d_\beta)_j = \prod\limits_f \mathrm{exp}\left( \frac{\left|F_{jA} \frac{d_A}{\sqrt{S}} + F_{jB} \frac{d_B}{\sqrt{S}}\right|^2}{\mathbb{F}_j} \right) \sqrt{(2\pi)^{N_p} \frac{S}{\mathbb{F}_j}}
+\end{equation}
+
+and if $\mathbb{F}_j \ll 1$, then we can also expect $F_{j\beta}\ll 1$ in this coordinate system. Similarly if $\mathbb{F}_j\gg 1$. This means that the exponential factor will stay roughly of order unity and there is a strong degeneracy between all sky postions, modulated only by the marginalization which prefers regions with low antenna patterns.
+
+However, if the \emph{prior is turned on} ($\mathbb{F}_0 \gg S/2\sigma^2 \gg \mathbb{F}_1$), we obtain
+
+\begin{eqnarray}
+p(\theta,\phi|d_\beta)_0 & = & \prod\limits_f \mathrm{exp}\left( \frac{\left|F_{0A} \frac{d_A}{\sqrt{S}} + F_{0B} \frac{d_B}{\sqrt{S}}\right|^2}{\mathbb{F}_0} \right) \sqrt{(2\pi)^{N_p} \frac{S}{\mathbb{F}_0}} \\
+p(\theta,\phi|d_\beta)_1 & = & \prod\limits_f \mathrm{exp}\left( \frac{\left|F_{1A} \frac{d_A}{\sqrt{S}} + F_{1B} \frac{d_B}{\sqrt{S}}\right|^2}{S/2\sigma^2} \right) \sqrt{(2\pi)^{N_p} 2\sigma^2} \\
+\end{eqnarray}
+
+and the degeneracy between the two polarizations is clearly broken. We see that the large eigenvalue behaves essentially as if the prior was turned off, but the probability of having signal in the small eigenvalue is surpressed \emph{exponentially} because $|F_{1\beta}|^2 \ll S/2\sigma^2$.
+
+What this means is that the total posterior will favor locations in which the reconstructed signal is consistent with a \emph{single polarization}, rather than two polarizations. The weight which would have come from reconstructed signal in the small eigenvalue polarization is surpressed by the prior. \footnote{This is related to one of the original motivations for Coherent WaveBurst ``regulators,'' although this formulation is somewhat better motivated than the ad hoc implementation of that algorithm.} 
+
+\emph{Therefore, we expect the network to behave as if there were only a single polarization with two detectors when we apply this prior.} If the small eigenvalue is small over most of the sky, as is the case for nearly aligned detectors, then it's contribution to the total posterior is a factor near unity over the entire sky and any modulation in the posterior will be due to the reconstruction of the large eigenvalue polarization \emph{only}. In effect, we should get the triangulation and amplitude consistency checks that naturally occur whenever $N_{ifo} > N_p$ without this being strictly true.\footnote{A more realistic prior decomposed into a sum of gaussians should give a similar result, although the algebra may be significantly more complicated.}
+
+We should note that we specified a rather specific prior: $\mathbb{F}_0 \gg S/2\sigma^2 \gg \mathbb{F}_1$. This prior says that the majority of signals are \emph{not detectable} because they are well below the noise floor. However, the wings of the distribution do extend to large enough strains where they are significantly larger than the minimum eigenvalue. Because the minimum eigenvalue can be made to vanish exactly for all source locations (aligned detectors), there should be some wiggle-room when defining the prior in practice. We can also define a variable width depending of frequency ($\sigma(f)$) without complicating this derivation. 
+
+We should also keep in mind that this analysis concerned nearly aligned detectors, and 2 mis-aligned detectors may behave differently.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Extended sources}\label{section:extended sources}
@@ -484,6 +617,9 @@ p(\Omega|d_\beta) = \int\mathcal{D}h_{j\Omega}\, \frac{p(d_\beta|h_{j\Omega}, \O
 \textcolor{red}{and note that $\Omega$ is \emph{fixed} in the integration? Can we represent the likelihood as a sum over independent sky position/polarization channels? If that's the case, we simply have to decompose the posterior into this diagonal basis and compute each term. The total posterior will come from re-summing the decomposition. When we write $p(\Omega|d_\beta)$, we mean the posterior that the signal came from that sky postion and only that sky position? In which case, my nice summations over source location should be broken and we use a single sky position. Indeed, this seems reasonable. We can then use the \emph{point estimate} forumation from this point onward. The crucial step will be when we consider $p(\theta,\phi|d_\beta)$ after computing $p(l,m|d_\beta)$, which should simply be a re-summation weighted by spherical harmonics. There should also be strong reality constraints that should help us reduce the number of spherical harmonics that need to be considered.}
 
 \textcolor{green}{Actually, the summation in the integrand comes from considering all possible sky postions. This is appropriate when computing $p(h_{j\Omega}|d_\beta)$. \textbf{WE NEED TO DETERMINE THE EXTENT TO WHICH THERE IS MIXING BETWEEN POLARIZATION CHANNELS CAUSED BY THE SUMMATION OVER SKY POSITIONS.} If there is a better basis, we should work in that. What we want is to separate the sums, which makes this analysis much more straightforward.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliography{refs}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \end{document}
