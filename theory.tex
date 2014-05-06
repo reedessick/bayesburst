@@ -533,6 +533,67 @@ We should note that we specified a rather specific prior: $\mathbb{F}_0 \gg S/2\
 We should also keep in mind that this analysis concerned nearly aligned detectors, and 2 mis-aligned detectors may behave differently.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{triangulation and effective priors}
+
+We now discuss how some ``common sense'' sky localization algorithms fall out of this formalism. These include \emph{triangulation} and \emph{effective priors} on the source's location $(\theta,\phi)$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{triangulation}
+Most ``back-of-the-envelop'' estimates of sky localization rely on \emph{triangulation} using spatially separated detectors. Essentially, this is the most basic form of amplitude consistency between the detectors. An observer assumes they can associate a wiggle in one detector with a wiggle in another detector, and the difference in the times at which those wiggle occured corresponds to the time-of-flight for the wave-front to travel from one detector to the other. This is indeed a useful concept, but it is not always applicable. In particular, it relies on the fact that an observe \emph{can confidently associate} a wiggle in one detector with a wiggle in another detector. This is equivalent to an assumption that they can identify and associate parts of the gravitational-wave signal as seen in different detectors. Also, because triangulation is essentially an amplitude check (time-of-arrivals of an identifiable portion of the gravitational wave), it behaves like a \emph{likelihood} in the bayesian sense.
+
+However, this can only be done when $N_{ifo} > N_{p}$, which is the general requirement for amplitude consistency. If $N_{ifo} < N_p$, the network will be insensitive to some of the polarizations and we should expect $N_{ifo} = \left(N_p\right)_{\mathrm{eff}}$. When $N_{ifo} = N_p$, there is a one-to-one transformation that can recreate the observed data streams with some combination of polarizations \emph{for each point in the sky}. Therefore, observers cannot confidently determine whether the wiggle observed in one detector comes from \emph{the same part of the gravitational wave} as a wiggle in another detector. That means triangulation is not possible and leads to a degenerate likelihood over most of the sky.
+
+Fortunately, the LIGO detectors are nearly aligned, which means they are effectively sensitive to a single polarization over most of the sky. Therefore, for a LHO-LLO network, $N_{ifo}=2 > 1=\left(N_p\right)_{\mathrm{eff}}$. Similarly, for the LHO-LLO-Virgo network, we have 3 detectors and the condition is satisfied as well. We see that the naive assumption that triangulation will always work is fortuitously true for the actual detector networks.
+
+We should also note that triangulation gives very different error regions depending on $N_{ifo}$ and $\left(N_{p}\right)_{\mathrm{eff}}$. For the LHO-LLO network, the locus of points that gives a consistent time-of-arrival using a single polarization is an annulus. This annulus can be a great circle and will typically contain a large portion of the sky. The annulus's width is controlled by the accuracy to which observers can determine the time-of-flight between detectors. For the LHO-LLO-Virgo netowrk, assuming all three detectors participate, triangulation gives 2 points in the sky, which reflects a symmetry with respect to reflection about the plane defined by the three detectors. We expect the error region to consist of blobs centered around these points, with the blob radius determined by the accuracy to which we measure time-of-flight between the various pairs of detectors.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{effective priors on $(\theta,\phi)$}
+
+Triangulation behaves like a likelihood, but we can apply further knowledge about the population of sources to compute a prior. The simplest prior on $(\theta,\phi)$ would come from the assumption that the sources live in the galactic plane, or they live near galaxies. This is a direct prior on $(\theta,\phi)$ and is not difficult to interpret.
+
+However, we can also derive an \emph{effective} prior on $(\theta,\phi)$ using knowledge of the network sensitivity and the distribution of signal amplitudes. The concept is simple: if quiet signals are more likely than loud signals, then we are more likely to detect events where the network's large eigenvalue is in fact large. What this means is that the population of \emph{detected} events will follow the antenna patterns in a predictable way, more detected signals when the large eigenvalue is large and fewer detected signals when the large eigenvalue is small. Of course, the particular functional form the distribution of detected events takes is not obvious, but a simple estimate goes as follows:
+
+Sources are uniformly distributed in volume, independently of their morphology or intrinsic strength. However, we can relate the observed strain to the energy in the wave and the distance through
+
+\begin{equation}
+\frac{E_{GW}}/D_L^2 \int\mathrm{d}f\, (f h_{j}^\ast)(f h_{j}) \approx f_o^2 \int\mathrm{d}f\, h_{j}^\ast h_{j}
+\end{equation}
+
+where our approximation assumes a narrow-band signal. Furthermore, working in the dominant polarization frame (so things are diagonal)
+
+\begin{eqnarray}
+h_{j}^\ast h_{j} & \approx & \hat{h}_j^\ast \hat{h}_j \\
+                 & = & d_\beta^\ast B_{\beta k}^\ast \left(A^\ast\right)_{jk}^{-1} \left(A\right)_{ji}^{-1} B_{\alpha i} d_\alpha \\
+                 & = & d_\beta^\ast \frac{F_{\beta j}^\ast}{S_\beta} s_j^{-2} \frac{F_{\alpha j}}{S_\alpha} d_\alpha \\
+\end{eqnarray}
+
+If we assume the detectors have similar noise curves, we can approximate this further as
+
+\begin{eqnarray}
+h_{j}^\ast h_{j} & \approx & d_\beta^\ast \frac{F_{\beta j}^\ast}{S} \left(\frac{S}{S s_j}\right)^{2} \frac{F_{\alpha j}}{S} d_\alpha \\
+                 & = & d_\beta^\ast \frac{F_{\beta j}^\ast F_{\alpha j}}{\left(S s_j\right)} d_\alpha \\
+\end{eqnarray}
+
+Furthermore, $s_j\sim F^\ast F/ S \rightarrow S s_j \sim F^\ast F$, and we can make the last leap to the statement that
+
+\begin{equation}
+h_{j}^\ast h_{j} \sim \frac{1}{S s_j}
+\end{equation}
+
+Now, we if we expect the signals to be distributed uniformly in volume, we require
+
+\begin{eqnarray}
+p(D_L) \propto D_L^2 & \approx & \frac{E_{GW}/f_o^2}{\int\mathrm{d}f\, h_{j}^\ast h_{j}} \\
+                     & \sim & S s_j \sim F^\ast F \\
+                     & = & p_{\mathrm{eff}}(\theta,\phi)
+\end{eqnarray}
+
+There is a considerable amount of hand-waving in this argument, and it really holds closely when $\left(N_{p}\right)_{\mathrm{eff}} = 1$, and there is only a single polarization. This is the case for the LHO-LLO network, and indeed we observe a distribution of detected signals that closely follows the predicted form. 
+
+More complicated and/or careful arguments may produce slightly modified effective priors, but the combination of \emph{triangulation} and \emph{effective priors} actually captures a good fraction of the physics associated with localizing generic gravitational wave signals. Fully coherent methods, such as the rest of this note, can perform more thorough amplitude checks (rather than just time-of-arrival) and improve upon this estimate, and it is not clear to what extent that information can improve localization.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Extended sources}\label{section:extended sources}
 
 \emph{Point sources} were described in Section \ref{section:point sources}. Here we consider extended sources which may come from distant parts of the sky simultaneously. This modifies the way in which the strain enters our data streams, although all we really have to do is add a few more indicies. 
