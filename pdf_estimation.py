@@ -67,21 +67,17 @@ def __Nd_gaussian_kernel(x1, x2, v):
     # 1-D kernel
     if isinstance(x1, (int,float)) and isinstance(x2, (int, float)) and isinstance(v, (int, float)):
       if v == 0:
-        print "ERROR: cannot have a vanishing standard deviation"
-        return False
+        raise ValueError, "cannot have a vanishing standard deviation"
       else:
         return np.exp(-(x1-x2)**2/(2.*v))
     else:
-      print "ERROR: dimensions of x1, x2, v do not agree"
-      return False
+      raise ValueError, "dimensions of x1, x2, v do not agree"
   else:
     # multi-dimensional kernel
     if len(x1) != len(x2):
-      print "ERROR: dimensions of x1, x2 do not agree"
-      return False
+      raise ValueError, "dimensions of x1, x2 do not agree"
     elif not isinstance(v, (int, float)) and (len(x1) != len(v) or len(x1) != len(v[0])):
-      print "ERROR: dimensions of s are not compatible with the dimensions of x1, x2"
-      return False
+      raise ValueError, "dimensions of s are not compatible with the dimensions of x1, x2"
     # uniform standard deviation across all dimensions
     elif isinstance(v, (int, float)):
       return np.exp(-sum([(x1[i] - x2[i])**2. for i in range(len(x1))]) / (2.*v))
@@ -95,9 +91,7 @@ def __Nd_gaussian_kernel(x1, x2, v):
         zT = z.transpose() # transpose of z
         return np.exp(- (1/2.)*zT*inverse_v*z)
       except:
-        print "ERROR: v is not an invertible matrix"
-        return False
-    
+        raise ValueError, "v is not an invertible matrix"    
 
 def fixed_bandwidth_gaussian_kde(eval, observ, v=0.01):
   # computes the fixed bandwidth gaussian kde for each point in array-like eval (evaluation points), summing over all points in array-like observ (observed points from sample set). 
@@ -152,12 +146,10 @@ def ballooning_gaussian_kde(eval, observ, pilot_interp='NONE', pilot_x='NONE', p
       pilot_x = np.linspace(min(observ), max(observ), np.ceil(10*(max(observ) - min(observ))/s))
       pilot_y = fixed_bandwidth_gaussian_kde(pilot_x, observ, v=s**2)
     elif not (pilot_x != 'NONE' and pilot_y != 'NONE'): # pilot_x or pilot_y supplied, but not both
-      print "ERROR: one of pilot_x and pilot_y supplied. please supply both"
-      return False
+      raise ValueError, "one of pilot_x and pilot_y supplied. please supply both"
     # both pilot_x and pilot_y are supplied, or have now been defined
     if len(pilot_x) != len(pilot_y):
-      print "ERROR: pilot_x and pilot_y are not the same length"
-      return False
+      raise ValueError, "pilot_x and pilot_y are not the same length"
     else:
         pilot_interp = scipy.interpolate.InterpolatedUnivariateSpline(pilot_x, pilot_y, k=3) # we automatically look for a cubic spline
   else: # pilot_interp is supplied
@@ -166,8 +158,7 @@ def ballooning_gaussian_kde(eval, observ, pilot_interp='NONE', pilot_x='NONE', p
       if isinstance(pilot_interp, scipy.interpolate.interp1d):
         pilot_interp = scipy.interpolate.InterpolatedUnivariateSpline(pilot_interp.__dict__['x'], pilot_interp.__dict__['y'], k=3) # if the object supplied is an instance of scipy.interpolate.interp1d, we convert it
       else:
-        print "ERROR: data structure 'pilot_interp' not understood"
-        return False
+        raise ValueError, "data structure 'pilot_interp' not understood"
 
   if isinstance(eval, (int, float)):
     eval = [eval]
@@ -198,8 +189,7 @@ def __ballooning_optimal_s(eval, n_samples, pdf):
   if pdf(eval, nu=2)[0] != 0:
     return ((16*np.sqrt(np.pi)*max([pdf(eval)[0],0])) / (4*n_samples*pdf(eval, nu=2)[0]**2.))**(1/5.) # the maximum statement forces pdf(eval) to be non-negative
   else:
-    print "ERROR: second derivative of the pilot_interp pdf vanishes. Optimal bandwidth is not defined"
-    return False
+    raise ValueError, "second derivative of the pilot_interp pdf vanishes. Optimal bandwidth is not defined"
 
 
 def point_wise_gaussian_kde(eval, observ, scale=0.1, pilot_interp='NONE', pilot_x='NONE', pilot_y='NONE', s=0.1):
@@ -227,12 +217,10 @@ def point_wise_gaussian_kde(eval, observ, scale=0.1, pilot_interp='NONE', pilot_
       pilot_x = np.linspace(min(observ), max(observ), np.ceil(10*(max(observ) - min(observ))/s)+4)
       pilot_y = fixed_bandwidth_gaussian_kde(pilot_x, observ, v=s**2)
     elif not (pilot_x != 'NONE' and pilot_y != 'NONE'): # pilot_x or pilot_y supplied, but not both
-      print "ERROR: one of pilot_x and pilot_y supplied. please supply both"
-      return False
+      raise ValueError, "one of pilot_x and pilot_y supplied. please supply both"
     # both pilot_x and pilot_y are supplied, or have now been defined
     if len(pilot_x) != len(pilot_y):
-      print "ERROR: pilot_x and pilot_y are not the same length"
-      return False
+      raise ValueError, "pilot_x and pilot_y are not the same length"
     else:
         pilot_interp = scipy.interpolate.InterpolatedUnivariateSpline(pilot_x, pilot_y, k=3) # we automatically look for a cubic spline
   else: # pilot_interp is supplied
@@ -241,8 +229,7 @@ def point_wise_gaussian_kde(eval, observ, scale=0.1, pilot_interp='NONE', pilot_
       if isinstance(pilot_interp, scipy.interpolate.interp1d):
         pilot_interp = scipy.interpolate.InterpolatedUnivariateSpline(pilot_interp.__dict__['x'], pilot_interp.__dict__['y'], k=3) # if the object supplied is an instance of scipy.interpolate.interp1d, we convert it
       else:
-        print "ERROR: data structure 'pilot_interp' not understood"
-        return False
+        raise ValueError, "data structure 'pilot_interp' not understood"
 
   if isinstance(eval, (int, float)):
     eval = [eval]
@@ -251,8 +238,6 @@ def point_wise_gaussian_kde(eval, observ, scale=0.1, pilot_interp='NONE', pilot_
   s_optimal = [__point_wise_optimal_s(o, scale, pilot_interp) for o in observ] # we base the optimal bandwidth off the observed observations
   len_observ = len(observ)
   for e in eval:
-#    s_optimal = __point_wise_optimal_s(e, scale, pilot_interp)
-#    print s_optimal
     kde.append( sum([__Nd_gaussian_kernel(e, o, s_optimal[ind]**2) / ((2.*np.pi)**0.5 * len_observ * s_optimal[ind]) for ind, o in enumerate(observ)]) )
 
   return np.array(kde)
@@ -265,13 +250,20 @@ def __point_wise_optimal_s(eval, scale, pdf):
   # n_samples is an int
   # pdf is an instance of scipy.interpolate.InterpolatedUnivariateSpline
 
-  if pdf(eval) > 0:
+  ### support for different version of scipy?
+  pdf_eval = pdf(eval)
+  try:
+    pdf_eval = pdf_eval[0]
+  except TypeError:
+    pass
+
+  if pdf_eval > 0:
 #    print pdf(eval)
-    return scale*(pdf(eval))**(-0.5)
+    return scale*(pdf_eval)**(-0.5)
 #    return scale*(max([pdf(eval)[0], 0]))**(-0.5)
   else:
-    print "ERROR: pilot_interp pdf vanishes. Optimal bandwidth is not defined"
     return scale
+    raise ValueError, "pilot_interp pdf vanishes. Optimal bandwidth is not defined."
 #    return False
 
 
@@ -283,7 +275,7 @@ def k_th_neighbor_gaussian_kde(eval, observ, k=1):
   # k is an int
 
   if len(observ)-1 < k:
-    print "ERROR: k > len(observ)-1, we cannot define the k-th nearest neighbor"
+    raise ValueError, "k > len(observ)-1, we cannot define the k-th nearest neighbor"
 
   if isinstance(eval, (int, float)):
     eval = [eval]
@@ -326,7 +318,7 @@ def __distance_to_kth_neighbor(o, observ, k):
     return sorted([np.sqrt(sum([(o[ind] - obs[ind])**2. for ind in range(len(o))])) for obs in observ])[k-1]
 
   else:
-    print "ERROR: length(o) != length(observ[0]). bad input data"
+    raise ValueError, "length(o) != length(observ[0]). bad input data"
     return False
 
 def k_th_neighbor(eval, observ, k):
@@ -336,7 +328,7 @@ def k_th_neighbor(eval, observ, k):
   # k is an int
 
   if len(observ)-1 < k:
-    print "ERROR: k > len(observ)-1, we cannot define the k-th nearest neighbor"
+    raise ValueError, "k > len(observ)-1, we cannot define the k-th nearest neighbor"
 
   if isinstance(eval, (int, float)):
     eval = [eval]
