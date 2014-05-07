@@ -136,7 +136,7 @@ class PSD(object):
 		return self.freqs
 
 	def interpolate(self, freqs):
-		return interp(freqs)
+		return self.interp(freqs)
 
 #=================================================
 #
