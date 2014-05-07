@@ -8,11 +8,14 @@ np = utils.np
 import healpy as hp
 import pickle
 
-#=================================================
+#===================================================================================================
 #
-#                  utilities
+#                                                utilities
 #
-#=================================================
+#===================================================================================================
+#========================
+# likelihoods
+#========================
 def gaussian_likelihood(toa, tof_map, err_map):
 	"""
 	computes the likelihood that a signal came from the points in tof_map and produced toa, assuming gaussian errors defined in err_map
@@ -65,7 +68,9 @@ def singlekde_likelihood(toa, tof_map, kde):
 
 	return kde(toa-tof_map[:,1:])
 
-###
+#========================
+# priors
+#========================
 def prior(ap_map, which="shells"):
 	"""
 	computes the prior assigned to each point using the antenna patterns stored in ap_map
@@ -83,6 +88,204 @@ def prior(ap_map, which="shells"):
 			return ap_map[:,-1]**float(which)
 		except:
 			raise ValueError, "type=%s not understood"%which 
+
+#========================
+# skymaps
+#========================
+def __pixarray(npix):
+	"""
+	defines a pixelization array as a short-cut between ipix and (theta,phi)
+	"""
+        pixarray = np.zeros((npix,3))
+        for ipix in xrange(npix):
+                theta, phi = hp.pix2ang(nside, ipix)
+                pixarray[ipix,:] = np.array([ipix, theta, phi])
+        return pixarray
+
+###
+def __tof_map(npix, network, pixarray=None, ntof=None):
+	"""
+	computes time-of-flight between detectors for different source positions
+	"""
+	if pixarray == None:
+		pixarray = __pixarray(npix)
+	if not ntof:
+		ntof = len(network.get_tof_names())
+
+        tof_map = np.zeros((npix,1+ntof)) # ipix, tau for each combination of detectors
+        tof_map[:,0] = pixarray[:,0]
+        for ind, (name1, name2) in enumerate(network.get_tof_names()):
+                for ipix, theta, phi in pixarray:
+                        tof_map[ipix,1+ind] = network.get_tof(name1,name2,theta,phi)
+	return tof_map
+
+###
+def __err_map(npix, timing_network, error_approx="gaussian", pixarray=None, ntof=None):
+	"""
+	computes the error map used in the likelihood functions
+	"""
+	if pixarray == None:
+		pixarray = __pixarray(npix)
+	if not ntof:
+		ntof=len(timing_network.get_tof_names())
+
+        if error_approx == "gaussian":
+                err_map = np.zeros((npix,1+ntof)) #ipix, tau for each combination of detectors
+                err_map[:,0] = pixarray[:,0]
+                for ind, (name1, name2) in enumerate(timing_network.get_tof_names()):
+                        for ipix, theta, phi in pixarray:
+                                err_map[ipix,1+ind] = timing_network.get_err(name1,name2,theta,phi)
+
+        elif error_approx == "singlekde":
+                kdes = []
+                for ind, (name1, name2) in enumerate(timing_network.get_tof_names()):
+                        kdes.append( timing_network.get_err(name1,name2,theta,phi) )
+                kde = IndependentKDE(kdes) # single kde object for the entire sky
+
+        elif error_approx == "kde_map":
+                err_map = [ [ipix]+[1.0 for _ in range(ntof)] for ipix in pixarray[:,0] ] #ipix, tau for each combination of detectors
+                for ind, (name1, name2) in enumerate(timing_network.get_tof_names()):
+                        for ipix, theta, phi in pixarray:
+                                err_map
+                raise ValueError, "write kde_map"
+
+        else:
+                raise ValueError, "error-approx=%s not understood"%error_approx
+
+	return err_map
+
+###
+def __ap_map(npix, network, pixarray=None, no_psd=True):
+	"""
+	computes the antenna pattern map used to weight to compute the prior
+	"""
+	if pixarray == None:
+		pixarray = __pixarray(npix)
+
+        ap_map = np.zeros((npix,2)) # ipix, |F|
+        for ipix, theta, phi in pixarray:
+		a = network.A_dpf(theta, phi, no_psd=no_psd) # get sensitivity matrix in dominant polarization frame
+		F = np.amax(a) # get the maximum eigenvalue
+                ap_map[ipix] = np.array([ipix,F])
+
+	return ap_map
+
+#========================
+# error estimation
+#========================
+def toacache_to_errs(toacache, detectors, error_approx="gaussian", verbose=False, timing=False, hist_errors=False, output_dir="./", tag=""):
+	"""
+	loads observed time-of-arrival information and builds errors suitable to be loaded into TimingNetwork
+	"""
+	errs = {} 
+        n_err = len(toacache)
+        for name1, name2 in TimingNetwork().get_tof_names(names=detectors.keys()):
+                tof_err = np.empty((n_err,))
+                for ind, toa_event in enumerate(toacache):
+                        ### recovered tof
+                        tof = toa_event[name1] - toa_event[name2]
+                        ### injected tof
+                        tof_inj = toa_event[name1+"_inj"] - toa_event[name2+"_inj"]
+                        ### error in tof
+                        tof_err[ind] = tof - tof_inj
+                m = np.mean(tof_err)
+                e = np.std(tof_err) # get standard deviation of this distribution
+
+                z = 0.1 # consistency check to make sure the tof errors are not crazy
+                if abs(m) > z*e:
+                        ans = raw_input("measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof: %s-%s\n\tcontinue? [Y/n] "%(m,z,e,name1,name2))
+                        if ans != "Y":
+                                raise ValueError, "measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s"%(m,z,e,name1,name2)
+                        else:
+                                pass
+
+                ### add errors to the errs
+                if error_approx == "gaussian":
+			errs[(name1,name2)] = e
+
+                elif error_approx == "singlekde": ### single kde estimate for the entire sky
+                        bound = 4*sum((detectors[name1].dr - detectors[name2].dr)**2.0)**0.5 # take bound as twice the maximum physical error, which is 4 times the separation between the detectors
+                        dt = 1e-5 # one point every 0.01 ms
+                        samples = np.arange(-bound, bound+dt, dt)
+
+			kde = singlekde(samples, tof_err, e, verbose=verbose, timing=timing)
+                        errs[(name1,name2)] = kde
+
+                elif error_approx == "kde_map": ### kde estimates for each point in the sky
+			bound = 4*sum((detectors[name1].dr - detectors[name2].dr)**2.0)**0.5 # take bound as twice the maximum physical error, which is 4 times the separation between the detectors
+			dt = 1e-5 # one point every 0.01 ms
+			samples = np.arange(-bound, bound+dt, dt)
+
+			kde_map = kde_map()
+			raise ValueError, "figure out how to put kde_map into errs"
+
+                else:
+                        raise ValueError, "error-approx=%s not understood"%opts.e_approx
+
+                if hist_errors: # generate histogram of errors
+                        if verbose: print "\thistogram for %s-%s"%(name1,name2)
+                        fig = plt.figure()
+                        ax  = plt.subplot(1,1,1)
+                        ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, normed=True, label="$N=%d$\n$\mu=%.3f$\n$\sigma=%.3f$"%(len(tof_err), m*1e3, e*1e3))
+                        if error_approx == "singlekde":
+                                ylim = ax.get_ylim()
+                                xlim = ax.get_xlim()
+                                estimate = kde(samples)
+                                ax.plot(samples*1e3, estimate, color="r", alpha=0.5, label="kde estimate")
+                                ax.set_ylim(ymin=ylim[0])
+                                ax.set_xlim(xlim)
+                        ax.grid(True)
+                        ax.set_xlabel("t_%s - t_%s [ms]"%(name1,name2))
+                        ax.set_ylabel("probability density")
+                        ax.legend(loc="upper left")
+                        figname = output_dir+"/tof-err_%s-%s%s.png"%(name1,name2,tag)
+                        if verbose: print "\tsaving", figname
+                        plt.savefig(figname)
+                        plt.close(fig)
+
+	return errs
+
+###
+def singlekde(samples, tof_err, e, precision_limit=0.001, max_iters=5, verbose=False, timing=False):
+	"""
+	builds a singlekde out of the observed tof_err sampled at samples
+	"""
+	frac = (0.005)**2 # the fraction of the entire distribution's width used in kde estimate
+        if verbose:
+		print "\tfixed_bandwidth kde"
+		if timing:
+			t1=time.time()
+	### fixed_bandwidth to start
+	samples_kde = pdfe.fixed_bandwidth_gaussian_kde(samples, tof_err, v=frac*e)
+	fbw_samples_kde = samples_kde
+	if verbose and timing: print "\t\t", time.time()-t1, "sec"
+
+	### iterate with point_wide kde and look for convergence
+	for _ in range(max_iters):
+		if verbose:
+			print "\tpoint_wise kde"
+			if timing: t1=time.time()
+		old_samples_kde = samples_kde
+		samples_kde = pdfe.point_wise_gaussian_kde(samples, tof_err, scale=0.5*e, pilot_x=samples, pilot_y=samples_kde)
+		precision = 1 - sum(samples_kde*old_samples_kde)/(sum(samples_kde**2) * sum(old_samples_kde**2))**0.5
+		if verbose:
+			print "\t\tprecision=%.6f"%precision
+			if timing: print "\t\t", time.time()-t1, "sec"
+		if precision_limit > precision:
+			break
+	else:
+		if verbose:
+			print "\tprecision_limit=%.6f not reached after %d iterations. Falling back to fixed_bandwidth kde"%(precision_limit, max_iters)
+			samples_kde = fbw_samples_kde
+
+	### build interpolation object and add it to the network
+	return pdfe.scipy.interpolate.interp1d(samples, samples_kde, kind="linear")
+
+###
+def kde_map():
+	"""
+	"""
+	raise StandardError, "write kde_map"
 
 ###
 class IndependentKDE(object):
@@ -114,7 +317,9 @@ class IndependentKDE(object):
 		else:
 			raise ValueError, "bad shape for x :", shape_x
 
-###
+#========================
+# TimingNetwork
+#========================
 class TimingNetwork(utils.Network):
 	"""
 	an extension of utils.network that will include time-of-flight errors between detectors
@@ -189,12 +394,16 @@ class TimingNetwork(utils.Network):
 		else:
 			return sorted(self.errors.keys())
 
-#=================================================
+#===================================================================================================
 #
-#                    MAIN
+#                                               MAIN
 #
-#=================================================
+#===================================================================================================
 if __name__ == "__main__":
+	#================================================
+	# parse options, arguments
+	#================================================
+
 	from optparse import OptionParser
 	parser = OptionParser(usage=usage)
 
@@ -250,7 +459,9 @@ if __name__ == "__main__":
 	if "kde" in opts.e_approx:
 		import pdf_estimation as pdfe
 
-	### get list of detectors from arguments
+	#================================================
+	# load detectors and instantiate network
+	#================================================
 	if opts.verbose: 
 		print "loading list of detectors"
 		if opts.time: to=time.time()
@@ -272,219 +483,121 @@ if __name__ == "__main__":
 	### instantiate an empty TimingNetwork to use some functions
 	network = TimingNetwork()
 
-	### get set of timing errors from error_cache
-	###   we select only those errors which are relevant to this network
+	#================================================
+	# compute error distributions relevant for this network
+	#================================================
 	if opts.verbose:
 		print "computing error distributions from", opts.e_cache
 		if opts.time: to = time.time()
-	err_file = open(opts.e_cache, "r")
-	e_cache = pickle.load(err_file)
-	err_file.close()
-
-	n_err = len(e_cache)
-	for name1, name2 in network.get_tof_names(names=detectors.keys()):
-		tof_err = np.empty((n_err,))
-		for ind, toa_event in enumerate(e_cache):	
-			### recovered tof
-			tof = toa_event[name1] - toa_event[name2]
-			### injected tof
-			tof_inj = toa_event[name1+"_inj"] - toa_event[name2+"_inj"]
-			### error in tof
-			tof_err[ind] = tof - tof_inj
-		m = np.mean(tof_err)
-		e = np.std(tof_err) # get standard deviation of this distribution
-
-		z = 0.1 # consistency check to make sure the tof errors are not crazy
-		if abs(m) > z*e:
-			ans = raw_input("measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s\n\tcontinue? [Y/n] "%(m,z,e,name1,name2))
-			if ans != "Y":
-				raise ValueError, "measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof:%s-%s"%(m,z,e,name1,name2)
-			else:
-				pass
-
-		### add errors to the network
-		if opts.e_approx == "gaussian":
-			network.add_err(detectors[name1],detectors[name2],e)
-
-		elif opts.e_approx == "singlekde": ### single kde estimate for the entire sky
-			bound = 4*sum((detectors[name1].dr - detectors[name2].dr)**2.0)**0.5 # take bound as twice the maximum physical error, which is 4 times the separation between the detectors
-			dt = 1e-5 # one point every 0.01 ms
-			samples = np.arange(-bound, bound+dt, dt)
-
-			### build kde estimate
-			frac = (0.005)**2 # the fraction of the entire distribution's width used in kde estimate
-			if opts.verbose: 
-				print "\tfixed_bandwidth kde"
-				if opts.time:
-					t1=time.time()
-			### fixed_bandwidth to start
-			samples_kde = pdfe.fixed_bandwidth_gaussian_kde(samples, tof_err, v=frac*e)
-			fbw_samples_kde = samples_kde
-			if opts.verbose and opts.time: print "\t\t", time.time()-t1, "sec"
-
-			### iterate with point_wide kde and look for convergence
-			precision_limit = 0.001 # maximum allowable precision
-			max_iters = 5
-			for _ in range(max_iters):
-				if opts.verbose: 
-					print "\tpoint_wise kde"
-					if opts.time: t1=time.time()
-				old_samples_kde = samples_kde
-				samples_kde = pdfe.point_wise_gaussian_kde(samples, tof_err, scale=0.5*e, pilot_x=samples, pilot_y=samples_kde)
-				precision = 1 - sum(samples_kde*old_samples_kde)/(sum(samples_kde**2) * sum(old_samples_kde**2))**0.5
-				if opts.verbose:
-					print "\t\tprecision=%.6f"%precision
-					if opts.time: print "\t\t", time.time()-t1, "sec"
-
-				if precision_limit > precision:
-					break
-			else:
-				if opts.verbose:
-					print "\tprecision_limit=%.6f not reached after %d iterations. Falling back to fixed_bandwidth kde"%(precision_limit, max_iters)
-				samples_kde = fbw_samples_kde
-
-			### build interpolation object and add it to the network
-			kde = pdfe.scipy.interpolate.interp1d(samples, samples_kde, kind="linear")
-			network.add_err(detectors[name1], detectors[name2], kde)
-
-		elif opts.e_approx == "kde_map": ### kde estimates for each point in the sky
-			raise StandardError, "write kde_map"
-		else:
-			raise ValueError, "error-approx=%s not understood"%opts.e_approx
-
-                if opts.hist_errors: # generate histogram of errors
-                        if opts.verbose: print "\thistogram for %s-%s"%(name1,name2)
-                        fig = plt.figure()
-                        ax  = plt.subplot(1,1,1)
-                        ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, normed=True, label="$N=%d$\n$\mu=%.3f$\n$\sigma=%.3f$"%(len(tof_err), m*1e3, e*1e3))
-			if opts.e_approx == "singlekde":
-				ylim = ax.get_ylim()
-				xlim = ax.get_xlim()
-				estimate = kde(samples)
-				ax.plot(samples*1e3, estimate, color="r", alpha=0.5, label="kde estimate")
-				ax.set_ylim(ymin=ylim[0])
-				ax.set_xlim(xlim)
-                        ax.grid(True)
-                        ax.set_xlabel("t_%s - t_%s [ms]"%(name1,name2))
-                        ax.set_ylabel("probability density")
-                        ax.legend(loc="upper left")
-                        figname = opts.output_dir+"/tof-err_%s-%s%s.png"%(name1,name2,opts.tag)
-                        if opts.verbose: print "\tsaving", figname
-                        plt.savefig(figname)
-                        plt.close(fig)
-
-
+	### load errors and build estimation functions
+	e_cache = utils.load_toacache(opts.e_cache)
+	errs = toacache_to_errs(e_cache, detectors, error_approx=opts.e_approx, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, output_dir=opts.output_dir, tag=opts.tag)
+	### put the estimators into network
+	for (name1, name2), e in errs.items():
+		network.add_err(detectors[name1], detectors[name2], e)
 	network.check() # checks network for consistency. If it isn't consistent, raises a KeyError
 	
 	if opts.verbose:
 		print "built TimingNetwork\n\t", network
 		if opts.time: print "\t", time.time()-to, "sec"
 
-	### number of pixels in the sky map
+	### the ordered names for pairs of detectors
+	tof_names = network.get_tof_names()
+
+	#================================================
+	# define sky pixelization
+	#================================================
 	npix = hp.nside2npix(nside)
 	pixarea = hp.nside2pixarea(nside)
 	pixarea_deg = pixarea/utils.deg2rad**2
         if opts.verbose: 
 		print "pixelating the sky with nside=%d ==> %d pixels"%(nside,npix)
 		if opts.time: to = time.time()
-	pixarray = np.zeros((npix,3))
-	for ipix in np.arange(npix):
-		theta, phi = hp.pix2ang(nside, ipix)
-		pixarray[ipix,:] = np.array([ipix, theta, phi])
+	pixarray = __pixarray(npix)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
-	### build sky map of expected time-of-flights
+	#================================================
+	# build sky map of expected time-of-flights
+	#================================================
 	if opts.verbose: 
 		print "computing tof_map"
 		if opts.time: to=time.time()
-	tof_map = np.zeros((npix,1+ntof)) # ipix, tau for each combination of detectors
-	tof_map[:,0] = pixarray[:,0]
-	for ind, (name1, name2) in enumerate(network.get_tof_names()):
-		for ipix, theta, phi in pixarray:
-			tof_map[ipix,1+ind] = network.get_tof(name1,name2,theta,phi)
-	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
+	tof_map = __tof_map(npix, network, pixarray=pixarray, ntof=ntof)
+        if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
-	### build error maps
+	#================================================
+	# build error maps
+	#================================================
 	if opts.verbose:
 		print "computing err_map"
 		if opts.time: to=time.time()
-	if opts.e_approx == "gaussian":
-		err_map = np.zeros((npix,1+ntof)) #ipix, tau for each combination of detectors
-		err_map[:,0] = pixarray[:,0]
-		for ind, (name1, name2) in enumerate(network.get_tof_names()):
-			for ipix, theta, phi in pixarray:
-				err_map[ipix,1+ind] = network.get_err(name1,name2,theta,phi)
-
-	elif opts.e_approx == "singlekde":
-		kdes = []
-		for ind, (name1, name2) in enumerate(network.get_tof_names()):
-			kdes.append( network.get_err(name1,name2,theta,phi) )
-		kde = IndependentKDE(kdes) # single kde object for the entire sky
-
-	elif opts.e_approx == "kde_map":
-	 	err_map = [ [ipix]+[1.0 for _ in range(ntof)] for ipix in pixarray[:,0] ] #ipix, tau for each combination of detectors
-		for ind, (name1, name2) in enumerate(network.get_tof_names()):
-			for ipix, theta, phi in pixarray:
-				err_map
-		raise ValueError, "write kde_map"
-
-	else:
-		raise ValueError, "error-approx=%s not understood"%opts.e_approx
-
+	err_map = __err_map(npix, network, error_approx=opts.e_approx, pixarray=pixarray, ntof=ntof)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 	
-	### build sky map of antenna patterns
+	#================================================
+	# build antenna pattern map
+	#================================================
 	if opts.verbose: 
 		print "computing prior_map :",opts.prior
 		if opts.time: to=time.time()
-	ap_map = np.zeros((npix,2)) # ipix, |F|
-	for ipix, theta, phi in pixarray:
-		a = network.A(theta, phi, 0.0, no_psd=True) # get sensitivity matrix with psi set to 0.0 for convenience. Also, do not include time shifts or psd in antenna patterns
-		a00 = a[0,0]
-		a11 = a[1,1]
-		a01 = a[0,1]
-		a10 = a[1,0]
-		F = 0.5*(a00+a11+((a00-a11)**2 + 4*a01*a10)**0.5) # maximum eigenvalue of the sensitivity matrix
-	        ap_map[ipix] = np.array([ipix,F])
+	ap_map =  __ap_map(npix, network, pixarray=None, no_psd=True) # we don't use a psd because this was intended for LHO-LLO networks
 	prior_map = prior(ap_map, which=opts.prior)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
-	### load in list of arrival times
+	#================================================
+	# load in list of arrival times
+	#================================================
 	if opts.verbose: 
 		print "loading a_cache from", opts.a_cache
 		if opts.time: to=time.time()
-	toa_file = open(opts.a_cache, "r")
-	a_cache = pickle.load(toa_file)
-	toa_file.close()
-
+	a_cache = utils.load_toacache(opts.a_cache)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
-	### compute posteriors for each event in a_cache
+	#================================================
+	#
+	# compute posteriors
+	#
+	#================================================
 	if opts.verbose: print "computing posteriors"
 	n_toa = len(a_cache)
+
+	### set up holders for positions
 	if opts.scatter:
 		estangs = np.empty((n_toa,2),np.float)
 		injangs = np.empty((n_toa,2),np.float)
 
+	### define title_template with tof_names
+	if opts.plot_posteriors:
+		title_template = ""
+		for name1, name2 in tof_names:
+			title_template += "$t_{%s}-t_{%s}="%(name1,name2)+"%.3f\mathrm{ms}$\n"
+		title_template = title_template[:-1]
+
+	### loop over events
 	for toa_ind, toa_event in enumerate(a_cache):
-		inj_theta = toa_event['theta_inj'] # deg
-		inj_phi = toa_event['phi_inj'] # deg
-		if opts.deg:
-			inj_theta *= utils.deg2rad
-			inj_phi   *= utils.deg2rad
+                if opts.verbose:
+                        print "%d / %d\ntoa ="%(toa_ind+1,n_toa), toa_event
+                        print "\tcomputing posterior"
+                        if opts.time: to=time.time()
 
-		if opts.verbose: 
-			print "%d / %d\ntoa ="%(toa_ind+1,n_toa), toa_event
-			print "\tcomputing posterior"
-			if opts.time: to=time.time()
+		if opts.scatter or opts.plot_posteriors or opts.stats:
+			inj_theta = toa_event['theta_inj']
+			inj_phi = toa_event['phi_inj']
+			if opts.deg:
+				inj_theta *= utils.deg2rad
+				inj_phi   *= utils.deg2rad
 
-		### build observed time-of-flight vector
-#		toa = np.array([toa_event[name1+"_inj"]-toa_event[name2+"_inj"] for name1,name2 in network.get_tof_names()])
-		toa = np.array([toa_event[name1]-toa_event[name2] for name1,name2 in network.get_tof_names()])
+		#======================
+		# build observed time-of-flight vector
+		#======================
+		toa = np.array([toa_event[name1]-toa_event[name2] for name1,name2 in tof_names])
 
-		### build posteriors for each point in the sky
+		#======================
+		# build posteriors for each point in the sky
+		#======================
 		posterior = np.zeros((npix,2)) # ipix, p(ipix|d)
 		posterior[:,0] = pixarray[:,0]
+
 		if opts.e_approx == "gaussian":
 			posterior[:,1] = gaussian_likelihood(toa, tof_map, err_map) * prior_map
 		elif opts.e_approx == "singlekde":
@@ -499,24 +612,47 @@ if __name__ == "__main__":
 
                 if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
-		### find the posterior's mode
+		#======================
+		# save, plot, and summarize posterior
+		#======================
+		### find the posterior's mode and pull out injected location
 		if opts.plot_posteriors or opts.stats or opts.scatter:
-			estpix = int(posterior[:,1].argmax())
-			est_theta, est_phi = hp.pix2ang(nside, estpix)
+			### estimated pixel
+                        estpix = int(posterior[:,1].argmax())
+                        est_theta, est_phi = hp.pix2ang(nside, estpix)
 
-		### record positions for scatter
-		if opts.scatter:
-			estangs[toa_ind] = np.array([est_theta, est_phi])
-			injangs[toa_ind] = np.array([inj_theta, inj_phi])
+			### injected pixel
+                        inj_theta = toa_event['theta_inj']
+                        inj_phi = toa_event['phi_inj']
+                        if opts.deg:
+                                inj_theta *= utils.deg2rad
+                                inj_phi   *= utils.deg2rad
+
+			### record positions for scatter
+			if opts.scatter:
+				estangs[toa_ind] = np.array([est_theta, est_phi])
+				injangs[toa_ind] = np.array([inj_theta, inj_phi])
+
+                ### write posteriors into FITs format
+                if opts.write_posteriors:
+                        if opts.verbose:
+                                print "\twriting posterior"
+                                if opts.time: to=time.time()
+                        filename = "%s/posterior-%d%s.npy"%(opts.output_dir, toa_ind, opts.tag)
+                        if opts.verbose:
+                                print "\t\t", filename
+                        np.save(filename, posterior)
+                        if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
+
+#			raise StandardError, "write code that plots posteriors and saves them into FITs format!"
 
 		### plot posteriors
 		if opts.plot_posteriors:
 			if opts.verbose:
 				print "\tplotting posterior"
 				if opts.time: to=time.time()
-#                        figname = "%s/posterior-%d%sINJ.png"%(opts.output_dir, toa_ind, opts.tag)
                         figname = "%s/posterior-%d%s.png"%(opts.output_dir, toa_ind, opts.tag)
-			title = "$t_{LHO}-t_{LLO}=%.3f\,\mathrm{ms}$"%(toa[0]*1e3)
+			title = title_template%tuple(toa*1e3)
 			unit = "probability per steradian"
 
 			fig = plt.figure(toa_ind)
@@ -534,20 +670,6 @@ if __name__ == "__main__":
 			fig.savefig(figname)
 			plt.close(fig)
 			if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
-
-		### write posteriors into FITs format
-		if opts.write_posteriors:
-			#print "WARNING: posteriors currently written to *.npy files, not FITs format"
-			if opts.verbose:
-				print "\twriting posterior"
-				if opts.time: to=time.time()
-			filename = "%s/posterior-%d%s.npy"%(opts.output_dir, toa_ind, opts.tag)
-			if opts.verbose:
-				print "\t\t", filename
-			np.save(filename, posterior)
-			if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
-
-#			raise StandardError, "write code that plots posteriors and saves them into FITs format!"
 
 		### compute basic statistics about the reconstruction
 		if opts.stats:
@@ -580,7 +702,9 @@ if __name__ == "__main__":
 				print "\t\tcos(ang_offset) = %.6f\n\t\tsearched_area = %.6f deg2"%(cosDtheta, searched_area)
 				if opts.time: print "\t\t", time.time()-to, "sec"
 
-	### generate scatter plot
+	#================================================
+	# generate scatter plot
+	#================================================
 	if opts.scatter:
 		if opts.verbose: 
 			print "generating population scatter plots"
