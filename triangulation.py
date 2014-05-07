@@ -307,9 +307,9 @@ if __name__ == "__main__":
 			network.add_err(detectors[name1],detectors[name2],e)
 
 		elif opts.e_approx == "singlekde": ### single kde estimate for the entire sky
-			num_samples = 10001 # number of samples used in kde estimate
-			bound = 0.040 # 40 ms as maximum error... should be ~twice the possible error
-			samples = np.linspace(-bound, bound, num_samples)
+			bound = 4*sum((detectors[name1].dr - detectors[name2].dr)**2.0)**0.5 # take bound as twice the maximum physical error, which is 4 times the separation between the detectors
+			dt = 1e-5 # one point every 0.01 ms
+			samples = np.arange(-bound, bound+dt, dt)
 
 			### build kde estimate
 			frac = (0.005)**2 # the fraction of the entire distribution's width used in kde estimate
