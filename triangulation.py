@@ -234,7 +234,7 @@ def toacache_to_errs(toacache, detectors, error_approx="gaussian", dt=1e-5, verb
                                 ax.set_ylim(ymin=ylim[0])
                                 ax.set_xlim(xlim)
                         ax.grid(True)
-                        ax.set_xlabel("t_%s - t_%s [ms]"%(name1,name2))
+                        ax.set_xlabel("$t_{%s} - t_{%s} [\mathrm{ms}]$"%(name1,name2))
                         ax.set_ylabel("probability density")
                         ax.legend(loc="upper left")
                         figname = output_dir+"/tof-err_%s-%s%s.png"%(name1,name2,tag)
