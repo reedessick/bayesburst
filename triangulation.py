@@ -173,7 +173,7 @@ def __ap_map(npix, network, pixarray=None, no_psd=True):
 #========================
 # error estimation
 #========================
-def toacache_to_errs(toacache, detectors, error_approx="gaussian", verbose=False, timing=False, hist_errors=False, output_dir="./", tag=""):
+def toacache_to_errs(toacache, detectors, error_approx="gaussian", dt=1e-5, verbose=False, timing=False, hist_errors=False, output_dir="./", tag=""):
 	"""
 	loads observed time-of-arrival information and builds errors suitable to be loaded into TimingNetwork
 	"""
@@ -205,7 +205,6 @@ def toacache_to_errs(toacache, detectors, error_approx="gaussian", verbose=False
 
                 elif error_approx == "singlekde": ### single kde estimate for the entire sky
                         bound = 4*sum((detectors[name1].dr - detectors[name2].dr)**2.0)**0.5 # take bound as twice the maximum physical error, which is 4 times the separation between the detectors
-                        dt = 1e-5 # one point every 0.01 ms
                         samples = np.arange(-bound, bound+dt, dt)
 
 			kde = singlekde(samples, tof_err, e, verbose=verbose, timing=timing)
