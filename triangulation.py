@@ -323,14 +323,14 @@ if __name__ == "__main__":
 			if opts.verbose and opts.time: print "\t\t", time.time()-t1, "sec"
 
 			### iterate with point_wide kde and look for convergence
-			precision_limit = 0.005 # maximum allowable precision
+			precision_limit = 0.001 # maximum allowable precision
 			max_iters = 5
 			for _ in range(max_iters):
 				if opts.verbose: 
 					print "\tpoint_wise kde"
 					if opts.time: t1=time.time()
 				old_samples_kde = samples_kde
-				samples_kde = pdfe.point_wise_gaussian_kde(samples, tof_err, scale=10.0*e, pilot_x=samples, pilot_y=samples_kde)
+				samples_kde = pdfe.point_wise_gaussian_kde(samples, tof_err, scale=0.5*e, pilot_x=samples, pilot_y=samples_kde)
 				precision = 1 - sum(samples_kde*old_samples_kde)/(sum(samples_kde**2) * sum(old_samples_kde**2))**0.5
 				if opts.verbose:
 					print "\t\tprecision=%.6f"%precision
