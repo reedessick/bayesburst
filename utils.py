@@ -14,6 +14,19 @@ deg2rad = np.pi/180
 rad2deg = 1.0/deg2rad
 
 #========================
+# I/O utilies
+#========================
+def load_toacache(filename):
+	"""
+	loads time-of-arrival information from filename
+	"""
+	import pickle
+	file_obj = open(filename, "r")
+	toacache = pickle.load(file_obj)
+	file_obj.close()
+	return toacache
+
+#========================
 # timing utilities
 #========================
 def time_of_flight(theta, phi, dr):
