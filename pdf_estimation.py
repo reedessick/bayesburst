@@ -254,7 +254,7 @@ def __point_wise_optimal_s(eval, scale, pdf):
   pdf_eval = pdf(eval)
   try:
     pdf_eval = pdf_eval[0]
-  except TypeError:
+  except (TypeError, IndexError) as e:
     pass
 
   if pdf_eval > 0:
