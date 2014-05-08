@@ -135,12 +135,13 @@ def __err_map(npix, timing_network, error_approx="gaussian", pixarray=None, ntof
                 for ind, (name1, name2) in enumerate(timing_network.get_tof_names()):
                         for ipix, theta, phi in pixarray:
                                 err_map[ipix,1+ind] = timing_network.get_err(name1,name2,theta,phi)
+		return err_map
 
         elif error_approx == "singlekde":
                 kdes = []
                 for ind, (name1, name2) in enumerate(timing_network.get_tof_names()):
                         kdes.append( timing_network.get_err(name1,name2) )
-                kde = IndependentKDE(kdes) # single kde object for the entire sky
+                return IndependentKDE(kdes) # single kde object for the entire sky
 
         elif error_approx == "kde_map":
                 err_map = [ [ipix]+[1.0 for _ in range(ntof)] for ipix in pixarray[:,0] ] #ipix, tau for each combination of detectors
@@ -148,11 +149,10 @@ def __err_map(npix, timing_network, error_approx="gaussian", pixarray=None, ntof
                         for ipix, theta, phi in pixarray:
                                 err_map
                 raise ValueError, "write kde_map"
+		return err_map
 
         else:
                 raise ValueError, "error-approx=%s not understood"%error_approx
-
-	return err_map
 
 ###
 def __ap_map(npix, network, pixarray=None, no_psd=True):
@@ -600,7 +600,7 @@ if __name__ == "__main__":
 		if opts.e_approx == "gaussian":
 			posterior[:,1] = gaussian_likelihood(toa, tof_map, err_map) * prior_map
 		elif opts.e_approx == "singlekde":
-			posterior[:,1] = singlekde_likelihood(toa, tof_map, kde) * prior_map
+			posterior[:,1] = singlekde_likelihood(toa, tof_map, err_map) * prior_map
 		elif opts.e_approx == "kde_map":
 			posterior[:,1] = kde_likelihood(toa, tof_map, err_map) * prior_map
 		else:
