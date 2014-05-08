@@ -139,7 +139,7 @@ def __err_map(npix, timing_network, error_approx="gaussian", pixarray=None, ntof
         elif error_approx == "singlekde":
                 kdes = []
                 for ind, (name1, name2) in enumerate(timing_network.get_tof_names()):
-                        kdes.append( timing_network.get_err(name1,name2,theta,phi) )
+                        kdes.append( timing_network.get_err(name1,name2) )
                 kde = IndependentKDE(kdes) # single kde object for the entire sky
 
         elif error_approx == "kde_map":
@@ -225,7 +225,7 @@ def toacache_to_errs(toacache, detectors, error_approx="gaussian", dt=1e-5, verb
                         if verbose: print "\thistogram for %s-%s"%(name1,name2)
                         fig = plt.figure()
                         ax  = plt.subplot(1,1,1)
-                        ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, normed=True, label="$N=%d$\n$\mu=%.3f$\n$\sigma=%.3f$"%(len(tof_err), m*1e3, e*1e3))
+                        ax.hist(tof_err*1e3, bins=n_err/10, histtype="step", log=True, normed=True, label="$N=%d$\n$\mu=%.3f\mathrm{ms}$\n$\sigma=%.3f\mathrm{ms}$"%(len(tof_err), m*1e3, e*1e3))
                         if error_approx == "singlekde":
                                 ylim = ax.get_ylim()
                                 xlim = ax.get_xlim()
