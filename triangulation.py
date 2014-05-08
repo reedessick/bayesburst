@@ -173,13 +173,18 @@ def __ap_map(npix, network, pixarray=None, no_psd=True):
 #========================
 # error estimation
 #========================
-def toacache_to_errs(toacache, detectors, error_approx="gaussian", dt=1e-5, verbose=False, timing=False, hist_errors=False, output_dir="./", tag=""):
+def toacache_to_errs(toacache, detectors, error_approx="gaussian", dt=1e-5, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag=""):
 	"""
 	loads observed time-of-arrival information and builds errors suitable to be loaded into TimingNetwork
 	"""
 	errs = {} 
         n_err = len(toacache)
-        for name1, name2 in TimingNetwork().get_tof_names(names=detectors.keys()):
+
+	if scatter_errors: ### holder for all error arrays
+		tof_errs = []
+
+	tof_names = TimingNetwork().get_tof_names(names=detectors.keys())
+        for name1, name2 in tof_names:
                 tof_err = np.empty((n_err,))
                 for ind, toa_event in enumerate(toacache):
                         ### recovered tof
@@ -189,7 +194,7 @@ def toacache_to_errs(toacache, detectors, error_approx="gaussian", dt=1e-5, verb
                         ### error in tof
                         tof_err[ind] = tof - tof_inj
                 m = np.mean(tof_err)
-                e = np.std(tof_err) # get standard deviation of this distribution
+		e = np.std(tof_err) # get standard deviation of this distribution
 
                 z = 0.1 # consistency check to make sure the tof errors are not crazy
                 if abs(m) > z*e:
@@ -234,13 +239,57 @@ def toacache_to_errs(toacache, detectors, error_approx="gaussian", dt=1e-5, verb
                                 ax.set_ylim(ymin=ylim[0])
                                 ax.set_xlim(xlim)
                         ax.grid(True)
-                        ax.set_xlabel("$t_{%s} - t_{%s} [\mathrm{ms}]$"%(name1,name2))
+                        ax.set_xlabel("$\Delta\left(t_{%s} - t_{%s}\\right) [\mathrm{ms}]$"%(name1,name2))
                         ax.set_ylabel("probability density")
                         ax.legend(loc="upper left")
                         figname = output_dir+"/tof-err_%s-%s%s.png"%(name1,name2,tag)
                         if verbose: print "\tsaving", figname
-                        plt.savefig(figname)
+                        fig.savefig(figname)
                         plt.close(fig)
+
+		if scatter_errors:
+			for (_name1,_name2), _tof_err, _m, _e in tof_errs: # iterate over all preceeding errors
+				### compute correlation coefficients
+				p = np.dot(tof_err-m, _tof_err-_m)/(n_err*e*_e)
+
+				if verbose: print "\tscatter for %s-%s vs %s-%s\n\t\tpearson=%.5f"%(name1,name2,_name1,_name2,p)
+
+				### plot scatter and projected histogram
+				fig = plt.figure()
+
+				ax  = fig.add_axes([0.150, 0.100, 0.600, 0.600])
+				axu = fig.add_axes([0.150, 0.725, 0.600, 0.200])
+				axr = fig.add_axes([0.775, 0.100, 0.200, 0.600])
+
+				bins = n_err/10
+				ax.plot(tof_err, _tof_err, marker="o", markerfacecolor="none", markeredgecolor="b", markersize=2, linestyle="none")
+				axu.hist(tof_err, bins, histtype="step", log=True)
+				axr.hist(_tof_err, bins, histtype="step", log=True, orientation="horizontal")
+
+				fig.text(0.15+0.025, 0.70-0.025, "$\\rho=%.5f$\n$N=%d$"%(p,n_err), ha="left", va="top", color="b", fontsize=12)
+				fig.text(0.15+0.025, 0.925-0.025, "$\mu=%.3f\mathrm{ms}$\n$\sigma=%.3f\mathrm{ms}$"%(m*1e3, e*1e3), ha="left", va="top", color="b", fontsize=12)
+				fig.text(0.975-0.025, 0.700-0.025, "$\mu=%.3f\mathrm{ms}$\n$\sigma=%.3f\mathrm{ms}$"%(_m*1e3, _e*1e3), ha="right", va="top", color="b", fontsize=12)
+
+				ax.grid(True)
+				axu.grid(True)
+				axr.grid(True)
+
+				ax.set_xlabel("$\Delta\left(t_{%s} - t_{%s}\\right) [\mathrm{ms}]$"%(name1,name2))
+				ax.set_ylabel("$\Delta\left(t_{%s} - t_{%s}\\right) [\mathrm{ms}]$"%(_name1,_name2))
+
+				axu.set_ylabel("count")
+				plt.setp(axu.get_xticklabels(), visible=False)
+
+				axr.set_xlabel("count")
+				plt.setp(axr.get_yticklabels(), visible=False)
+
+				figname = output_dir+"/tof-scat_%s-%s_%s-%s%s.png"%(name1,name2,_name1,_name2,tag)
+				if verbose: print "\tsaving", figname
+				fig.savefig(figname)
+				plt.close(fig)
+
+			### add to list (wait until now so we don't scatter identical data against themselves)
+			tof_errs.append( ((name1,name2),tof_err, m, e) )
 
 	return errs
 
@@ -415,6 +464,7 @@ if __name__ == "__main__":
 	parser.add_option("", "--error-approx", dest="e_approx", default="gaussian", type="string", help="how the triangulation code estimates time-of-flight errors")
 
 	parser.add_option("", "--hist-errors", default=False, action="store_true", help="histogram the tof errors observed in --errors-cache")
+	parser.add_option("", "--scatter-errors", default=False, action="store_true", help="generate scatter plots and projected histograms for tof errors observed in --errors-cache")
 
 	parser.add_option("-n", "--nside-exp", default=7, type="int", help="HEALPix NSIDE parameter for pixelization is 2**opts.nside_exp")
 
@@ -490,7 +540,7 @@ if __name__ == "__main__":
 		if opts.time: to = time.time()
 	### load errors and build estimation functions
 	e_cache = utils.load_toacache(opts.e_cache)
-	errs = toacache_to_errs(e_cache, detectors, error_approx=opts.e_approx, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, output_dir=opts.output_dir, tag=opts.tag)
+	errs = toacache_to_errs(e_cache, detectors, error_approx=opts.e_approx, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, scatter_errors=opts.scatter_errors, output_dir=opts.output_dir, tag=opts.tag)
 	### put the estimators into network
 	for (name1, name2), e in errs.items():
 		network.add_err(detectors[name1], detectors[name2], e)
