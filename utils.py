@@ -77,6 +77,7 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 
 	### apply time-shits
 	if freqs:
+		freqs = np.array(freqs)
 		if dr:
 			dx, dy, dz = dr
 			dt = dx*sin_theta*cos_phi + dy*sin_theta*sin_phi + dz*cos_theta
@@ -299,30 +300,31 @@ class Network(object):
 	###
 	def A(self, theta, phi, psi, no_psd=False):
 		"""computes the entire matrix"""
-		a=np.zeros((self.Np,self.Np))
 		if no_psd:
+			a=np.zeros((self.Np,self.Np))
 			for detector in self.detectors.values():
-				F = detector.antenna_patterns(theta, phi, psi, freqs=None) # time shifts cancel within A so we supply no freqs
+				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #time shifts cancel within A so we supply no freqs
 				for i in xrange(self.Np):
 					a[i,i] += np.abs(F[i])**2
 					for j in xrange(i+1,self.Np):
 						_ = np.conjugate(F[i])*F[j]
 						a[i,j] += _
 						a[j,i] += np.conjugate(_)
-		else:
+		else:  #if given a psd
+			a=np.zeros((len(self.freqs), self.Np, self.Np))  #initialize a 3-D array (frequencies x polarizations x polarizations)
 			for detector in self.detectors.values():
-				F = detector.antenna_patterns(theta, phi, psi, freqs=None)
-				_psd = detector.get_psd().interpolate(self.freqs)
+				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
+				_psd = detector.get_psd().interpolate(self.freqs)  #1-D array (frequencies)
 				for i in xrange(self.Np):
-					a[i,i] += np.abs(F[i])**2/_psd
+					a[:,i,i] += np.abs(F[i])**2/_psd
 					for j in xrange(i+1,self.Np):
 						_ = np.conjugate(F[i])*F[j]/_psd
-						a[i,j] += _
-						a[j,k] += np.conjugate(_)
+						a[:,i,j] += _
+						a[:,j,i] += np.conjugate(_)
 		return a
 
 	###
-	def Aij(self, i, j, theta, phi, psi, no_psd=False):
+	def Aij(self, i, j, theta, phi, psi, no_psd=False):  #edit this for given psds (see above)
 		"""computes a single component of the matrix"""
 		aij = 0.0
 		if no_psd:
@@ -341,17 +343,22 @@ class Network(object):
 		"""computes the entire matrix"""
 		sorted_detectors = self.detectors_list()
 		Nd = len(sorted_detectors)
-		B = np.zeros((Nd, 2))
-		for ind, detector in enumerate(sorted_detectors):
-			F = detector.antenna_patterns(theta, phi, psi, freqs=freqs)
-			if no_psd:
-				B[ind,:] = F
-			else:
-				B[ind,:] = F/detector.get_psd().interplate(self.freqs)
+		if no_psd:
+			B = np.zeros((Nd, self.Np))
+			for d_ind, detector in enumerate(sorted_detectors):
+				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)
+				for i in xrange(self.Np):
+					B[d_ind,i] = F[i]
+		else:  #if given a psd
+			B = np.zeros((len(self.freqs), Nd, self.Np))  #initialize a 3-D array (freqs x detectors x polarizations)
+			for d_ind, detector in enumerate(sorted_detectors):
+				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)   #tuple (pols) of 1-D arrays (frequencies)
+				for i in xrange(self.Np):
+						B[:,d_ind,i] = F[i]/detector.get_psd().interplate(self.freqs)
 		return B
 
 	###
-	def Bni(self, name, i, theta, phi, psi, no_psd=False):
+	def Bni(self, name, i, theta, phi, psi, no_psd=False):  #edit this for given psds (see above)
 		"""computes a single component of the matrix"""
 		if not self.contains_name(name):
 			raise KeyError, "detector=%s not contained in this network"%name
@@ -417,6 +424,8 @@ c = 299792458.0 #m/s
 #
 #=================================================
 default_psd = PSD(np.array([0]), np.array([1]), kind="linear")
+ligo_design_psd = PSD(np.genfromtxt('PSDs/f_baseline.txt')[:,0], np.genfromtxt('PSDs/f_baseline.txt')[:,1]**2, kind="linear")
+virgo_design_psd = PSD(np.genfromtxt('PSDs/f_AVirgoBaseline.txt')[:,0], np.genfromtxt('PSDs/f_AVirgoBaseline.txt')[:,1]**2, kind="linear")
 
 ### Detector locations and orientations taken from Anderson, et all PhysRevD 63(04) 2003
 
@@ -424,19 +433,19 @@ __H_dr__ = np.array((-2.161415, -3.834695, +4.600350))*1e6/c # sec
 __H_nx__ = np.array((-0.2239, +0.7998, +0.5569))
 __H_ny__ = np.array((-0.9140, +0.0261, -0.4049))
 #LHO = Detector("LHO", __H_dr__, __H_nx__, __H_ny__, default_psd)
-LHO = Detector("H1", __H_dr__, __H_nx__, __H_ny__, default_psd)
+LHO = Detector("H1", __H_dr__, __H_nx__, __H_ny__, ligo_design_psd)
 
 __L_dr__ = np.array((-0.074276, -5.496284, +3.224257))*1e6/c # sec
 __L_nx__ = np.array((-0.9546, -0.1416, -0.2622))
 __L_ny__ = np.array((+0.2977, -0.4879, -0.8205))
 #LLO = Detector("LLO", __L_dr__, __L_nx__, __L_ny__, default_psd)
-LLO = Detector("L1", __L_dr__, __L_nx__, __L_ny__, default_psd)
+LLO = Detector("L1", __L_dr__, __L_nx__, __L_ny__, ligo_design_psd)
 
 __V_dr__ = np.array((+4.546374, +0.842990, +4.378577))*1e6/c # sec
 __V_nx__ = np.array((-0.7005, +0.2085, +0.6826))
 __V_ny__ = np.array((-0.0538, -0.9691, +0.2408))
 #Virgo = Detector("Virgo", __V_dr__, __V_nx__, __V_ny__, default_psd)
-Virgo = Detector("V1", __V_dr__, __V_nx__, __V_ny__, default_psd)
+Virgo = Detector("V1", __V_dr__, __V_nx__, __V_ny__, virgo_design_psd)
 
 
 
