@@ -180,7 +180,7 @@ def __scatter_errors(tof_err, label, _tof_err, _label, n_err=None, m=None, e=Non
 	return fig, ax
 
 ###
-def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag=""):
+def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag="", diag=False):
         """
         loads observed time-fo-arrival information and builds errors suitable to be loaded into TimingNetwork
         """
@@ -210,7 +210,7 @@ def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3,
 		
 	### compute covariance matrix and diagonalize
 	cov = np.cov(tof_errs)
-	if n_tof > 1:
+	if diag and (n_tof > 1):
 		if verbose: 
 			print "diagonalizing covariance matrix and defining linear combinations of timing errors\ncov:\n", cov
 		eigvals, _eigvecs = np.linalg.eig( cov )
@@ -221,12 +221,10 @@ def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3,
 			print "new cov:\n", cov
 	
 		### reduce the number of dimensions if needed
-		print eigvals
-		print dt
 		truth = eigvals >= dt**2
 		if not truth.all():
 			if verbose:
-				print "reducing the number of degrees of freedom in the system because %d eigvals are too small to measure"%(n_tof-sum(truth))
+				print "reducing the number of degrees of freedom in the system because %d eigvals are too small to measure (dt=%.3fms)"%(n_tof-sum(truth), dt*1e3)
 			truth = eigvals >= dt**2 # figure out which eigvals are measurable
 			eigvecs = np.empty((n_tof,sum(truth))) # array for new basis
 			eig_ind = 0
@@ -244,7 +242,7 @@ def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3,
 		else:
 			eig_ind = tof_ind
 	else: 
-		eigvecs = np.array([[1.0]])
+		eigvecs = np.eye(n_tof)
 		eig_ind = n_tof # all the eigvals are allowable
 
 	### iterate through basis and compute singlekde
@@ -278,7 +276,8 @@ def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3,
 
                 elif error_approx == "kde": ### single kde estimate for the entire sky
                         samples = np.arange(-bound, bound+dt, dt)
-			errs.append( singlekde(samples, tof_err, e, verbose=verbose, timing=timing) )
+			kde = singlekde(samples, tof_err, e, verbose=verbose, timing=timing)
+			errs.append( kde )
 
                 else:
                         raise ValueError, "error-approx=%s not understood"%opts.e_approx
@@ -412,9 +411,9 @@ class TimingNetwork(utils.Network):
 		self.set_detectors(detectors)
 
 	###
-	def toacache_to_errs(self, toacache, dt=1e-5, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag=""):
+	def toacache_to_errs(self, toacache, dt=1e-5, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag="", diag=False):
 		""" builds errors structure and computes basis from toacache. Results are stored within network """
-		self.errors, self.basis = toacache_to_errs(toacache, self, error_approx=self.error_approx, dt=dt, verbose=verbose, timing=timing, hist_errors=hist_errors, scatter_errors=scatter_errors, output_dir=output_dir, tag=tag)
+		self.errors, self.basis = toacache_to_errs(toacache, self, error_approx=self.error_approx, dt=dt, verbose=verbose, timing=timing, hist_errors=hist_errors, scatter_errors=scatter_errors, output_dir=output_dir, tag=tag, diag=diag)
 	
 	###	
 	def set_tof_map(self, npix, pixarray=None):
@@ -478,6 +477,7 @@ if __name__ == "__main__":
 
 	parser.add_option("-e", "--errors-cache", dest="e_cache", default="errors.cache", type="string", help="a cache file containing errors in time-of-flight measurements between detectors")
 	parser.add_option("", "--error-approx", dest="e_approx", default="gaussian", type="string", help="how the triangulation code estimates time-of-flight errors")
+	parser.add_option("", "--diag", dest="diag", default=False, action="store_true", help="attempt to diagonalize the covariance matrix")
 
 	parser.add_option("", "--hist-errors", default=False, action="store_true", help="histogram the tof errors observed in --errors-cache")
 	parser.add_option("", "--scatter-errors", default=False, action="store_true", help="generate scatter plots and projected histograms for tof errors observed in --errors-cache")
@@ -558,7 +558,7 @@ if __name__ == "__main__":
 		if opts.time: to = time.time()
 	### load errors and build estimation functions
 	e_cache = utils.load_toacache(opts.e_cache)
-	network.toacache_to_errs(e_cache, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, scatter_errors=opts.scatter_errors, output_dir=opts.output_dir, tag=opts.tag)	
+	network.toacache_to_errs(e_cache, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, scatter_errors=opts.scatter_errors, output_dir=opts.output_dir, tag=opts.tag, diag=opts.diag)	
 	if opts.verbose:
 		print "built TimingNetwork\n\t", network
 		if opts.time: print "\t", time.time()-to, "sec"
