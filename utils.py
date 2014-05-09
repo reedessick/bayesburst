@@ -200,7 +200,7 @@ class Detector(object):
 
 	###
 	def get_psd(self):
-		return self.psd.get_psd()
+		return self.psd
 
 	###	
 	def dt_geocent(self, theta, phi):
@@ -230,8 +230,7 @@ class Network(object):
 
 	###
 	def __init__(self, detectors=[]):
-		for detector in detectors:
-			self.__add_detector(detector)
+		self.set_detectors(detectors)
 
 	###
 	def __len__(self):
@@ -260,7 +259,7 @@ class Network(object):
 
 	###
 	def __add_detector(self, detector):
-		if not self.freqs:
+		if self.freqs == None:
 			self.freqs = detector.get_psd().get_freqs()
 		self.detectors[detector.name] = detector
 
