@@ -456,7 +456,7 @@ class TimingNetwork(utils.Network):
 	def likelihood(self, toa, verbose=False):
 		""" computes the likelihood of observing toa """
 		toa = np.dot(toa, self.basis) # convert to correct basis
-		if verbose: print "tof:\t",toa
+		if verbose: print "tof (basis):\t\t",toa
 		if self.error_approx == "gaussian":
                         return gaussian_likelihood(toa, self.tof_map, self.errors)
 
