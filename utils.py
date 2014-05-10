@@ -4,6 +4,7 @@ usage = """ a general utilities module for sky localization. All distances are m
 
 import numpy as np
 from numpy import linalg
+import pickle
 
 #=================================================
 #
@@ -20,7 +21,6 @@ def load_toacache(filename):
 	"""
 	loads time-of-arrival information from filename
 	"""
-	import pickle
 	file_obj = open(filename, "r")
 	toacache = pickle.load(file_obj)
 	file_obj.close()
