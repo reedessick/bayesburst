@@ -114,9 +114,6 @@ class PSD(object):
 	an object that holds onto power-spectral densities with associated frequency samples
 	we define a scipy.interpolate.interp1d object for convenience
 	"""
-	freqs = np.array([])
-	psd = np.array([])
-	interp = None
 
 	###
 	def __init__(self, freqs, psd, kind="linear"):
@@ -131,7 +128,7 @@ class PSD(object):
 		from scipy.interpolate import interp1d
 		self.freqs = freqs
 		self.psd = psd
-		self.interp = interp1d(freqs, psd, kind=kind, copy=False)
+#		self.interp = interp1d(freqs, psd, kind=kind, copy=False)
 
 	###
 	def check(self):
@@ -155,7 +152,8 @@ class PSD(object):
 
 	###
 	def interpolate(self, freqs):
-		return interp(freqs)
+#		return self.interp(freqs)
+		return np.interp(freqs, self.freqs, self.psd)
 
 #=================================================
 #
@@ -166,14 +164,16 @@ class Detector(object):
 	"""
 	an object representing a gravitational wave detector. methods are meant to be convenient wrappers for more general operations. 
 	"""
-	name = None  # detector's name (eg: H1)
-	dr = np.zeros((3,)) # r_detector - r_geocent
-	nx = np.zeros((3,)) # direction of the x-arm
-	ny = np.zeros((3,)) # direction of the y-arm
-	psd = None   # the psd for network (should be power, not amplitude)
 
 	###
 	def __init__(self, name, dr, nx, ny, psd):
+		"""
+	        name = None  # detector's name (eg: H1)
+	        dr = np.zeros((3,)) # r_detector - r_geocent
+        	nx = np.zeros((3,)) # direction of the x-arm
+	        ny = np.zeros((3,)) # direction of the y-arm
+        	psd = None   # the psd for network (should be power, not amplitude)
+		"""
 		self.name = name
 		if not isinstance(dr, np.ndarray):
 			dr = np.array(dr)
@@ -224,12 +224,12 @@ class Network(object):
 	"""
 	an object representing a network of gravitational wave detectors.
 	"""
-	detectors = dict()
-	freqs = None
-	Np = 2 # support only GR right now
 
 	###
-	def __init__(self, detectors=[]):
+	def __init__(self, detectors=[], freqs=None, Np=2):
+		self.freqs = freqs
+		self.Np = Np
+		self.detectors = {}
 		self.set_detectors(detectors)
 
 	###
