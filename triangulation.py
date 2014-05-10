@@ -210,9 +210,10 @@ def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3,
 		
 	### compute covariance matrix and diagonalize
 	cov = np.cov(tof_errs)
+	if verbose: print "cov:\n", cov
 	if diag and (n_tof > 1):
 		if verbose: 
-			print "diagonalizing covariance matrix and defining linear combinations of timing errors\ncov:\n", cov
+			print "diagonalizing covariance matrix and defining linear combinations of timing errors"
 		eigvals, _eigvecs = np.linalg.eig( cov )
 		cov = np.cov( np.dot(np.transpose(_eigvecs), tof_errs) )
 		if verbose:
@@ -240,7 +241,8 @@ def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3,
 				print "basis:\n", eigvecs
 				print "new cov:\n", cov
 		else:
-			eig_ind = tof_ind
+			eigvecs = _eigvecs
+			eig_ind = n_tof
 	else: 
 		eigvecs = np.eye(n_tof)
 		eig_ind = n_tof # all the eigvals are allowable
@@ -276,6 +278,7 @@ def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3,
 
                 elif error_approx == "kde": ### single kde estimate for the entire sky
                         samples = np.arange(-bound, bound+dt, dt)
+#                        samples = np.linspace(-10*e, 10*e, 1e5+1)
 			kde = singlekde(samples, tof_err, e, verbose=verbose, timing=timing)
 			errs.append( kde )
 
@@ -445,9 +448,10 @@ class TimingNetwork(utils.Network):
 		return sorted(keys)
 		
 	###
-	def likelihood(self, toa):
+	def likelihood(self, toa, verbose=False):
 		""" computes the likelihood of observing toa """
 		toa = np.dot(toa, self.basis) # convert to correct basis
+		if verbose: print "tof:\t",toa
 		if self.error_approx == "gaussian":
                         return gaussian_likelihood(toa, self.tof_map, self.errors)
 
@@ -595,7 +599,10 @@ if __name__ == "__main__":
 	if opts.verbose: 
 		print "computing prior_map :",opts.prior
 		if opts.time: to=time.time()
-	ap_map =  __ap_map(npix, network, pixarray=None, no_psd=True) # we don't use a psd because this was intended for LHO-LLO networks
+	if opts.prior != "flat":
+		ap_map =  __ap_map(npix, network, pixarray=None, no_psd=True) # we don't use a psd because this was intended for LHO-LLO networks
+	else:
+		ap_map = np.ones((npix,2))
 	prior_map = prior(ap_map, which=opts.prior)
 	if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
 
@@ -656,7 +663,7 @@ if __name__ == "__main__":
 		posterior = np.zeros((npix,2)) # ipix, p(ipix|d)
 		posterior[:,0] = pixarray[:,0]
 
-		posterior[:,1] = network.likelihood(toa) * prior_map
+		posterior[:,1] = network.likelihood(toa, verbose=opts.verbose) * prior_map
 
 		### normalize posterior
 		posterior[:,1] /= sum(posterior[:,1])
