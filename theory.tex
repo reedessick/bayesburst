@@ -335,7 +335,7 @@ p(h_j) \propto \mathrm{exp}\left( -(h_k-H_k)^\ast Z_{kj} (h_j-H_j) \right)
  we obtain the following
 
 \begin{equation}
-p(\theta, \phi| d_\beta) = p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - (\hat{h}_j-H_j)^\ast \left(Z_{jk} - Z_{jm} \Phi^{-1}_{mn} Z_{nk} \right) (\hat{h}_k+H_k) \right) \sqrt{(2\pi)^{N_p} \left|\Phi^{-1}\right|}
+p(\theta, \phi| d_\beta) = p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - (\hat{h}_j-H_j)^\ast \left(Z_{jk} - Z_{jm} \Phi^{-1}_{mn} Z_{nk} \right) (\hat{h}_k-H_k) \right) \sqrt{(2\pi)^{N_p} \left|\Phi^{-1}\right|}
 \end{equation}
 
 Furthermore, we may consider linear combinations of gaussians
@@ -347,7 +347,7 @@ p(h_j) = \sum_{N} C_N \cdot \mathrm{exp}\left( -\left(h_k-H^{(N)}_k\right)^\ast 
 where $N$ indexes the gaussian. Again, choice of the $Z_{kj}^{(N)}$ are somewhat arbitrary, but each term in this sum can be evaluated through the marginalization. We might be able to decompose more general priors into this form, which will then give us an analytic forumla for the posterior in terms of the decomposition. Explicitly, this is\footnote{With clever algebra, we may be able to cast this into something more recognizable. For instance, the sum of the products should be the product of the sums and we can exchange the order of the $\sum_{N}$ and $\prod_{f}$.}
 
 \begin{eqnarray}
-p(\theta, \phi|d_\beta) & = & p(\theta, \phi) \sum\limits_{N} C_N \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - \left(\hat{h}_j-H^{(N)}_j\right)^\ast \left(Z^{(N)}_{jk} - Z^{(N)}_{jm} \left(A+Z^{(N)}\right)^{-1}_{mn} Z^{(N)}_{nk} \right) \left(\hat{h}_k+H^{(N)}_k\right) \right) \nonumber \\
+p(\theta, \phi|d_\beta) & = & p(\theta, \phi) \sum\limits_{N} C_N \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - \left(\hat{h}_j-H^{(N)}_j\right)^\ast \left(Z^{(N)}_{jk} - Z^{(N)}_{jm} \left(A+Z^{(N)}\right)^{-1}_{mn} Z^{(N)}_{nk} \right) \left(\hat{h}_k-H^{(N)}_k\right) \right) \nonumber \\
                         &   & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \times\ \sqrt{(2\pi)^{N_p} \left|\left(A+Z^{(N)}\right)^{-1}_{jk}\right|}
 \end{eqnarray}
 
