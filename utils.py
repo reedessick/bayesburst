@@ -76,9 +76,9 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 			Fx += (Xi*Yj + Yi*Xj)*Dij
 
 	### apply time-shits
-	if freqs:
+	if freqs != None:
 		freqs = np.array(freqs)
-		if dr:
+		if dr != None:
 			dx, dy, dz = dr
 			dt = dx*sin_theta*cos_phi + dy*sin_theta*sin_phi + dz*cos_theta
 		phs = np.exp(-1j*2*np.pi*freqs*dt)
@@ -213,11 +213,11 @@ class Network(object):
 	an object representing a network of gravitational wave detectors.
 	"""
 	detectors = dict()
-	freqs = None
-	Np = 2 # support only GR right now
 
 	###
-	def __init__(self, detectors=[]):
+	def __init__(self, detectors=[], freqs=None, Np=2):
+		self.freqs = np.array(freqs)
+		self.Np = Np
 		for detector in detectors:
 			self.__add_detector(detector)
 
@@ -248,8 +248,8 @@ class Network(object):
 
 	###
 	def __add_detector(self, detector):
-		if not self.freqs:
-			self.freqs = detector.get_psd().get_freqs()
+		if self.freqs == None:
+			self.freqs = detector.psd.get_freqs()
 		self.detectors[detector.name] = detector
 
 	###
@@ -314,7 +314,7 @@ class Network(object):
 			a=np.zeros((len(self.freqs), self.Np, self.Np))  #initialize a 3-D array (frequencies x polarizations x polarizations)
 			for detector in self.detectors.values():
 				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
-				_psd = detector.get_psd().interpolate(self.freqs)  #1-D array (frequencies)
+				_psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
 				for i in xrange(self.Np):
 					a[:,i,i] += np.abs(F[i])**2/_psd
 					for j in xrange(i+1,self.Np):
@@ -344,17 +344,17 @@ class Network(object):
 		sorted_detectors = self.detectors_list()
 		Nd = len(sorted_detectors)
 		if no_psd:
-			B = np.zeros((Nd, self.Np))
+			B = np.zeros((self.Np, Nd))
 			for d_ind, detector in enumerate(sorted_detectors):
 				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)
 				for i in xrange(self.Np):
-					B[d_ind,i] = F[i]
+					B[i,d_ind] = np.conjugate(F[i])
 		else:  #if given a psd
-			B = np.zeros((len(self.freqs), Nd, self.Np))  #initialize a 3-D array (freqs x detectors x polarizations)
+			B = np.zeros((len(self.freqs), self.Np, Nd), 'complex') #initialize a 3-D array (freqs x polarizations x detectors)
 			for d_ind, detector in enumerate(sorted_detectors):
 				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)   #tuple (pols) of 1-D arrays (frequencies)
 				for i in xrange(self.Np):
-						B[:,d_ind,i] = F[i]/detector.get_psd().interplate(self.freqs)
+						B[:,i,d_ind] = np.conjugate(F[i])/detector.psd.interpolate(self.freqs)
 		return B
 
 	###

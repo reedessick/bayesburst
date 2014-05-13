@@ -275,11 +275,11 @@ class Posterior(object):
 	#write function to estimate location of the event
 	
 	###
-	def __init__(self, freqs, network, hPrior, angPrior, data, nside_exp):
+	def __init__(self, freqs, network, hprior, angprior, data, nside_exp):
 		"""
 		*freqs is a 1-D array of frequencies
 		*network is a Network object defined in utils.py
-		*hPrior and angPrior are Prior objects, defined above
+		*hprior and angprior are Prior objects, defined above
 		*data is a 2-D array, (frequencies x detectors)
 		*nside = 2**nside_exp, nside_exp must be int
 		"""
@@ -288,27 +288,27 @@ class Posterior(object):
 		if "%s"%type(network) != "<class 'utils.Network'>":  #check that a valid network has been passed
 			raise ValueError, "network must be a utils.Network object"
 		self.network = network
-		self.ifos = network.detectors_list  #list of ifos in network
+		self.ifos = network.detectors_list()  #list of ifos in network
 		self.num_detect = len(self.ifos)	#number of ifos in network
 		
 		#Initialize priors (both h and ang)
-		if "%s"%type(hPrior) != "<class 'posteriors.hPrior'>":  #check that a valid hPrior has been passed
-			raise ValueError, "hPrior must be a posterior.hPrior object"
-		if "%s"%type(angPrior) != "<class 'posteriors.angPrior'>":  #check that a valid angPrior has been passed
-			raise ValueError, "angPrior must be a posteriors.angPrior object"
-		if hPrior.num_pol != network.Np:  #check that number of polarizations is consistent in both network and priors
+		if "%s"%type(hprior) != "<class 'posteriors.hPrior'>":  #check that a valid hprior has been passed
+			raise ValueError, "hprior must be a posterior.hPrior object"
+		if "%s"%type(angprior) != "<class 'posteriors.angPrior'>":  #check that a valid angprior has been passed
+			raise ValueError, "angprior must be a posteriors.angPrior object"
+		if hprior.num_pol != network.Np:  #check that number of polarizations is consistent in both network and priors
 			raise ValueError, "Number of polarizations must be consistent"
-		self.num_pol = hPrior.num_pol  #number of polarizations
-		self.hPrior = hPrior
-		self.angPrior = angPrior
+		self.num_pol = hprior.num_pol  #number of polarizations
+		self.hprior = hprior
+		self.angprior = angprior
 		
 		#Intialize list of frequencies
 		self.len_freqs = np.shape(np.array(freqs))[0]  #number of frequency bins
-		if not len_freqs:
+		if not self.len_freqs:
 			raise ValueError, "freqs must have at least 1 entry"
 		self.freqs = np.array(freqs)  #1-D array of specified frequencies
-		if (self.freqs != hPrior.freqs) or (self.freqs != network.freqs):  #check that same freqs are used for prior and network
-			raise ValueError, "specified frequencies must match those in hPrior and angPrior"
+		if (self.freqs.all() != hprior.freqs.all()) or (self.freqs.all() != network.freqs.all()):  #check that same freqs are used for prior and network
+			raise ValueError, "specified frequencies must match those in hprior and angprior"
 		self.delta_f = (self.freqs[-1] - self.freqs[0])/(float(self.len_freqs) - 1.)  #frequency spacing
 
 		#Initialize data
@@ -332,6 +332,8 @@ class Posterior(object):
 		*A is a 3-D Network matrix (freqs x pols x pols), can be passed into this function to avoid recomputation
 		"""
 		
+		#ALSO PASS inA !!!!!###
+		
 		#Perform checks on the angular coordinates
 		if (theta < 0.) or (theta > np.pi):  #check value of theta
 			raise ValueError, "theta must be between 0 and pi"
@@ -341,24 +343,28 @@ class Posterior(object):
 			raise ValueError, "psi must be between 0 and 2*pi"
 			
 		#Initialize A
-		if Apass:
+		if Apass != None:
 			if np.shape(Apass)[0] != self.len_freqs:  #check that Apass defined at each freq
 				raise ValueError, "Apass must be defined at each frequency"
 			if (np.shape(Apass)[1] != self.num_pol) or (np.shape(Apass)[2] != self.num_pol):  #check that Apass has correct polarization shape
 				raise ValueError, "Apass matrices must have correct polarization shape"
 			A = Apass
+			for i in np.arange(self.len_freqs):
+				if linalg.det(A[i]) == 0:  #check that A is invertible at each frequency
+					raise ValueError, "Currently A must be invertible at each frequency"
+			inA = linalg.inv(A)
 		else:
 			A = self.network.A(theta=theta, phi=phi, psi=psi, no_psd=False)  #3-D array (frequencies x polarizations x polarizations)
 			for i in np.arange(self.len_freqs):
 				if linalg.det(A[i]) == 0:  #check that A is invertible at each frequency
 					raise ValueError, "Currently A must be invertible at each frequency"
 			inA = linalg.inv(A)
-		
+			
 		#Initialize B
 		B = self.network.B(theta=theta, phi=phi, psi=psi, no_psd=False)  #3-D array (frequencies x polarizations x detectors)
 		
 		#Calculate h_ML
-		h_ML = np.zeros((self.len_freqs, self.num_pol))  #initialize h_ML as 2-D array (frequencies x polarizations)
+		h_ML = np.zeros((self.len_freqs, self.num_pol), 'complex')  #initialize h_ML as 2-D array (frequencies x polarizations)
 		for fi in xrange(self.len_freqs):
 			for j in xrange(self.num_pol):
 				for k in xrange(self.num_pol):
@@ -394,7 +400,7 @@ class Posterior(object):
 		h_ML_conj = np.conj(h_ML)
 	
 		#Calculate P = A + Z
-		Z = self.hPrior.incovariance  #3-D array (frequencies * polarizations * polarizations)
+		Z = self.hprior.incovariance  #3-D array (frequencies * polarizations * polarizations)
 		if np.shape(A) != np.shape(Z): #check that dimensions of A and Z are equal
 			raise ValueError, "Dimensions of A and Z must be equal"
 		P = A + Z
@@ -403,12 +409,13 @@ class Posterior(object):
 				raise ValueError, "Currently P must be invertible at each frequency"
 		inP = linalg.inv(P)
 		
-		#Get hPrior means
-		means = self.hPrior.means  #2-D array (frequency * polarization)
+		#Get hprior means
+		means = self.hprior.means  #2-D array (frequency * polarization)
 		means_conj = np.conj(means)
 		
 		#Calculate posterior_weight
-		posterior_weight = 1.
+		#posterior_weight = 1.
+		log_posterior_weight = 0.
 		for f in xrange(len(self.freqs)):
 			term1_jk = 0.
 			term2_jk = 0.
@@ -426,11 +433,14 @@ class Posterior(object):
 					for m in xrange(self.num_pol):
 						for n in xrange(self.num_pol):
 							term3_jmnk +=  vec_j * Z[f][j][m] * inP[f][m][n] * Z[f][n][k] * vec_k
-			
+				
 			exponent = self.delta_f*( term1_jk - term2_jk + term3_jmnk ) #exponential term for a given frequency
-			posterior_weight *= self.hPrior.amplitudes[f]*np.exp(exponent) * np.sqrt( pow(2.*np.pi, self.num_pol) * linalg.det(inP[f]) )  #cumulative product of contributions at each frequency
-		
-		posterior_weight *= self.angPrior.angular_prior(theta, phi)  #multiply by angular prior to give unnormalized posterior
+			log_posterior_weight += np.log(self.hprior.amplitudes[f]) + exponent + np.log( np.sqrt( pow(2.*np.pi, self.num_pol) * linalg.det(inP[f]) ) )
+			
+		log_posterior_weight += np.log(self.angprior.prior_weight(theta=theta, phi=phi))
+		print log_posterior_weight
+		posterior_weight = np.exp(log_posterior_weight)
+		print posterior_weight
 		return posterior_weight
 	
 	###
@@ -447,7 +457,7 @@ class Posterior(object):
 			pixarray[ipix,:] = np.array([ipix, theta, phi])
 		
 		#Build unnormalized posterior over whole sky
-		posterior = np.zeros((npix,2)) # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
+		posterior = np.zeros((npix,2), 'complex') # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
 		for ipix in pixarray[:,0]:
 			posterior[ipix,0] = pixarray[ipix,0]  #assigns pixel indices
 			posterior[ipix,1] = self.posterior_weight(theta=pixarray[ipix,1], phi=pixarray[ipix,2]) #assigns posterior weights
@@ -469,7 +479,7 @@ class Posterior(object):
 		#Calculate area of each pixel
 		pixarea = hp.nside2pixarea(self.nside)  #area of each pixel
 		
-		#Plot angPrior probability density function as skymap
+		#Plot posterior probability density function as skymap
 		fig = plt.figure(0)
 		hp.mollview(posterior[:,1]/pixarea, fig=0, title=title, unit=unit, flip="geo", min=0.0)
 		ax = fig.gca()
