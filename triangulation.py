@@ -104,7 +104,7 @@ if __name__ == "__main__":
 			if opts.time: to = time.time()
 		### load errors and build estimation functions
 		e_cache = utils.load_toacache(opts.e_cache)
-		network.toacache_to_errs(e_cache, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, scatter_errors=opts.scatter_errors, output_dir=opts.output_dir, tag=opts.tag, diag=opts.diag)	
+		network.toacache_to_errs(e_cache, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, scatter_errors=opts.scatter_errors, output_dir=opts.output_dir, tag=opts.tag, diag=opts.diag, dt=1e-5)	
 		if opts.verbose:
 			print "built TimingNetwork\n\t", network
 			if opts.time: print "\t", time.time()-to, "sec"

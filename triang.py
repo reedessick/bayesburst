@@ -136,7 +136,8 @@ def __hist_errors(tof_err, label, n_err=None, m=None, e=None, kde=None):
         if kde:
 		ylim = ax.get_ylim()
 		xlim = ax.get_xlim()
-		ax.plot(kde.__dict__['x']*1e3, kde.__dict__['y'], color="r", alpha=0.5, label="kde estimate")
+#		ax.plot(kde.__dict__['x']*1e3, kde.__dict__['y'], color="r", alpha=0.5, label="kde estimate")
+		ax.plot(kde[0]*1e3, kde[1], color="r", alpha=0.5, label="kde estimate")
 		ax.set_ylim(ymin=ylim[0])
 		ax.set_xlim(xlim)
 	ax.grid(True)
@@ -186,7 +187,7 @@ def __scatter_errors(tof_err, label, _tof_err, _label, n_err=None, m=None, e=Non
 	return fig, ax
 
 ###
-def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-3, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag="", diag=False):
+def toacache_to_errs(toacache, timing_network, error_approx="gaussian", dt=1e-5, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag="", diag=False):
         """
         loads observed time-fo-arrival information and builds errors suitable to be loaded into TimingNetwork
         """
@@ -367,7 +368,8 @@ def singlekde(samples, tof_err, e, precision_limit=0.001, max_iters=5, verbose=F
 			samples_kde = fbw_samples_kde
 
 	### build interpolation object and add it to the network
-	return pdfe.scipy.interpolate.interp1d(samples, samples_kde, kind="linear")
+	return samples, samples_kde
+#	return pdfe.scipy.interpolate.interp1d(samples, samples_kde, kind="linear")
 
 ###
 class IndependentKDE(object):
@@ -392,8 +394,10 @@ class IndependentKDE(object):
                         if shape_x[1] != len(self.kdes):
                                 raise ValueError, "bad shape for x", shape_x
                         p = np.ones((shape_x[0],))
-                        for ind, kde in enumerate(self.kdes):
-                                p *= kde(x[:,ind])
+#                        for ind, kde in enumerate(self.kdes):
+#				p *= kde(x[:,ind])
+                        for ind, (samples, samples_kde) in enumerate(self.kdes):
+                                p *= np.interp(x[:,ind], samples, samples_kde)
 
                         return p
                 else:
