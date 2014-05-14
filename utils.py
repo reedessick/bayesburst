@@ -81,7 +81,7 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 		if dr != None:
 			dx, dy, dz = dr
 			dt = dx*sin_theta*cos_phi + dy*sin_theta*sin_phi + dz*cos_theta
-		phs = np.exp(-1j*2*np.pi*freqs*dt)
+		phs = np.exp(-2j*np.pi*freqs*dt)
 
 		if isinstance(Fp, np.float): # this avoids weird indexing with outer and a single point
 			Fp *= phs
@@ -424,8 +424,8 @@ c = 299792458.0 #m/s
 #
 #=================================================
 default_psd = PSD(np.array([0]), np.array([1]), kind="linear")
-ligo_design_psd = PSD(np.genfromtxt('PSDs/f_baseline.txt')[:,0], np.genfromtxt('PSDs/f_baseline.txt')[:,1]**2, kind="linear")
-virgo_design_psd = PSD(np.genfromtxt('PSDs/f_AVirgoBaseline.txt')[:,0], np.genfromtxt('PSDs/f_AVirgoBaseline.txt')[:,1]**2, kind="linear")
+ligo_design_psd = PSD(np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_baseline.txt')[:,0], np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_baseline.txt')[:,1]**2, kind="linear")
+virgo_design_psd = PSD(np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_AVirgoBaseline.txt')[:,0], np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_AVirgoBaseline.txt')[:,1]**2, kind="linear")
 
 ### Detector locations and orientations taken from Anderson, et all PhysRevD 63(04) 2003
 

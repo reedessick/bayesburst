@@ -374,7 +374,7 @@ class Posterior(object):
 		return h_ML
 	
 	### 	
-	def posterior_weight(self, theta, phi, psi=0.):
+	def log_posterior_weight(self, theta, phi, psi=0.):
 		"""
 		*Calculates posterior weight (i.e. unnormalized posterior value) at a set of angular coordinates
 		*Theta, phi, and psi are angular coordinates (in radians).
@@ -425,7 +425,7 @@ class Posterior(object):
 				vec_j = h_ML_conj[f][j] - means_conj[f][j]
 				
 				for k in xrange(self.num_pol):
-					vec_k = h_ML[f][k] + means[f][k]
+					vec_k = h_ML[f][k] - means[f][k]
 					
 					term1_jk += h_ML_conj[f][j]*A[f][j][k]*h_ML[f][k]
 					term2_jk += vec_j * Z[f][j][k] * vec_k
@@ -438,10 +438,7 @@ class Posterior(object):
 			log_posterior_weight += np.log(self.hprior.amplitudes[f]) + exponent + np.log( np.sqrt( pow(2.*np.pi, self.num_pol) * linalg.det(inP[f]) ) )
 			
 		log_posterior_weight += np.log(self.angprior.prior_weight(theta=theta, phi=phi))
-		print log_posterior_weight
-		posterior_weight = np.exp(log_posterior_weight)
-		print posterior_weight
-		return posterior_weight
+		return log_posterior_weight
 	
 	###
 	def build_posterior(self):
@@ -456,11 +453,18 @@ class Posterior(object):
 			theta, phi = hp.pix2ang(self.nside, ipix)  #maps theta and phi to ipix
 			pixarray[ipix,:] = np.array([ipix, theta, phi])
 		
-		#Build unnormalized posterior over whole sky
+		#Build unnormalized log posterior over whole sky
 		posterior = np.zeros((npix,2), 'complex') # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
 		for ipix in pixarray[:,0]:
 			posterior[ipix,0] = pixarray[ipix,0]  #assigns pixel indices
-			posterior[ipix,1] = self.posterior_weight(theta=pixarray[ipix,1], phi=pixarray[ipix,2]) #assigns posterior weights
+			posterior[ipix,1] = self.log_posterior_weight(theta=pixarray[ipix,1], phi=pixarray[ipix,2]) #assigns posterior weights
+		
+		#Find max log posterior value and subtract it from all log posterior values (to make exponentiation feasible)
+		max_log_pos = max(posterior[:,1])
+		posterior[:,1] -= max_log_pos
+		
+		#Convert unnormalized log posterior to actual unormalized posterior
+		posterior[:,1] = np.exp(posterior[:,1])
 		
 		#Normalize posterior
 		posterior[:,1] /= sum(posterior[:,1]) #normalizes posterior
@@ -481,13 +485,13 @@ class Posterior(object):
 		
 		#Plot posterior probability density function as skymap
 		fig = plt.figure(0)
-		hp.mollview(posterior[:,1]/pixarea, fig=0, title=title, unit=unit, flip="geo", min=0.0)
+		hp.mollview(np.log10(posterior[:,1]/pixarea), fig=0, title=title, unit=unit, flip="geo", min=None, max=None)
 		ax = fig.gca()
 		hp.graticule()
 		
 		#Plot injected location of event, if given
-		if inj_theta or inj_phi:
-			if (not inj_theta) or (not inj_phi):  #check that both inj_theta and inj_phi are given
+		if (inj_theta != None) or (inj_phi != None):
+			if (inj_theta == None) or (inj_phi == None):  #check that both inj_theta and inj_phi are given
 				raise ValueError, "If plotting injected event, must specify both inj_theta and inj_phi"
 			if (inj_theta < 0.) or (inj_theta > np.pi):  #check value of inj_theta
 				raise ValueError, "inj_theta must be between 0 and pi"
@@ -498,8 +502,8 @@ class Posterior(object):
 			inj_marker.set_markeredgewidth(2)
 		
 		#Plot estimated location of event, if given
-		if est_theta or est_phi:
-			if (not est_theta) or (not est_phi):  #check that both est_theta and est_phi are given
+		if (est_theta != None) or (est_phi != None):
+			if (est_theta == None) or (est_phi == None):  #check that both est_theta and est_phi are given
 				raise ValueError, "If plotting estimated event, must specify both est_theta and est_phi"
 			if (est_theta < 0.) or (est_theta > np.pi):  #check value of est_theta
 				raise ValueError, "est_theta must be between 0 and pi"
