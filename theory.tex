@@ -404,8 +404,9 @@ Alternatively, we can attempt to calculate the posterior for the actual signal $
 p(h_j|d_\beta) = \int\mathrm{d}\cos\theta\mathrm{d}\phi\, \frac{p(d_\beta|h_j, \theta, \phi)p(h_j, \theta, \phi)}{p(d_\beta)}
 \end{equation}
 
-This is a much more difficult problem, and unfortunately it may not be tractable analytically. We can always compute a \emph{p-value} for the null hypothesis : $p(h_j=0\, \forall\, f|d_\beta)$, but this is simply a statement about the likelihood of a particular noise realization. The more interesting computation is to find the maximum (maxima?) of the posterior and set confidence regions around it (them). An all-sky search can then be performed by monitoring the lower bound on this confidence region. Furthermore, because we have not assumed anything about the \emph{shape} of the waveform, this posterior should cover the entire signal-space and include every possible waveform.
+This is a much more difficult problem, and unfortunately it may not be tractable analytically. However, for each ($\theta,\phi$) we can compute the mean and variance of the gaussian likelihood function. Marginalization can be done numerically by simply summing over pixels. This can be done by recording the mean, covariance matrix, and amplitude of the likelihood associated with each pixel. We can then compute the posterior for many values of $h_j$ by simply computing the gaussians and summing. Arbitrary priors can be applied to $h_j$ in a straightforward manner a postiori. Furthermore, priors on ($\theta,\phi$) can also be incorporated as part of the summation without much computational complexity.
 
+With this posterior in hand, we can make definite statements about the p-value associated with an observed strain that is inconsistent with no-signal. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Example: one polarization, two detectors}
