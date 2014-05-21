@@ -4,12 +4,31 @@ import healpy as hp
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import decimal
 
 #=================================================
 #
 #                Prior classes
 #
 #=================================================
+
+
+def hpri_neg4(len_freqs, num_pol):
+	num_gaus = 16
+	variances = np.logspace(start=-56,stop=-41,num=num_gaus)
+	amp_powers = np.logspace(start=112,stop=82,num=num_gaus)
+	
+	amplitudes = 2.21807*amp_powers*np.ones((len_freqs, num_gaus))  #2-D array (frequencies x Gaussians)
+	means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
+	covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
+	for n in xrange(num_gaus):
+		for i in xrange(num_pol):
+			for j in xrange(num_pol):
+				if i == j:
+					covariance[:,i,j,n] = variances[n]  #non-zero on polarization diagonals
+	return amplitudes, means, covariance, num_gaus
+
+
 class hPrior(object):
 	"""
 	An object that creates the strain prior.  Because this framework is an excercise
@@ -20,21 +39,22 @@ class hPrior(object):
 	#maybe add function that calculates full prior over all freqs
 	
 	###
-	def __init__(self, freqs, means, covariance, amplitudes=1., num_pol=2):
+	def __init__(self, freqs, means, covariance, amplitudes=1., num_gaus=1, num_pol=2):
 		"""
-		Priors are currently assumed to have form C_N(f) * exp( - ( h_k(f) - mean_k(f) )^* Z_kj(f) ( h_j(f) - mean_j(f) ) )
+		Priors are assumed to have form \sum_over N{
+		C_N(f) * exp( - ( h_k(f) - mean_k(f)_N )^* Z_kj(f)_N ( h_j(f) - mean_j(f)_N ) ) }
 		Thus:
 			*freqs is a 1-D array
-			*means is a 2-D array, (frequencies x polarizations)
-			*covariance is a 3-D array, (frequencies x polarizations x polarizations)
-			*amplitudes is a 1-D array, (frequencies) (*for now*)
+			*means is a 3-D array, (frequencies x polarizations x Gaussians)
+			*covariance is a 4-D array, (frequencies x polarizations x polarizations x Gaussians)
+			*amplitudes is a 2-D array, (frequencies x Gaussians)
 		N.b that values must be specified over relevant frequency range
 		"""
 		
 		#Initialize frequencies
-		len_freqs = len(np.array(freqs))
-		if not len_freqs:
-			raise ValueError, "freqs must have at least 1 entries"
+		self.len_freqs = len(np.array(freqs))
+		if not self.len_freqs:
+			raise ValueError, "freqs must have at least 1 entry"
 		self.freqs = np.array(freqs)
 		
 		#Initialize polarizations
@@ -42,38 +62,48 @@ class hPrior(object):
 			raise ValueError, "Must specify at least one polarization"
 		self.num_pol = num_pol
 		
+		#Initialize amplitudes
+		self.num_gaus = num_gaus
+		if type(amplitudes) == int or type(amplitudes) == float:
+			self.amplitudes = amplitudes*np.ones((self.len_freqs, self.num_gaus))  #2-D array (frequencies x Gaussians)
+		else:
+			if np.shape(np.array(amplitudes))[0] != self.len_freqs:  #make sure amplitude defined at every frequency
+				raise ValueError, "Freqs and amplitudes must have the same length"
+			if np.shape(np.array(amplitudes))[1] != self.num_gaus:  #make sure amplitude defined for every Gaussian
+				raise ValueError, "Must define amplitude for every Gaussian"
+			self.amplitudes = np.array(amplitudes)  #2-D array (frequencies x Gaussians)
+		
 		#Initialize prior means
 		if type(means) == int or type(means) == float:
-			self.means = np.array(len_freqs*[self.num_pol*[means]]) #2-D array (frequencies x polarizations)
+			self.means = means*np.ones((self.len_freqs, self.num_pol, self.num_gaus))  #3-D array (frequencies x polarizations x # Gaussians)
 		else:
-			if np.shape(np.array(means))[0] != len_freqs:  #make sure mean vector specified at each frequency
-				raise ValueError, "freqs and means must have the same length"
+			if np.shape(np.array(means))[0] != self.len_freqs:  #make sure mean vector specified at each frequency
+				raise ValueError, "Freqs and means must have the same length"
 			if np.shape(np.array(means))[1] != self.num_pol: #make sure mean specified for each polarization
-				raise ValueError, "must specify means for correct number of polarizations"
-			self.means = np.array(means)  #2-D array (frequencies x polarizations)
+				raise ValueError, "Must specify means for correct number of polarizations"
+			if np.shape(np.array(means))[2] != self.num_gaus:  #make sure mean defined for every Gaussian
+				raise ValueError, "Must define mean for every Gaussian"
+			self.means = np.array(means)  #3-D array (frequencies x polarizations x # Gaussians)
 		
 		#Initialize prior covariance	
 		if type(covariance) == int or type(covariance) == float:
-			self.covariance = np.array([covariance*np.identity(self.num_pol) for i in self.freqs]) #3-D array (frequencies x polarizations x polarizations)
+			self.covariance = np.zeros((self.len_freqs, self.num_pol, self.num_pol, self.num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
+			for i in xrange(self.num_pol):
+				for j in xrange(self.num_pol):
+					if i == j:
+						self.covariance[:,i,j,:] = covariance  #covariance on polarization diagonals		
 		else:
-			if np.shape(covariance)[0] != np.shape(self.freqs)[0]:  #make sure covariance matrix defined at every frequency
-				raise ValueError, "covariance matrices must have correct frequency length"
-			if np.shape(covariance)[1] != np.shape(covariance)[2]:  #make sure covariance matrices are square
-				raise ValueError, "At a given frequency, covariance matrix must be square"
-			self.covariance = covariance  #3-D array (frequencies x polarizations x polarizations)
-		
-		for i in xrange(len(self.freqs)):
-			if linalg.det(self.covariance[i]) == 0:  #check if covariance is invertible at each frequency
-				raise ValueError, "Currently covariance must be invertible at each frequency"
-		self.incovariance = linalg.inv(self.covariance)  #3-D array (frequencies x polarizations x polarizations)
-		
-		#Initialize amplitudes
-		if type(amplitudes) == int or type(amplitudes) == float:
-			self.amplitudes = np.array(len_freqs*[amplitudes])  #1-D array (frequencies)
-		else:
-			if np.shape(np.array(amplitudes))[0] != len_freqs:  #make sure amplitude defined at every frequency
-				raise ValueError, "freqs and amplitudes must have the same length"
-			self.amplitudes = np.array(amplitudes)  #1-D array (frequencies)
+			if np.shape(covariance)[0] != self.len_freqs:  #make sure covariance matrix defined at every frequency
+				raise ValueError, "Covariance matrices must have correct frequency length"
+			if (np.shape(covariance)[1] != self.num_pol) or (np.shape(covariance)[2] != self.num_pol):  #make sure covariance matrices are square in correct # of polarizations
+				raise ValueError, "At a given frequency, covariance matrix must be square in correct # of polarizations"
+			if np.shape(covariance)[3] != self.num_gaus:  #make sure covariance defined for every Gaussian
+				raise ValueError, "Must define covariance for every Gaussian"
+			self.covariance = np.array(covariance)  #4-D array (frequencies x polarizations x polarizations x Gaussians)
+			
+		self.incovariance = np.zeros((self.len_freqs, self.num_pol, self.num_pol, self.num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)	
+		for n in xrange(self.num_gaus):
+			self.incovariance[:,:,:,n] = linalg.inv(self.covariance[:,:,:,n])
 	
 	###	
 	def f2i(self, f):
@@ -91,38 +121,6 @@ class hPrior(object):
 		takes index and returns frequency
 		"""
 		return self.freqs[i]
-	
-	###	
-	def means_f(self, f):
-		"""
-		returns value of means at frequency f
-		"""
-		findex = self.f2i(f)
-		return self.means[findex]
-		
-	###	
-	def covariance_f(self, f):
-		"""
-		returns covariance matrix at frequency f
-		"""
-		findex = self.f2i(f)
-		return self.covariance[findex]
-		
-	###	
-	def incovariance_f(self, f):
-		"""
-		returns inverse covariance matrix at frequency f
-		"""
-		findex = self.f2i(f)
-		return self.incovariance[findex]
-		
-	###	
-	def amplitude_f(self, f):
-		"""
-		returns value of ampiltude at frequency f
-		"""
-		findex = self.f2i(f)
-		return self.amplitudes[findex]
 		
 	###	
 	def prior_weight_f(self, h, f):
@@ -138,21 +136,25 @@ class hPrior(object):
 			raise ValueError, "Must define value of h for each polarization"
 		h = np.array(h)  #1-D array (polarizations)
 		
-		#Calculate matrix multiplication components at f
-		displacement = h - self.means_f(f)
-		displacement_conj = np.conj(displacement)
-		matrix = self.incovariance_f(f)
+		#Find index of specified frequency
+		f_in = f2i(f)
 		
-		#Calculate prior weight through matrix multiplication
-		exponent = 0.  #exponential term of Gaussian
-		for i in xrange(self.numpol):
-			for j in xrange(self.num_pol):
-				exponent += -displacement_conj[i] * matrix[i][j] * displacement[j]
-		weight = self.amplitude_f(f)*np.exp(exponent)
+		weight = 0.
+		for n in xrange(self.num_gaus):
+			#Calculate matrix multiplication components at f
+			displacement = h - self.means[f_in,:,n]
+			displacement_conj = np.conj(displacement)
+			matrix = self.incovariance[f_in,:,:,n]
+		
+			#Calculate prior weight through matrix multiplication
+			exponent_n = 0.  #exponential term of Gaussian
+			for i in xrange(self.num_pol):
+				for j in xrange(self.num_pol):
+					exponent_n += -displacement_conj[i] * matrix[i,j] * displacement[j]
+			weight += self.amplitudes[f_in,n]*np.exp(exponent_n)
+			
 		return weight
 	 
-
-
 
 class angPrior(object):
 	"""
@@ -177,7 +179,7 @@ class angPrior(object):
 		
 		#Initialize prior type
 		if prior_opt != 'uniform':
-			raise ValueError, "Currently only compatible with uniform prior option"
+			raise ValueError, "Currently only compatible with uniform angPrior option"
 		self.prior_opt = prior_opt
 	
 	###
@@ -198,7 +200,7 @@ class angPrior(object):
 		if self.prior_opt == 'uniform':
 			return 1.
 		else:
-			raise ValueError, "Currently only compatible with uniform prior option"
+			raise ValueError, "Currently only compatible with uniform angPrior option"
 	
 	###		
 	def build_prior(self):
@@ -230,7 +232,7 @@ class angPrior(object):
 		*Plots a skymap of a given angPrior
 		"""
 		
-		#Checks on posterior, title, unit
+		#Checks on angprior, title, unit
 		#~~~~~~~~~~~
 		
 		#Calculate area of each pixel
@@ -324,15 +326,13 @@ class Posterior(object):
 		self.nside = 2**nside_exp
 
 	###		
-	def h_ML(self, theta, phi, psi=0., Apass=None):
+	def h_ML(self, theta, phi, psi=0., Apass=None, inApass=None):
 		"""
 		*Calculates h_ML (maximum likelihood estimator of strain) at a given set of angular coordinates.
 		*Returns a 2-D array (frequencies x polarizations).
 		*Theta, phi, and psi are angular coordinates (in radians).
 		*A is a 3-D Network matrix (freqs x pols x pols), can be passed into this function to avoid recomputation
 		"""
-		
-		#ALSO PASS inA !!!!!###
 		
 		#Perform checks on the angular coordinates
 		if (theta < 0.) or (theta > np.pi):  #check value of theta
@@ -343,21 +343,19 @@ class Posterior(object):
 			raise ValueError, "psi must be between 0 and 2*pi"
 			
 		#Initialize A
-		if Apass != None:
+		if (Apass != None) and (inApass != None):
 			if np.shape(Apass)[0] != self.len_freqs:  #check that Apass defined at each freq
 				raise ValueError, "Apass must be defined at each frequency"
 			if (np.shape(Apass)[1] != self.num_pol) or (np.shape(Apass)[2] != self.num_pol):  #check that Apass has correct polarization shape
 				raise ValueError, "Apass matrices must have correct polarization shape"
+			if np.shape(inApass)[0] != self.len_freqs:  #check that inApass defined at each freq
+				raise ValueError, "inApass must be defined at each frequency"
+			if (np.shape(inApass)[1] != self.num_pol) or (np.shape(inApass)[2] != self.num_pol):  #check that inApass has correct polarization shape
+				raise ValueError, "inApass matrices must have correct polarization shape"
 			A = Apass
-			for i in np.arange(self.len_freqs):
-				if linalg.det(A[i]) == 0:  #check that A is invertible at each frequency
-					raise ValueError, "Currently A must be invertible at each frequency"
-			inA = linalg.inv(A)
+			inA = inApass
 		else:
 			A = self.network.A(theta=theta, phi=phi, psi=psi, no_psd=False)  #3-D array (frequencies x polarizations x polarizations)
-			for i in np.arange(self.len_freqs):
-				if linalg.det(A[i]) == 0:  #check that A is invertible at each frequency
-					raise ValueError, "Currently A must be invertible at each frequency"
 			inA = linalg.inv(A)
 			
 		#Initialize B
@@ -376,7 +374,7 @@ class Posterior(object):
 	### 	
 	def log_posterior_weight(self, theta, phi, psi=0.):
 		"""
-		*Calculates posterior weight (i.e. unnormalized posterior value) at a set of angular coordinates
+		*Calculates log posterior weight (i.e. unnormalized log posterior value) at a set of angular coordinates
 		*Theta, phi, and psi are angular coordinates (in radians).
 		"""
 		
@@ -390,60 +388,65 @@ class Posterior(object):
 				
 		#Calculate A
 		A = self.network.A(theta=theta, phi=phi, psi=psi, no_psd=False)  #3-D array (frequencies x polarizations x polarizations)
-		for i in range(self.len_freqs):
-			if linalg.det(A[i]) == 0:  #check that A is invertible at each frequency
-				raise ValueError, "Currently A must be invertible at each frequency"
 		inA = linalg.inv(A)
 		
 		#Calculate h_ML (maximum likelihood strain estimator)
-		h_ML = self.h_ML(theta=theta, phi=phi, psi=psi, Apass=A)		
+		h_ML = self.h_ML(theta=theta, phi=phi, psi=psi, Apass=A, inApass=inA)		
 		h_ML_conj = np.conj(h_ML)
 	
-		#Calculate P = A + Z
-		Z = self.hprior.incovariance  #3-D array (frequencies * polarizations * polarizations)
-		if np.shape(A) != np.shape(Z): #check that dimensions of A and Z are equal
-			raise ValueError, "Dimensions of A and Z must be equal"
-		P = A + Z
-		for i in xrange(self.len_freqs):
-			if linalg.det(P[i]) == 0:  #check that P is invertible at each frequency
-				raise ValueError, "Currently P must be invertible at each frequency"
-		inP = linalg.inv(P)
+		#Calculate inP = (A + Z)^(-1)
+		Z = self.hprior.incovariance  #4-D array (frequencies * polarizations * polarizations * Gaussians)
+		inP = np.zeros((self.len_freqs, self.num_pol, self.num_pol, self.hprior.num_gaus))  #4-D array (frequencies * polarizations * polarizations * Gaussians)
+		for n in xrange(self.hprior.num_gaus):
+			if np.shape(A) != np.shape(Z[:,:,:,n]): #check that dimensions of A and Z are equal for every Gaussian
+				raise ValueError, "Dimensions of A and Z must be equal for every Gaussian"
+			inP[:,:,:,n] = linalg.inv(A + Z[:,:,:,n])
 		
 		#Get hprior means
-		means = self.hprior.means  #2-D array (frequency * polarization)
+		means = self.hprior.means  #3-D array (frequencies * polarizations * Gaussians)
 		means_conj = np.conj(means)
 		
-		#Calculate posterior_weight
-		#posterior_weight = 1.
+		#Calculate log posterior_weight
 		log_posterior_weight = 0.
-		for f in xrange(len(self.freqs)):
-			term1_jk = 0.
-			term2_jk = 0.
-			term3_jmnk = 0.
+		g_array = np.zeros(self.hprior.num_gaus)
+		
+		for gaus in xrange(self.hprior.num_gaus):
 			
-			for j in xrange(self.num_pol):
-				vec_j = h_ML_conj[f][j] - means_conj[f][j]
+			for f in xrange(len(self.freqs)):		
+				term1_jk = 0.
+				term2_jk = 0.
+				term3_jmnk = 0.
 				
-				for k in xrange(self.num_pol):
-					vec_k = h_ML[f][k] - means[f][k]
+				for j in xrange(self.num_pol):
+					vec_j = h_ML_conj[f,j] - means_conj[f,j,gaus]
 					
-					term1_jk += h_ML_conj[f][j]*A[f][j][k]*h_ML[f][k]
-					term2_jk += vec_j * Z[f][j][k] * vec_k
-					
-					for m in xrange(self.num_pol):
-						for n in xrange(self.num_pol):
-							term3_jmnk +=  vec_j * Z[f][j][m] * inP[f][m][n] * Z[f][n][k] * vec_k
+					for k in xrange(self.num_pol):
+						vec_k = h_ML[f,k] - means[f,k,gaus]
+						
+						term1_jk += h_ML_conj[f,j]*A[f,j,k]*h_ML[f,k]
+						term2_jk += vec_j * Z[f,j,k,gaus] * vec_k
+						
+						for m in xrange(self.num_pol):
+							for n in xrange(self.num_pol):
+								term3_jmnk +=  vec_j * Z[f,j,m,gaus] * inP[f,m,n,gaus] * Z[f,n,k,gaus] * vec_k
 				
-			exponent = self.delta_f*( term1_jk - term2_jk + term3_jmnk ) #exponential term for a given frequency
-			log_posterior_weight += np.log(self.hprior.amplitudes[f]) + exponent + np.log( np.sqrt( pow(2.*np.pi, self.num_pol) * linalg.det(inP[f]) ) )
+				log_exp_f = self.delta_f * np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential at a frequency
+				log_amp_f = np.log10(self.hprior.amplitudes[f,gaus])  #log amplitude at a frequency
+				log_det_f = 0.5 * np.log10( pow(2.*np.pi, self.num_pol) * linalg.det(inP[f,:,:,gaus]) )  #log determinant at a frequency
+				
+				g_array[gaus] += log_exp_f + log_amp_f + log_det_f  #array containing the necessary sum of logs
 			
-		log_posterior_weight += np.log(self.angprior.prior_weight(theta=theta, phi=phi))
-		return log_posterior_weight
+		max_log = max(g_array)  #find maximum value
+		g_array -= max_log  #factor out maximum value
+		g_array = pow(10., g_array)  #convert from log value to actual value for each gaussian term
+		log_posterior_weight = max_log + np.log10( sum(g_array) )
+		log_posterior_weight += np.log10( self.angprior.prior_weight(theta=theta, phi=phi) )
+		return float(log_posterior_weight)
 	
 	###
 	def build_posterior(self):
 		"""
-		Builds the normalized posterior over the entire sky.
+		Builds the posterior over the entire sky.
 		"""
 		
 		#Pixelate the sky
@@ -454,27 +457,38 @@ class Posterior(object):
 			pixarray[ipix,:] = np.array([ipix, theta, phi])
 		
 		#Build unnormalized log posterior over whole sky
-		posterior = np.zeros((npix,2), 'complex') # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
+		log_posterior = np.zeros((npix,4)) # initalizes 2-D array (pixels x (ipix, log posterior weight)'s)
 		for ipix in pixarray[:,0]:
-			posterior[ipix,0] = pixarray[ipix,0]  #assigns pixel indices
-			posterior[ipix,1] = self.log_posterior_weight(theta=pixarray[ipix,1], phi=pixarray[ipix,2]) #assigns posterior weights
+			log_posterior[ipix,0] = pixarray[ipix,0]  #assigns pixel indices
+			log_posterior[ipix,1] = self.log_posterior_weight(theta=pixarray[ipix,1], phi=pixarray[ipix,2]) #assigns log posterior weights
+			log_posterior[ipix,2] = min(np.linalg.eigvals(self.network.A(theta=pixarray[ipix,1], phi=pixarray[ipix,2], psi=0., no_psd=False)[-1]))
+			log_posterior[ipix,3] = max(np.linalg.eigvals(self.network.A(theta=pixarray[ipix,1], phi=pixarray[ipix,2], psi=0., no_psd=False)[-1]))
 		
-		#Find max log posterior value and subtract it from all log posterior values (to make exponentiation feasible)
-		max_log_pos = max(posterior[:,1])
-		posterior[:,1] -= max_log_pos
+		#Remove glitched pixels
+		for ipix in xrange(npix):
+			if np.log10(log_posterior[ipix,2]) < 42.:
+				log_posterior[ipix,1] = -np.inf
 		
-		#Convert unnormalized log posterior to actual unormalized posterior
-		posterior[:,1] = np.exp(posterior[:,1])
+		#Find max log posterior value and subtract it from all log posterior values (partial normalization)
+		max_log_pos = max(log_posterior[:,1])		
+		log_posterior[:,1] -= max_log_pos
+		
+		#Convert log posterior to normal posterior
+		posterior = np.zeros((npix,4)) # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
+		posterior[:,0] = log_posterior[:,0]
+		posterior[:,1] = pow(10., log_posterior[:,1])
+		posterior[:,2] = log_posterior[:,2]
+		posterior[:,3] = log_posterior[:,3]
 		
 		#Normalize posterior
-		posterior[:,1] /= sum(posterior[:,1]) #normalizes posterior
+		posterior[:,1] /= sum(posterior[:,1])
 		
 		return posterior
 	
 	###	
-	def plot_posterior(self, posterior, figname, title=None, unit=None, est_theta=None, est_phi=None, inj_theta=None, inj_phi=None):
+	def plot_posterior(self, posterior, figname, title=None, unit='posterior density', est_theta=None, est_phi=None, inj_theta=None, inj_phi=None, min_val=None, max_val=None):
 		"""
-		*Plots a skymap of a given posterior
+		*Plots a skymap of a given posterior density
 		"""
 		
 		#Checks on posterior, title, unit
@@ -483,9 +497,9 @@ class Posterior(object):
 		#Calculate area of each pixel
 		pixarea = hp.nside2pixarea(self.nside)  #area of each pixel
 		
-		#Plot posterior probability density function as skymap
+		#Plot log posterior probability density function as skymap
 		fig = plt.figure(0)
-		hp.mollview(np.log10(posterior[:,1]/pixarea), fig=0, title=title, unit=unit, flip="geo", min=None, max=None)
+		hp.mollview(np.log10(posterior[:,1]), fig=0, title=title, unit=unit, flip="geo", min=min_val, max=max_val)
 		ax = fig.gca()
 		hp.graticule()
 		
