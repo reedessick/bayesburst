@@ -5,7 +5,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import decimal
-
+import time
 #=================================================
 #
 #                Prior classes
@@ -363,11 +363,10 @@ class Posterior(object):
 		
 		#Calculate h_ML
 		h_ML = np.zeros((self.len_freqs, self.num_pol), 'complex')  #initialize h_ML as 2-D array (frequencies x polarizations)
-		for fi in xrange(self.len_freqs):
-			for j in xrange(self.num_pol):
-				for k in xrange(self.num_pol):
-					for beta in xrange(self.num_detect):
-						h_ML[fi][j] += inA[fi][j][k] * B[fi][k][beta] * self.data[fi][beta]
+		for j in xrange(self.num_pol):
+			for k in xrange(self.num_pol):
+				for beta in xrange(self.num_detect):
+					h_ML[:,j] += inA[:,j,k] * B[:,k,beta] * self.data[:,beta]
 		
 		return h_ML
 	
@@ -377,6 +376,8 @@ class Posterior(object):
 		*Calculates log posterior weight (i.e. unnormalized log posterior value) at a set of angular coordinates
 		*Theta, phi, and psi are angular coordinates (in radians).
 		"""
+		
+		to = time.time()
 		
 		#Perform checks on angular coordinates
 		if (theta < 0.) or (theta > np.pi):  #check value of theta
@@ -407,40 +408,39 @@ class Posterior(object):
 		means_conj = np.conj(means)
 		
 		#Calculate log posterior_weight
-		log_posterior_weight = 0.
 		g_array = np.zeros(self.hprior.num_gaus)
-		
 		for gaus in xrange(self.hprior.num_gaus):
 			
-			for f in xrange(len(self.freqs)):		
-				term1_jk = 0.
-				term2_jk = 0.
-				term3_jmnk = 0.
+			term1_jk = np.zeros(self.len_freqs, 'complex')
+			term2_jk = np.zeros(self.len_freqs, 'complex')
+			term3_jmnk = np.zeros(self.len_freqs, 'complex')
+			
+			for j in xrange(self.num_pol):
+				vec_j = h_ML_conj[:,j] - means_conj[:,j,gaus]
 				
-				for j in xrange(self.num_pol):
-					vec_j = h_ML_conj[f,j] - means_conj[f,j,gaus]
+				for k in xrange(self.num_pol):
+					vec_k = h_ML[:,k] - means[:,k,gaus]
 					
-					for k in xrange(self.num_pol):
-						vec_k = h_ML[f,k] - means[f,k,gaus]
-						
-						term1_jk += h_ML_conj[f,j]*A[f,j,k]*h_ML[f,k]
-						term2_jk += vec_j * Z[f,j,k,gaus] * vec_k
-						
-						for m in xrange(self.num_pol):
-							for n in xrange(self.num_pol):
-								term3_jmnk +=  vec_j * Z[f,j,m,gaus] * inP[f,m,n,gaus] * Z[f,n,k,gaus] * vec_k
+					term1_jk += h_ML_conj[:,j]*A[:,j,k]*h_ML[:,k]
+					term2_jk += vec_j * Z[:,j,k,gaus] * vec_k
+					
+					for m in xrange(self.num_pol):
+						for n in xrange(self.num_pol):
+							term3_jmnk +=  vec_j * Z[:,j,m,gaus] * inP[:,m,n,gaus] * Z[:,n,k,gaus] * vec_k
+		
+			log_exp_f = self.delta_f * np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential, 1-D array (frequencies)
+			log_amp_f = np.log10(self.hprior.amplitudes[:,gaus])  #log amplitude, 1-D array (frequencies)
+			log_det_f = 0.5 * np.log10( linalg.det(inP[:,:,:,gaus]) )  #log determinant, 1-D array (frequencies)
 				
-				log_exp_f = self.delta_f * np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential at a frequency
-				log_amp_f = np.log10(self.hprior.amplitudes[f,gaus])  #log amplitude at a frequency
-				log_det_f = 0.5 * np.log10( pow(2.*np.pi, self.num_pol) * linalg.det(inP[f,:,:,gaus]) )  #log determinant at a frequency
-				
-				g_array[gaus] += log_exp_f + log_amp_f + log_det_f  #array containing the necessary sum of logs
+			g_array[gaus] = np.sum(log_exp_f + log_amp_f + log_det_f)  #array containing the necessary sum of logs
 			
 		max_log = max(g_array)  #find maximum value
 		g_array -= max_log  #factor out maximum value
 		g_array = pow(10., g_array)  #convert from log value to actual value for each gaussian term
 		log_posterior_weight = max_log + np.log10( sum(g_array) )
 		log_posterior_weight += np.log10( self.angprior.prior_weight(theta=theta, phi=phi) )
+		
+		#print (time.time() - to)
 		return float(log_posterior_weight)
 	
 	###
@@ -466,7 +466,7 @@ class Posterior(object):
 		
 		#Remove glitched pixels
 		for ipix in xrange(npix):
-			if np.log10(log_posterior[ipix,2]) < 42.:
+			if (log_posterior[ipix,3]/log_posterior[ipix,2]) > 1.e4:
 				log_posterior[ipix,1] = -np.inf
 		
 		#Find max log posterior value and subtract it from all log posterior values (partial normalization)
