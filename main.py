@@ -11,7 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import time
-import detectors
+import detector_cache as det_cache
 
 ###############################################################################
 ########################### specify parameters #############################
@@ -53,11 +53,11 @@ if not args:
 detectors = {}
 for arg in args:
 	if arg == "H1": #"LHO":
-		detectors["H1"] = detectors.LHO
+		detectors["H1"] = det_cache.LHO
 	elif arg == "L1":
-		detectors["L1"] = detectors.LLO
+		detectors["L1"] = det_cache.LLO
 	elif arg == "V1":
-		detectors["V1"] = detectors.Virgo
+		detectors["V1"] = det_cache.Virgo
 	else:
 		raise ValueError, "detector=%s not understood"%arg
 

@@ -9,6 +9,7 @@ pickle = utils.pickle
 import triang
 time = triang.time
 plt = triang.plt
+import detector_cache as det_cache
 
 import healpy as hp
 
@@ -80,11 +81,11 @@ if __name__ == "__main__":
 		detectors = {}
 		for arg in args:
 			if arg == "H1": #"LHO":
-				detectors[arg] = detectors.LHO
+				detectors[arg] = det_cache.LHO
 			elif arg == "L1": #"LLO":
-				detectors[arg] = detectors.LLO
+				detectors[arg] = det_cache.LLO
 			elif arg == "V1": #"Virgo":
-				detectors[arg] = detectors.Virgo
+				detectors[arg] = det_cache.Virgo
 			else:
 				raise ValueError, "detector=%s not understood"%arg
 		if opts.verbose and opts.time: print "\t", time.time()-to, "sec"
