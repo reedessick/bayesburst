@@ -80,11 +80,11 @@ if __name__ == "__main__":
 		detectors = {}
 		for arg in args:
 			if arg == "H1": #"LHO":
-				detectors[arg] = utils.LHO
+				detectors[arg] = detectors.LHO
 			elif arg == "L1": #"LLO":
-				detectors[arg] = utils.LLO
+				detectors[arg] = detectors.LLO
 			elif arg == "V1": #"Virgo":
-				detectors[arg] = utils.Virgo
+				detectors[arg] = detectors.Virgo
 			else:
 				raise ValueError, "detector=%s not understood"%arg
 		if opts.verbose and opts.time: print "\t", time.time()-to, "sec"

@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import time
+import detectors
 
 ###############################################################################
 ########################### specify parameters #############################
@@ -29,7 +30,6 @@ parser.add_option("-p", "--num-pol", default=2, type="int", help="the number of 
 parser.add_option("", "--fmin", default=40, type="float", help="the lowest frequency to analyze. should be specified in Hz")
 parser.add_option("", "--fmax", default=1000, type="float", help="the highest frequency to analyze. should be specified in Hz")
 parser.add_option("", "--df", default=0.1, type="float", help="the frequency spacing. should be specified in Hz")
-
 
 parser.add_option("-N", "--num-proc", default=1, type="int", help="the number of processors used to parallelize posterior computation")
 parser.add_option("-T", "--num-runs", default=1, type="int", help="the number of injections to simulate")
@@ -53,11 +53,11 @@ if not args:
 detectors = {}
 for arg in args:
 	if arg == "H1": #"LHO":
-		detectors["H1"] = utils.LHO
+		detectors["H1"] = detectors.LHO
 	elif arg == "L1":
-		detectors["L1"] = utils.LLO
+		detectors["L1"] = detectors.LLO
 	elif arg == "V1":
-		detectors["V1"] = utils.Virgo
+		detectors["V1"] = detectors.Virgo
 	else:
 		raise ValueError, "detector=%s not understood"%arg
 
@@ -96,7 +96,7 @@ angles = np.zeros((n_runs, 2.))
 angles[:,0] = np.arccos(cos_theta)
 angles[:,1] = phi
 
-if opts.verobse:
+if opts.verbose:
 	print "computing waveform"
 signal_h = inj.sinegaussian_f(f=freqs, to=0., phio=np.pi/2., fo=200., tau=0.01, hrss=5.e-22, alpha=np.pi/2)
 if opts.verbose:
@@ -124,37 +124,31 @@ for i_ang in xrange(n_runs):
 	phi = angles[i_ang,1]
 
 	if opts.verbose:
-		print "computing antenna patterns"
+		print "\tcomputing antenna patterns and projecting waveform onto detectors"
 		if opts.time: to=time.time()
 	F = np.zeros((nfreqs, num_pol, ndet), 'complex')
-	if opts.verbose and opts.time:
-		print "\t", time.time()-to
-
-	if opts.verobse:
-		print "projecting waveform onto detectors"
-		if opts.time: to=time.time()
 	signal = np.zeros((nfreqs, ndet), 'complex')
 	for i_det, det in enumerate(network.detector_names_list()):
 		F[:,:,i_det] = network.F_det(det_name=det, theta=theta, phi=phi, psi=0.)
 		signal[:,i_det] = inj.project(F[:,:,i_det], signal_h)
 	if opts.verbose and opts.time:
-		print "\t", time.time()-to
+		print "\t\t", time.time()-to
 
 	if opts.verbose:
-		print "generating noise"
+		print "\tgenerating noise"
 		if opts.time: to=time.time()
 	noise = np.zeros((nfreqs, ndet), 'complex')
 	for i_det, det in enumerate(network.detector_names_list()):
 		for i_f in xrange(nfreqs):
 			noise[i_f,i_det] = np.random.normal(loc=0, scale=np.sqrt( network.detectors[det].psd.interpolate(freqs[i_f]) ) ) * np.exp(np.random.uniform(0.,2*np.pi)*1.j)
 	if opts.verbose and opts.time:
-		print "\t", time.time()-to
+		print "\t\t", time.time()-to
 
 	data = signal + noise
 
 	for i_det, det in enumerate(network.detector_names_list()):
 		if opts.verbose:
-			print "plotting data in detector:", det
+			print "\tplotting data in detector:", det
 			if opts.time: to=time.time()
 		fig = plt.figure()
 		plt.plot(freqs, np.real(data[:,i_det]), 'r', label='Real')
@@ -166,18 +160,18 @@ for i_ang in xrange(n_runs):
 		fig.savefig("inj_data_%s_nd%d_%d"%(det, ndet, i_ang))
 		plt.close(fig)
 		if opts.verbose and opts.time:
-			print "\t", time.time()-to
+			print "\t\t", time.time()-to
 
 	###############################################################################
 	############################# Find posterior  ################################
 
 	if opts.verbose:
-		print "computing posterior"
+		print "\tcomputing posterior"
 		if opts.time: to=time.time()
 	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp)
 	post_built = posterior.build_posterior(num_proc=num_proc)
 	if opts.verbose and opts.time:
-		print "\t", time.time()-to
+		print "\t\t", time.time()-to
 
 	for i in xrange( np.shape(post_built)[0] ):
 		if post_built[i,1] == 0:
@@ -187,7 +181,7 @@ for i_ang in xrange(n_runs):
 	##########   Save Signal Stuff ############################################
 
 	if opts.verbose:
-		print "saving signal stuff"
+		print "\tsaving signal stuff"
 		if opts.time: to=time.time()
 	h_ML_theta_phi = posterior.h_ML(theta=theta, phi=phi)
 	save_strain0 = zip(signal_h[:,0], h_ML_theta_phi[:,0])
@@ -199,14 +193,14 @@ for i_ang in xrange(n_runs):
 		save_data = zip(data[:,i_det], inj.project(F[:,:,i_det], h_ML_theta_phi))
 		np.savetxt('data_theta_phi_%s_nd%d_%d'%(det, ndet, i_ang), save_data)
 
-	if opts.verobse and opts.time:
-		print "\t", time.time()-to
+	if opts.verbose and opts.time:
+		print "\t\t", time.time()-to
 
 	############################################################################
 	####################   Deal with Posterior results ##########################
 
 	if opts.verbose:
-		print "saving posterior"
+		print "\tsaving posterior"
 		if opts.time: to=time.time()
 	np.savetxt('posterior_nd%d_%d'%(ndet, i_ang), post_built)
 
@@ -219,4 +213,4 @@ for i_ang in xrange(n_runs):
 	plt.close(fig)
 
 	if opts.verbose and opts.time:
-		print "\t", time.time()-to
+		print "\t\t", time.time()-to
