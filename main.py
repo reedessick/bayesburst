@@ -19,7 +19,7 @@ num_proc = 6
 
 n_runs = 5
 
-freqs = np.arange(40. , 1000., 0.25)
+freqs = np.arange(40. , 1000., 0.1)
 
 detectors = {}
 detectors["H1"] = utils.LHO

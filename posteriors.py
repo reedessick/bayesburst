@@ -252,7 +252,7 @@ class Posterior(object):
 		
 		#Remove glitched pixels
 		for ipix in xrange(npix):
-			if np.log10(log_posterior[ipix,3]/log_posterior[ipix,2])> 3:  #glitched pixel defined by extreme ratio of max to min A eigenvalues
+			if np.log10(log_posterior[ipix,3]/log_posterior[ipix,2])> 4:  #glitched pixel defined by extreme ratio of max to min A eigenvalues
 				log_posterior[ipix,1] = -np.inf
 		
 		#Find max log posterior value and subtract it from all log posterior values (partial normalization)
