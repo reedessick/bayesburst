@@ -36,7 +36,6 @@ def sinegaussian_t(t, to, phio, fo, tau, hrss, alpha=np.pi/2):
 	
 	return np.outer(np.exp( -(t-to)**2/(2*tau**2) ) * np.array( [np.cos(phs), np.sin(phs)] ), ho)
 
-
 ###
 def sinegaussian_f(f, to, phio, fo, tau, hrss, alpha=np.pi/2):
 	"""

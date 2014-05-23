@@ -4,6 +4,7 @@ usage = """ a general utilities module for sky localization. All distances are m
 
 import numpy as np
 from numpy import linalg
+import pickle
 
 #=================================================
 #
@@ -12,6 +13,18 @@ from numpy import linalg
 #=================================================
 deg2rad = np.pi/180
 rad2deg = 1.0/deg2rad
+
+#========================
+# I/O utilies
+#========================
+def load_toacache(filename):
+	"""
+	loads time-of-arrival information from filename
+	"""
+	file_obj = open(filename, "r")
+	toacache = pickle.load(file_obj)
+	file_obj.close()
+	return toacache
 
 #========================
 # timing utilities
@@ -102,9 +115,6 @@ class PSD(object):
 	an object that holds onto power-spectral densities with associated frequency samples
 	we define a scipy.interpolate.interp1d object for convenience
 	"""
-	freqs = np.array([])
-	psd = np.array([])
-	interp = None
 
 	###
 	def __init__(self, freqs, psd, kind="linear"):
@@ -119,7 +129,7 @@ class PSD(object):
 		from scipy.interpolate import interp1d
 		self.freqs = freqs
 		self.psd = psd
-		self.interp = interp1d(freqs, psd, kind=kind, copy=False)
+#		self.interp = interp1d(freqs, psd, kind=kind, copy=False)
 
 	###
 	def check(self):
@@ -143,7 +153,8 @@ class PSD(object):
 
 	###
 	def interpolate(self, freqs):
-		return self.interp(freqs)
+#		return self.interp(freqs)
+		return np.interp(freqs, self.freqs, self.psd)
 
 #=================================================
 #
@@ -154,14 +165,16 @@ class Detector(object):
 	"""
 	an object representing a gravitational wave detector. methods are meant to be convenient wrappers for more general operations. 
 	"""
-	name = None  # detector's name (eg: H1)
-	dr = np.zeros((3,)) # r_detector - r_geocent
-	nx = np.zeros((3,)) # direction of the x-arm
-	ny = np.zeros((3,)) # direction of the y-arm
-	psd = None   # the psd for network (should be power, not amplitude)
 
 	###
 	def __init__(self, name, dr, nx, ny, psd):
+		"""
+	        name = None  # detector's name (eg: H1)
+	        dr = np.zeros((3,)) # r_detector - r_geocent
+        	nx = np.zeros((3,)) # direction of the x-arm
+	        ny = np.zeros((3,)) # direction of the y-arm
+        	psd = None   # the psd for network (should be power, not amplitude)
+		"""
 		self.name = name
 		if not isinstance(dr, np.ndarray):
 			dr = np.array(dr)
@@ -188,7 +201,7 @@ class Detector(object):
 
 	###
 	def get_psd(self):
-		return self.psd.get_psd()
+		return self.psd
 
 	###	
 	def dt_geocent(self, theta, phi):
@@ -212,14 +225,13 @@ class Network(object):
 	"""
 	an object representing a network of gravitational wave detectors.
 	"""
-	detectors = dict()
 
 	###
 	def __init__(self, detectors=[], freqs=None, Np=2):
-		self.freqs = np.array(freqs)
+		self.freqs = freqs
 		self.Np = Np
-		for detector in detectors:
-			self.__add_detector(detector)
+		self.detectors = {}
+		self.set_detectors(detectors)
 
 	###
 	def __len__(self):
@@ -249,7 +261,7 @@ class Network(object):
 	###
 	def __add_detector(self, detector):
 		if self.freqs == None:
-			self.freqs = detector.psd.get_freqs()
+			self.freqs = detector.get_psd().get_freqs()
 		self.detectors[detector.name] = detector
 
 	###
