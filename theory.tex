@@ -406,6 +406,8 @@ p(h_j|d_\beta) = \int\mathrm{d}\cos\theta\mathrm{d}\phi\, \frac{p(d_\beta|h_j, \
 
 This is a much more difficult problem, and unfortunately it may not be tractable analytically. However, for each ($\theta,\phi$) we can compute the mean and variance of the gaussian likelihood function. Marginalization can be done numerically by simply summing over pixels. This can be done by recording the mean, covariance matrix, and amplitude of the likelihood associated with each pixel. We can then compute the posterior for many values of $h_j$ by simply computing the gaussians and summing. Arbitrary priors can be applied to $h_j$ in a straightforward manner a postiori. Furthermore, priors on ($\theta,\phi$) can also be incorporated as part of the summation without much computational complexity.
 
+We should be careful that we add likelihoods using the same wave-frame coordinate system for all ($\theta,\phi$). Furthermore, we will reconstruct the distribution over the complex variables $h_j$, when we are most likely interested in $|h_j|$ which may require marginalization over the phase.
+
 With this posterior in hand, we can make definite statements about the p-value associated with an observed strain that is inconsistent with no-signal. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
