@@ -291,11 +291,24 @@ class Network(object):
 		ans = self.detectors.items()
 		ans.sort(key=lambda l: l[0]) # sort by detector names
 		return [l[1] for l in ans]
+		
+	def detector_names_list(self):
+		"""lists detector names in a consistent order"""
+		return sorted(self.detectors)
 
 	###
 	def contains_name(self, name):
 		"""checks to see if name is associated with any detector in the network"""
 		return self.detectors.has_key(name)
+	
+	###
+	def F_det(self, det_name, theta, phi, psi=0.):
+		"""Calculates 2-D antenna pattern array (frequencies x polarizations) for a given detector"""
+		F_det = np.zeros((len(self.freqs), self.Np), 'complex')
+		for i_f in xrange(len(self.freqs)):
+			for i_pol in xrange(self.Np):
+				F_det[i_f,i_pol] = self.detectors[det_name].antenna_patterns(theta=theta, phi=phi, psi=psi, freqs=self.freqs)[i_pol][i_f]
+		return F_det
 
 	###
 	def A(self, theta, phi, psi, no_psd=False):
