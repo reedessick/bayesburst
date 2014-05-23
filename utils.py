@@ -449,8 +449,12 @@ c = 299792458.0 #m/s
 #
 #=================================================
 default_psd = PSD(np.array([0]), np.array([1]), kind="linear")
-ligo_design_psd = PSD(np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_baseline.txt')[:,0], np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_baseline.txt')[:,1]**2, kind="linear")
-virgo_design_psd = PSD(np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_AVirgoBaseline.txt')[:,0], np.genfromtxt('/home/rlynch/Projects/bayesburst/PSDs/f_AVirgoBaseline.txt')[:,1]**2, kind="linear")
+
+### design psd's
+import os
+cwd = os.getcwd()
+ligo_design_psd = PSD(np.genfromtxt(cwd+'/PSDs/f_baseline.txt')[:,0], np.genfromtxt(cwd+'/PSDs/f_baseline.txt')[:,1]**2, kind="linear")
+virgo_design_psd = PSD(np.genfromtxt(cwd+'/PSDs/f_AVirgoBaseline.txt')[:,0], np.genfromtxt(cwd+'/PSDs/f_AVirgoBaseline.txt')[:,1]**2, kind="linear")
 
 ### Detector locations and orientations taken from Anderson, et all PhysRevD 63(04) 2003
 
