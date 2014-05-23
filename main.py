@@ -1,3 +1,5 @@
+usage = "python main.py [--options] detector1 [detector2 ...]"
+
 import numpy as np
 import healpy as hp
 import utils
@@ -11,20 +13,50 @@ import matplotlib.pyplot as plt
 ###############################################################################
 ########################### specify parameters #############################
 
-num_pol = 2
+from optparse import OptionParser
 
-nside_exp = 5
+#=================================================
 
-num_proc = 6
+parser = OptionParser(usage=usage)
 
-n_runs = 5
+parser.add_option("-v", "--verbose", dest="verbose", default=False, action="store_true")
 
-freqs = np.arange(40. , 1000., 0.1)
+parser.add_option("-n", "--nside-exp", default=7, type="int", help="HEALPix NSIDE parameter for pixelization is 2**opts.nside_exp")
+parser.add_option("-p", "--num-pol", default=2, type="int", help="the number of polarizations we attempt to reconstruct. should be either 1 or 2")
+parser.add_option("", "--fmin", default=40, type="float", help="the lowest frequency to analyze. should be specified in Hz")
+parser.add_option("", "--fmax", default=1000, type="float", help="the highest frequency to analyze. should be specified in Hz")
+parser.add_option("", "--df", default=0.1, type="float", help="the frequency spacing. should be specified in Hz")
+
+
+parser.add_option("-N", "--num-proc", default=1, type="int", help="the number of processors used to parallelize posterior computation")
+parser.add_option("-T", "--num-runs", default=1, type="int", help="the number of injections to simulate")
+
+opts, args = parser.parse_args()
+
+#=================================================
+
+num_pol   = opts.num_pol
+nside_exp = opts.nside_exp
+num_proc  = opts.num_proc
+n_runs    = opts.num_runs
+
+freqs = np.arange(opts.fmin, opts.fmax, opts.df)
+
+### load detectors
+if opts.verbose: print "loading list of detectors"
+if not args:
+	raise ValueError, "supply at least one detector name as an argument"
 
 detectors = {}
-detectors["H1"] = utils.LHO
-detectors["L1"] = utils.LLO
-#detectors["V1"] = utils.Virgo
+for arg in args:
+	if arg == "H1": #"LHO":
+		detectors["H1"] = utils.LHO
+	elif arg == "L1":
+		detectors["L1"] = utils.LLO
+	elif arg == "V1":
+		detectors["V1"] = utils.Virgo
+	else:
+		raise ValueError, "detector=%s not understood"%arg
 
 ###############################################################################
 ####################### initialize network and priors ########################
