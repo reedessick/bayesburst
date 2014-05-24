@@ -2,6 +2,7 @@
 
 \bibliographystyle{plain}
 
+\usepackage{fullpage}
 \usepackage{color}
 \usepackage{amsmath}
 \usepackage{amsfonts}
@@ -338,6 +339,14 @@ p(h_j) \propto \mathrm{exp}\left( -(h_k-H_k)^\ast Z_{kj} (h_j-H_j) \right)
 p(\theta, \phi| d_\beta) = p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - (\hat{h}_j-H_j)^\ast \left(Z_{jk} - Z_{jm} \Phi^{-1}_{mn} Z_{nk} \right) (\hat{h}_k-H_k) \right) \sqrt{(2\pi)^{N_p} \left|\Phi^{-1}\right|}
 \end{equation}
 
+When we include the proper normalization for the prior on $h_j$ as well as the \emph{effective number of polarizations} defined by $N^\prime_{p}=\mathrm{rank}\{A\}$, this posterior takes the following form
+
+\begin{equation}
+p(\theta,\phi|d_\beta) = p(\theta,\phi) \left(2\pi\right)^{N^\prime_{p}} \prod\limits_f \mathrm{exp} \left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - (\hat{h}_j-H_j)^\ast \left(Z_{jk} - Z_{jm} \Phi^{-1}_{mn} Z_{nk} \right) (\hat{h}_k-H_k) + \frac{1}{2}\log\left( \left|\Phi^{-1}\right| \left|Z\right|\right)\right)
+\end{equation}
+
+where $A$, $\Phi$, and $Z$ are $N^\prime_{p}\times N^\prime_{p}$ matrices, restricted to the non-singular subspace of $A$. However, this also assumes that $Z=\sigma^{-2}\mathbb{I}_{N^\prime_{p}\times N^\prime_{p}}$. By including the prior's normalizations, marginalization over extra degrees of freedom ($N_{p}>N^\prime_{p}$) contribute a factor of unity.
+
 Furthermore, we may consider linear combinations of gaussians
 
 \begin{equation}
@@ -348,7 +357,7 @@ where $N$ indexes the gaussian. Again, choice of the $Z_{kj}^{(N)}$ are somewhat
 
 \begin{eqnarray}
 p(\theta, \phi|d_\beta) & = & p(\theta, \phi) \sum\limits_{N} C_N \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - \left(\hat{h}_j-H^{(N)}_j\right)^\ast \left(Z^{(N)}_{jk} - Z^{(N)}_{jm} \left(A+Z^{(N)}\right)^{-1}_{mn} Z^{(N)}_{nk} \right) \left(\hat{h}_k-H^{(N)}_k\right) \right) \nonumber \\
-                        &   & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \times\ \sqrt{(2\pi)^{N_p} \left|\left(A+Z^{(N)}\right)^{-1}_{jk}\right|}
+                        &   & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \times\ \sqrt{(2\pi)^{N^\prime_p} \left|\left(A+Z^{(N)}\right)^{-1}_{jk}\right| \left|Z^{(N)}\right|}
 \end{eqnarray}
 
 Importantly, if we choose many narrow gaussians we can approximate an arbitrary prior (sum of $\delta$-functions). We can also endow $Z^{(N)}_{jk}$, $H^{(N)}_{j}$ with frequency dependence without any major modifications. This means we can demand that there is equal energy in each frequency bin so that $h\propto1/f$, or something similar, with appropriate definitions for $Z^{(N)}_{jk}$ and/or $H^{(N)}_j$. Note that this looks like the prior with modifications to the coefficients $C_N$ based on the marginalization over $\epsilon_j$. It may not be possible to re-sum these terms analytically to explicitly state the posterior in closed form (assuming we've expanded a closed form prior into gaussians). \emph{Importantly}, this gives us a way to explicitly compute the posterior without sampling the parameters space of possible signals. All computations are done analytically assuming constant $(\theta,\phi)$, which could provide large speed-ups computationally over Monte-Carlo Markov-Chain algorithms.
