@@ -17,9 +17,10 @@ def hpri_neg4(len_freqs, num_pol):
 	"""
 	Build the hprior of p(h) \propto h^(-4)
 	"""
-	num_gaus = 16
-	variances = np.logspace(start=-56,stop=-41,num=num_gaus)
-	amp_powers = np.logspace(start=112,stop=82,num=num_gaus)
+	num_gaus = 12
+	start_var = -49.
+	variances = np.logspace(start=start_var,stop=(start_var + num_gaus - 1),num=num_gaus)
+	amp_powers = variances**(-2.)
 	
 	amplitudes = 2.21807*amp_powers*np.ones((len_freqs, num_gaus))  #2-D array (frequencies x Gaussians)
 	means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
@@ -146,7 +147,7 @@ class hPrior(object):
 		h = np.array(h)  #1-D array (polarizations)
 		
 		#Find index of specified frequency
-		f_in = f2i(f)
+		f_in = self.f2i(f)
 		
 		weight = 0.
 		for n in xrange(self.num_gaus):

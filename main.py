@@ -13,20 +13,20 @@ import matplotlib.pyplot as plt
 
 num_pol = 2
 
-nside_exp = 4
+nside_exp = 5
 
 num_proc = 6
 
-n_runs = 5
+n_runs = 10
 
 threshold = 1.e0
 
-freqs = np.arange(40. , 1000., 0.5)
+freqs = np.arange(40. , 1000., 0.025)
 
 detectors = {}
 detectors["H1"] = utils.LHO
 detectors["L1"] = utils.LLO
-detectors["V1"] = utils.Virgo
+#detectors["V1"] = utils.Virgo
 
 ###############################################################################
 ####################### initialize network and priors ########################
@@ -40,6 +40,17 @@ hprior_amplitudes, hprior_means, hprior_covariance, num_gaus = priors.hpri_neg4(
 network = utils.Network(detectors=[detectors[i] for i in detectors], freqs=freqs, Np = num_pol)
 hprior = priors.hPrior(freqs=freqs, means=hprior_means, covariance=hprior_covariance, amplitudes=hprior_amplitudes, num_gaus=num_gaus, num_pol=num_pol)
 angprior = priors.angPrior(nside_exp=nside_exp)
+
+fig = plt.figure()
+for h in np.logspace(start=-25,stop=-18,num=500):
+	plt.plot(h, hprior.prior_weight_f(h=[h,0], f=freqs[0]), 'ro')
+	plt.plot(h, h**(-4.), 'bo')
+plt.xlabel("Strain")
+plt.xscale('log')
+plt.yscale('log')
+plt.grid()
+fig.savefig("hprior_nd%d"%ndet)
+plt.close(fig)
 
 ################################################################################
 ###################### init signal for each run ############################

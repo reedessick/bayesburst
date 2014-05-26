@@ -220,7 +220,7 @@ class Posterior(object):
 			
 				log_exp_f = self.delta_f * np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential, 1-D array (frequencies)
 				log_amp_f = np.log10(self.hprior.amplitudes[:,gaus])  #log amplitude, 1-D array (frequencies)
-				log_det_f = 0.5 * np.log10( (2*np.pi)**(num_pol_eff) * linalg.det(inP[:,:,:,gaus]) * linalg.det(Z[:,:,:,gaus]) )  #log determinant, 1-D array (frequencies)
+				log_det_f = 0.5 * np.log10( (2*np.pi/self.delta_f)**(num_pol_eff) * linalg.det(inP[:,:,:,gaus]) * linalg.det(Z[:,:,:,gaus]) )  #log determinant, 1-D array (frequencies)
 					
 				g_array[gaus] = np.sum(log_exp_f + log_amp_f + log_det_f)  #array containing the necessary sum of logs
 				
@@ -285,7 +285,7 @@ class Posterior(object):
 		log_posterior[:,1] -= max_log_pos
 		
 		#Convert log posterior to normal posterior
-		posterior = np.zeros((npix,4)) # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
+		posterior = np.zeros((npix,2)) # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
 		posterior[:,0] = log_posterior[:,0]
 		posterior[:,1] = pow(10., log_posterior[:,1])
 
@@ -309,7 +309,7 @@ class Posterior(object):
 		
 		#Plot log posterior probability density function as skymap
 		fig = plt.figure(0)
-		hp.mollview(posterior[:,1], fig=0, title=title, unit=unit, flip="geo", min=min_val, max=max_val)
+		hp.mollview(np.log10(posterior[:,1]), fig=0, title=title, unit=unit, flip="geo", min=min_val, max=max_val)
 		ax = fig.gca()
 		hp.graticule()
 		
