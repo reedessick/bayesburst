@@ -13,18 +13,20 @@ import matplotlib.pyplot as plt
 
 num_pol = 2
 
-nside_exp = 5
+nside_exp = 4
 
 num_proc = 6
 
 n_runs = 5
 
-freqs = np.arange(40. , 1000., 0.1)
+threshold = 1.e0
+
+freqs = np.arange(40. , 1000., 0.5)
 
 detectors = {}
 detectors["H1"] = utils.LHO
 detectors["L1"] = utils.LLO
-#detectors["V1"] = utils.Virgo
+detectors["V1"] = utils.Virgo
 
 ###############################################################################
 ####################### initialize network and priors ########################
@@ -94,7 +96,7 @@ for i_ang in xrange(n_runs):
 	############################# Find posterior  ################################
 
 	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp)
-	post_built = posterior.build_posterior(num_proc=num_proc)
+	post_built = posterior.build_posterior(num_proc=num_proc, threshold=threshold)
 
 	for i in xrange( np.shape(post_built)[0] ):
 		if post_built[i,1] == 0:
@@ -121,7 +123,7 @@ for i_ang in xrange(n_runs):
 	posterior.plot_posterior(posterior=post_built, figname='skymap_nd%d_%d'%(ndet, i_ang),title="theta %f, phi %f"%(theta,phi), unit='log posterior density', inj_theta=theta, inj_phi=phi)
 
 	fig = plt.figure()
-	plt.hist(np.log10(post_built[:,1]))
+	plt.hist(post_built[:,1])#plt.hist(np.log10(post_built[:,1]))
 	plt.xlabel("Log Posterior")
 	fig.savefig("post_dens_hist_nd%d_%d"%(ndet, i_ang))
 	plt.close(fig)

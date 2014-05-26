@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.1415926-2.6-1.40.14 (TeX Live 2014/dev) (format=pdflatex 2014.3.11)  1 MAY 2014 19:13
+This is pdfTeX, Version 3.1415926-2.6-1.40.14 (TeX Live 2014/dev) (format=pdflatex 2014.3.11)  25 MAY 2014 00:32
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -135,18 +135,18 @@ Package: ifxetex 2010/09/12 v0.6 Provides ifxetex conditional
 )) (./theory.aux)
 \openout1 = `theory.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 15.
-LaTeX Font Info:    ... okay on input line 15.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 15.
-LaTeX Font Info:    ... okay on input line 15.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 15.
-LaTeX Font Info:    ... okay on input line 15.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 15.
-LaTeX Font Info:    ... okay on input line 15.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 15.
-LaTeX Font Info:    ... okay on input line 15.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 15.
-LaTeX Font Info:    ... okay on input line 15.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 18.
+LaTeX Font Info:    ... okay on input line 18.
 (/usr/share/texlive/texmf-dist/tex/context/base/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
 \scratchcounter=\count100
@@ -208,32 +208,32 @@ G,.JBIG2,.JB2,.eps]
 File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
-LaTeX Font Info:    Try loading font information for U+msa on input line 20.
+LaTeX Font Info:    Try loading font information for U+msa on input line 23.
 
 (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Try loading font information for U+msb on input line 20.
+LaTeX Font Info:    Try loading font information for U+msb on input line 23.
 
 (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
-LaTeX Font Info:    Try loading font information for OMS+cmr on input line 25.
+LaTeX Font Info:    Try loading font information for OMS+cmr on input line 28.
 
 (/usr/share/texlive/texmf-dist/tex/latex/base/omscmr.fd
 File: omscmr.fd 1999/05/25 v2.5h Standard LaTeX font definitions
 )
 LaTeX Font Info:    Font shape `OMS/cmr/m/n' in size <10> not available
-(Font)              Font shape `OMS/cmsy/m/n' tried instead on input line 25.
+(Font)              Font shape `OMS/cmsy/m/n' tried instead on input line 28.
 
-Overfull \hbox (50.06152pt too wide) in paragraph at lines 27--28
+Overfull \hbox (50.06152pt too wide) in paragraph at lines 30--31
 []\OT1/cmr/m/n/10 localized in time in wave-frame (tran-sient) : $\OML/cmm/m/it
 /10 h[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 t\OT1/cmr/m/n/10 ) = [] \OML/cmm/m/it/
 10 h[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 t\OT1/cmr/m/n/10 )$ 
  []
 
 
-Overfull \hbox (105.14514pt too wide) in paragraph at lines 28--29
+Overfull \hbox (105.14514pt too wide) in paragraph at lines 31--32
 []\OT1/cmr/m/n/10 localized in fre-quency in wave-frame (band-limitted) : $\OML
 /cmm/m/it/10 h[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 f\OT1/cmr/m/n/10 ) = [] \OML/
 cmm/m/it/10 h[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 f\OT1/cmr/m/n/10 )$ 
@@ -245,106 +245,149 @@ cmm/m/it/10 h[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 f\OT1/cmr/m/n/10 )$
 \tf@toc=\write3
 \openout3 = `theory.toc'.
 
- [2] [3] [4] [5]
-Overfull \hbox (115.27548pt too wide) in alignment at lines 168--183
+ [2] [3]
+Overfull \hbox (80.63808pt too wide) in alignment at lines 102--105
  [][][] []
  []
 
-[6]
-Overfull \hbox (39.44727pt too wide) in alignment at lines 215--218
+[4] [5] [6]
+Overfull \hbox (115.27548pt too wide) in alignment at lines 196--211
  [][][] []
  []
 
-
-Overfull \hbox (18.79066pt too wide) in alignment at lines 234--237
- [][][] []
- []
-
-[7]
-Overfull \hbox (115.25357pt too wide) in alignment at lines 256--260
- [][][] []
- []
-
-[8]
-Overfull \hbox (81.94069pt too wide) in alignment at lines 264--268
+[7] [8]
+Overfull \hbox (39.44727pt too wide) in alignment at lines 275--278
  [][][] []
  []
 
 
-Overfull \hbox (96.08482pt too wide) detected at line 280
+Overfull \hbox (18.79066pt too wide) in alignment at lines 294--297
+ [][][] []
+ []
+
+[9] [10]
+Overfull \hbox (115.25357pt too wide) in alignment at lines 316--320
+ [][][] []
+ []
+
+
+Overfull \hbox (81.94069pt too wide) in alignment at lines 324--328
+ [][][] []
+ []
+
+
+Overfull \hbox (96.08482pt too wide) detected at line 340
 \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^R; ^^^\OMS/cmsy/m/n/10 j\
 OML/cmm/m/it/10 d[]\OT1/cmr/m/n/10 ) = \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/
 cmm/m/it/10 ^^R; ^^^\OT1/cmr/m/n/10 ) [] [] [] []
  []
 
 
-Overfull \hbox (177.81374pt too wide) in alignment at lines 290--293
+Overfull \hbox (148.10977pt too wide) detected at line 346
+\OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^R; ^^^\OMS/cmsy/m/n/10 j\
+OML/cmm/m/it/10 d[]\OT1/cmr/m/n/10 ) = \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/
+cmm/m/it/10 ^^R; ^^^\OT1/cmr/m/n/10 ) [][] [] [] []
+ []
+
+[11]
+Overfull \hbox (177.81374pt too wide) in alignment at lines 358--361
  [][][] []
  []
 
-[9]
-Overfull \hbox (7.85286pt too wide) in alignment at lines 305--311
+[12]
+Overfull \hbox (7.85286pt too wide) in alignment at lines 402--408
  [][][] []
  []
 
-[10]
-Overfull \hbox (78.77957pt too wide) detected at line 317
+[13]
+Overfull \hbox (78.77957pt too wide) detected at line 414
 \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^R; ^^^\OMS/cmsy/m/n/10 j\
 OML/cmm/m/it/10 d[]\OT1/cmr/m/n/10 ) = \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/
 cmm/m/it/10 ^^R; ^^^\OT1/cmr/m/n/10 ) [] \OMS/cmsy/m/n/10 D\OML/cmm/m/it/10 ^^O
 [][] [] []
  []
 
-
-Overfull \hbox (8.72401pt too wide) in paragraph at lines 344--345
-[]\OT1/cmr/bx/n/10 FIGURE OUT HOW TO DO THIS TRANS-PAR-ENTLY AND WRITE
- []
-
-[11] [12]
-Overfull \hbox (33.41699pt too wide) in alignment at lines 411--415
+[14] [15] [16]
+Overfull \hbox (70.57562pt too wide) in alignment at lines 520--523
  [][][] []
  []
 
-[13]
-Overfull \hbox (41.6722pt too wide) in alignment at lines 423--426
+
+Overfull \hbox (97.2003pt too wide) in alignment at lines 527--535
  [][][] []
  []
 
-[14] [15] (./theory.aux) ) 
+
+Overfull \hbox (77.40369pt too wide) detected at line 541
+\OML/cmm/m/it/10 A[]A[] \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 A[]A[] \OT1/cmr/m
+/n/10 = (\OML/cmm/m/it/10 S[]S[]\OT1/cmr/m/n/10 )[]1 []
+ []
+
+
+Overfull \hbox (94.53392pt too wide) in alignment at lines 545--549
+ [][][] []
+ []
+
+[17]
+Overfull \hbox (99.7523pt too wide) in alignment at lines 553--560
+ [][][] []
+ []
+
+[18]
+Overfull \hbox (71.12584pt too wide) in alignment at lines 596--600
+ [][][] []
+ []
+
+
+Overfull \hbox (0.41426pt too wide) in alignment at lines 612--615
+ [][][] []
+ []
+
+[19] [20] [21] [22]
+Overfull \hbox (33.41699pt too wide) in alignment at lines 714--718
+ [][][] []
+ []
+
+[23]
+Overfull \hbox (41.6722pt too wide) in alignment at lines 726--729
+ [][][] []
+ []
+
+[24] [25] (./theory.bbl) [26] (./theory.aux) ) 
 Here is how much of TeX's memory you used:
- 2207 strings out of 495034
- 29927 string characters out of 6181677
- 95012 words of memory out of 5000000
- 5375 multiletter control sequences out of 15000+600000
+ 2212 strings out of 495034
+ 29981 string characters out of 6181677
+ 95031 words of memory out of 5000000
+ 5377 multiletter control sequences out of 15000+600000
  12201 words of font info for 47 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  37i,11n,24p,1109b,203s stack positions out of 5000i,500n,10000p,200000b,80000s
-</usr/share/texlive/texmf-dist/fonts/type1/public/ams
-fonts/cm/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/
-cm/cmbx12.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cme
-x10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmex
-8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb>
-</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb></usr/
-share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/share/t
-exlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/
-texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-d
-ist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/texlive/texmf-dist/fon
-ts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type
-1/public/amsfonts/cm/cmr12.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi
-c/amsfonts/cm/cmr17.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo
-nts/cm/cmr6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c
-mr7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb>
-</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/
-share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/share/t
-exlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/
-texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/share/texlive/texmf-d
-ist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/share/texlive/texmf-dist/fo
-nts/type1/public/amsfonts/cm/cmti8.pfb></usr/share/texlive/texmf-dist/fonts/typ
-e1/public/amsfonts/symbols/msbm10.pfb>
-Output written on theory.pdf (15 pages, 288729 bytes).
+</usr/share/texlive/texmf-dist/fo
+nts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texlive/texmf-dist/fonts/ty
+pe1/public/amsfonts/cm/cmbx12.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu
+blic/amsfonts/cm/cmex10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/a
+msfonts/cmextra/cmex8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams
+fonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/
+cm/cmmi12.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmm
+i5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb>
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/s
+hare/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/share/te
+xlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/t
+exmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/share/texlive/texmf-di
+st/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/share/texlive/texmf-dist/font
+s/type1/public/amsfonts/cm/cmr6.pfb></usr/share/texlive/texmf-dist/fonts/type1/
+public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/a
+msfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/
+cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cms
+y5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb>
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/s
+hare/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/share/t
+exlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti8.pfb></usr/share/texlive/
+texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb>
+Output written on theory.pdf (26 pages, 340623 bytes).
 PDF statistics:
- 146 PDF objects out of 1000 (max. 8388607)
- 104 compressed objects within 2 object streams
+ 181 PDF objects out of 1000 (max. 8388607)
+ 128 compressed objects within 2 object streams
  0 named destinations out of 1000 (max. 500000)
  1 words of extra memory for PDF output out of 10000 (max. 10000000)
 

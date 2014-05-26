@@ -2,6 +2,7 @@
 
 \bibliographystyle{plain}
 
+%\usepackage{fullpage}
 \usepackage{color}
 \usepackage{amsmath}
 \usepackage{amsfonts}
@@ -302,7 +303,7 @@ We should note that the only dependence on the data streams $d_\beta$ comes from
 We also note that the antenna patters \emph{naturally} modulate the posterior through the marginalization. This means that when $N_p=N_{ifo}$ (and for any $(\theta, \phi)$ the maximum likelihood estimator exactly reproduces the data streams) and the likelihood ratio is unity for all $(\theta,\phi)$, \emph{the posterior will not be uniform}. This non-uniformity is independent of the data streams and reflects the different sensitivities of the detector network at different points in the sky. Without a prior, this marginalization favors locations with \emph{low} antenna patters and very little sensitivity to actual signals. Adding a realistic prior on $h_j$ should allow us to include effects like triangulation by assigning higher priors to signals with less total energy. However, the prior will contain terms which depend on the data and may complicate the simple form of our current posterior. Furthermor, the exact form for this prior is uncertain. However, to obtain different posteriors for different data streams, we will have to impose some prior when $N_p=N_{ifo}$.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\subsubsection{priors on $h_j$}
+\subsubsection{gaussian priors on $h_j$}
 
 A prior on $h_j$ is required to give posteriors that depend on the data in 2-detector networks. Some possible examples are
 
@@ -338,6 +339,14 @@ p(h_j) \propto \mathrm{exp}\left( -(h_k-H_k)^\ast Z_{kj} (h_j-H_j) \right)
 p(\theta, \phi| d_\beta) = p(\theta,\phi) \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - (\hat{h}_j-H_j)^\ast \left(Z_{jk} - Z_{jm} \Phi^{-1}_{mn} Z_{nk} \right) (\hat{h}_k-H_k) \right) \sqrt{(2\pi)^{N_p} \left|\Phi^{-1}\right|}
 \end{equation}
 
+When we include the proper normalization for the prior on $h_j$ as well as the \emph{effective number of polarizations} defined by $N^\prime_{p}=\mathrm{rank}\{A\}$, this posterior takes the following form
+
+\begin{equation}
+p(\theta,\phi|d_\beta) = p(\theta,\phi) \left(2\pi\right)^{N^\prime_{p}} \prod\limits_f \mathrm{exp} \left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - (\hat{h}_j-H_j)^\ast \left(Z_{jk} - Z_{jm} \Phi^{-1}_{mn} Z_{nk} \right) (\hat{h}_k-H_k) + \frac{1}{2}\log\left( \left|\Phi^{-1}\right| \left|Z\right|\right)\right)
+\end{equation}
+
+where $A$, $\Phi$, and $Z$ are $N^\prime_{p}\times N^\prime_{p}$ matrices, restricted to the non-singular subspace of $A$. However, this also assumes that $Z=\sigma^{-2}\mathbb{I}_{N^\prime_{p}\times N^\prime_{p}}$. By including the prior's normalizations, marginalization over extra degrees of freedom ($N_{p}>N^\prime_{p}$) contribute a factor of unity.
+
 Furthermore, we may consider linear combinations of gaussians
 
 \begin{equation}
@@ -348,10 +357,39 @@ where $N$ indexes the gaussian. Again, choice of the $Z_{kj}^{(N)}$ are somewhat
 
 \begin{eqnarray}
 p(\theta, \phi|d_\beta) & = & p(\theta, \phi) \sum\limits_{N} C_N \prod\limits_f \mathrm{exp}\left( \hat{h}_j^\ast \left(A\right)_{jk} \hat{h}_k - \left(\hat{h}_j-H^{(N)}_j\right)^\ast \left(Z^{(N)}_{jk} - Z^{(N)}_{jm} \left(A+Z^{(N)}\right)^{-1}_{mn} Z^{(N)}_{nk} \right) \left(\hat{h}_k-H^{(N)}_k\right) \right) \nonumber \\
-                        &   & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \times\ \sqrt{(2\pi)^{N_p} \left|\left(A+Z^{(N)}\right)^{-1}_{jk}\right|}
+                        &   & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \times\ \sqrt{(2\pi)^{N^\prime_p} \left|\left(A+Z^{(N)}\right)^{-1}_{jk}\right| \left|Z^{(N)}\right|}
 \end{eqnarray}
 
 Importantly, if we choose many narrow gaussians we can approximate an arbitrary prior (sum of $\delta$-functions). We can also endow $Z^{(N)}_{jk}$, $H^{(N)}_{j}$ with frequency dependence without any major modifications. This means we can demand that there is equal energy in each frequency bin so that $h\propto1/f$, or something similar, with appropriate definitions for $Z^{(N)}_{jk}$ and/or $H^{(N)}_j$. Note that this looks like the prior with modifications to the coefficients $C_N$ based on the marginalization over $\epsilon_j$. It may not be possible to re-sum these terms analytically to explicitly state the posterior in closed form (assuming we've expanded a closed form prior into gaussians). \emph{Importantly}, this gives us a way to explicitly compute the posterior without sampling the parameters space of possible signals. All computations are done analytically assuming constant $(\theta,\phi)$, which could provide large speed-ups computationally over Monte-Carlo Markov-Chain algorithms.
+
+In fact, a simple error minimization argument allows us to determine the optimal coefficients for an arbitrary set of gaussian priors when they are used to approximate an arbitrary function $f(h)$. If we define each gaussian by it's mean and standard deviation as $\left|\mu_n,\sigma_n\right>$, then we have the overlap matrix
+
+\begin{equation}
+M_{nm} = \left<\mu_n,\sigma_n|\mu_m,\sigma_m\right>
+\end{equation}
+
+where the inner product is defined as $\left<a|b\right>=\int\limits_{-\infty}^{\infty}\mathrm{d}h\ a\cdot b$.
+
+Minimizing the sum-square error of the approximation yields a set of coefficients
+
+\begin{equation}
+C_k = \left(M^{-1}\right)_{km}\left<\mu_m,\sigma_m|f\right>
+\end{equation}
+
+We can also derive the optimal placement of a fixed number of gaussians using a similar method. However, the result is not partitularly illuminating and simply selecting a reasonable set of gaussians by hand should suffice.
+
+For the special case of zero-centered gaussians ($\mu_m=0\,\forall\,m$) and $f\propto h^{-4}$, then we have
+
+\begin{eqnarray}
+M_{nm} = M_{mn} & = & \sqrt{\frac{2\sigma_n\sigma_m}{\sigma_n^2+\sigma_m^2}} \\
+\left<\sigma_m|f\right> & \sim & 2\int\limits_{\epsilon << \sigma_m}^{\infty}\mathrm{d}h\, \left(h/h_o\right)^{-4} \left(\pi \sigma_m^2\right)^{-1/4} \mathrm{exp}\left(-\frac{h^2}{2\sigma_m^2} \right) \\
+                        & \sim & 2\int\limits_{\epsilon/\sigma_m << 1}^{\infty}\mathrm{d}x\sigma_m\, \left(x\sigma_m/h_o\right)^{-4} \left(\pi \sigma_m^2\right)^{-1/4} \mathrm{exp}\left(-\frac{x^2}{2} \right) \\
+                        & \sim & \sigma_m^{-13/4} \left[ 2 h_o^{4}(\pi)^{-1/4}\int\limits_{\varepsilon << 1}^{\infty}\mathrm{d}x\, x^{-4} \mathrm{exp}\left(-\frac{x^2}{2} \right) \right]\\
+C_k & = & \left(M^{-1}\right)_{km} \sigma_m^{-13/4}\cdot constant\\
+\end{eqnarray}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{other priors on $h_j$}
 
 Alternatively, we can write down some astrophysically motivated prior, such as uniform in co-moving volume. However, for burst signals, we do not immediately have a good estimate for the distance $D$. We can relate this to the observed data through
 
@@ -405,6 +443,8 @@ p(h_j|d_\beta) = \int\mathrm{d}\cos\theta\mathrm{d}\phi\, \frac{p(d_\beta|h_j, \
 \end{equation}
 
 This is a much more difficult problem, and unfortunately it may not be tractable analytically. However, for each ($\theta,\phi$) we can compute the mean and variance of the gaussian likelihood function. Marginalization can be done numerically by simply summing over pixels. This can be done by recording the mean, covariance matrix, and amplitude of the likelihood associated with each pixel. We can then compute the posterior for many values of $h_j$ by simply computing the gaussians and summing. Arbitrary priors can be applied to $h_j$ in a straightforward manner a postiori. Furthermore, priors on ($\theta,\phi$) can also be incorporated as part of the summation without much computational complexity.
+
+We should be careful that we add likelihoods using the same wave-frame coordinate system for all ($\theta,\phi$). Furthermore, we will reconstruct the distribution over the complex variables $h_j$, when we are most likely interested in $|h_j|$ which may require marginalization over the phase.
 
 With this posterior in hand, we can make definite statements about the p-value associated with an observed strain that is inconsistent with no-signal. 
 
@@ -463,6 +503,74 @@ If we additionally assume that there is only one detector, then this further sim
 \end{equation}
 
 Here, it is entirely clear that regions with large antenna patterns (with respect to $S/2\sigma^2$) are favored. This gives us modulation along the antenna patterns controlled by one parameter: $\sigma$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Example: N polarizations, N detectors}
+
+In this example we show that the likelihood contribution ($\hat{h}_k^\ast A_{kj} \hat{h}_j$) is degenerate across the entire sky when $N_{ifo} = N_{p}$, regardless of whether $A$ is singular. This is a proof by example with the $N=2$ case.
+
+Here, we have
+
+\begin{equation}
+d_\beta B_{\beta j} = d_A \frac{F_{Aj}}{S_A} + d_B \frac{F_{Bj}}{S_B} = (S_A S_B)^{-1} (d_A S_B F_{Aj} + d_B S_A F_{Bj})
+\end{equation}
+
+This means that
+
+\begin{eqnarray}
+\hat{h}_k^\ast A_{kj} \hat{h}_j & = & d_\beta B_{\beta j} \left(A^{-1}\right)_{jk} B_{\alpha k} d_\alpha \\
+                                & = & (S_A S_B)^{-2} \left[ |d_A|^2 S_B^2 F_{Aj} \left(A^{-1}\right)_{jk} F_{Aj}^\ast + d_A d_B^\ast S_A S_B F_{Aj} \left(A^{-1}\right)_{jk} F_{Bk}^\ast + (A\leftrightarrow B)\right] \\
+\end{eqnarray}
+
+Now, we can consider the implicit sums separately. First, we have
+
+\begin{eqnarray}
+F_{Aj} \left(A^{-1}\right)_{jk} F_{Aj}^\ast & = & (A_{00}A_{11}-A_{01}A_{10})^{-1}\left( F_{A0}A_{11}F_{A0}^\ast + F_{A1}A_{00}F_{A1}^\ast - F_{A0}A_{01}F_{A1}^\ast - F_{A1}A_{10}F_{A0}^\ast \right) \\
+& = & (A_{00}A_{11}-A_{01}A_{10})^{-1}(S_A S_B)^{-1}\left( |F_{A0}|^2(S_B|F_{A1}|^2 + S_A|F_{B1}|^2) \right.\\
+&  & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ + |F_{A1}|^2(S_B|F_{A0}|^2 + S_A|F_{B0}|^2) \\
+&  & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ - F_{A0}F_{A1}^\ast(S_B F_{A0}^\ast F_{A1} + S_A F_{B0}^\ast F_{B1}) \\
+&  & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \left. - F_{A1}F_{A0}^\ast(S_B F_{A1}^\ast F_{A0} + S_A F_{B1}^\ast F_{B0}) \right) \\
+& = & (A_{00}A_{11}-A_{01}A_{10})^{-1}(S_B)^{-1}\left( |F_{A0}|^2|F_{B1}|^2 + |F_{A1}|^2|F_{B0}|^2 \right. \\
+&   & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \left. - F_{A0}F_{A1}^\ast F_{B0}^\ast F_{B1} - F_{A0}^\ast F_{A1} F_{B0} F_{B1}^\ast \right) \\
+\end{eqnarray}
+
+Now, expanding the determinant of $A$ yields
+
+\begin{equation}
+A_{00}A_{11}-A_{01}A_{10} = (S_A S_B)^-1 \left[ |F_{A0}|^2|F_{B1}|^2 + |F_{A1}|^2|F_{B0}|^2 - F_{A0}F_{A1}^\ast F_{B0}^\ast F_{B1} - F_{A0}^\ast F_{A1} F_{B0} F_{B1}^\ast \right]
+\end{equation}
+
+so we have
+
+\begin{eqnarray}
+F_{Aj} \left(A^{-1}\right)_{jk} F_{Aj}^\ast & = & (S_A S_B)^-1 \left[ |F_{A0}|^2|F_{B1}|^2 + |F_{A1}|^2|F_{B0}|^2 - F_{A0}F_{A1}^\ast F_{B0}^\ast F_{B1} - F_{A0}^\ast F_{A1} F_{B0} F_{B1}^\ast \right] \\
+                                            &   & \times (S_B)^{-1}\left( |F_{A0}|^2|F_{B1}|^2 + |F_{A1}|^2|F_{B0}|^2 - F_{A0}F_{A1}^\ast F_{B0}^\ast F_{B1} - F_{A0}^\ast F_{A1} F_{B0} F_{B1}^\ast \right) \\
+& = & S_A \\
+\end{eqnarray}
+
+which is a remarkable simplification. Furthermore, we can expand the second implicit sum as
+
+\begin{eqnarray}
+F_{Aj} \left(A^{-1}\right)_{jk} F_{Bk}^\ast & = & (A_{00}A_{11}-A_{01}A_{10})^{-1}\left( F_{A0}A_{11}F_{B0}^\ast + F_{A1}A_{00}F_{B1}^\ast - F_{A0}A_{01}F_{B1}^\ast - F_{A1}A_{10}F_{B0}^\ast \right) \\
+& = & (A_{00}A_{11}-A_{01}A_{10})^{-1} (S_A S_B)^{-1} \left( F_{A0}F_{B0}( S_B|F_{A1}|^2 + S_A|F_{B1}|^2) \right.\\
+& = & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ + F_{A1}F_{B1}^\ast(S_B|F_{A0}|^2 + S_A|F_{B0}|^2) \\
+&  & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ - F_{A0}F_{B1}^\ast(S_B F_{A0}^\ast F_{A1} + S_A F_{B0}^\ast F_{B1}) \\
+&  & \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \left. - F_{A1}F_{B0}^\ast(S_B F_{A1}^\ast F_{A0} + S_A F_{B1}^\ast F_{B0}) \right) \\
+& = & 0 
+\end{eqnarray}
+
+and we see that this term simplifies even more. We can then write the total term as
+
+\begin{eqnarray}
+\hat{h}_k^\ast A_{kj} \hat{h}_j & = & d_\beta B_{\beta j} \left(A^{-1}\right)_{jk} B_{\alpha k} d_\alpha \\
+& = & (S_A S_B)^{-2} \left[ |d_A|^2 S_B^2 S_A + |d_B|^2 S_A^2 S_B \right] \\
+& = & \frac{|d_A|^2}{S_A} + \frac{|d_B|^2}{S_B}
+\end{eqnarray}
+
+and we see that the maximum likelihood estimator exactly reproduces the observed data, rendering the likelihood to a statement about the probability of gaussian noise generating the observed data. This is, clearly, uniform over the entire sky and uniformative.
+
+While this is only proof for the $N_{ifo}=N_{p}=2$ case, it should be generic whenever $N_{ifo}=N_{p}$.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Example: 2 polarizations, 2 (nearly aligned) detectors}
