@@ -46,11 +46,13 @@ def resample(posterior, new_nside, nest=False):
 		return new_posterior
 
 ###
-def estang(posterior):
+def estang(posterior, nside=None):
 	"""
 	returns the position associated with the maximum of the posterior
 	"""
-	return hp.pix2ang(posterior.argmax())
+	if not nside:
+		nside = hp.npix2nside(len(posterior))
+	return hp.pix2ang(nside, posterior.argmax())
 
 ###
 def searched_area(posterior, theta, phi, nside=None, nest=False, degrees=False):
@@ -59,8 +61,8 @@ def searched_area(posterior, theta, phi, nside=None, nest=False, degrees=False):
 	"""
 	if not nside:
 		nside = hp.npix2nside(len(posterior))
-	ipix = hp.ang2pix(nside, theta, phi, nest=nets)
-	sa = sum(posterior>=posterior[ipix])*hp.nside2pixarea(nside, degrees=degrees)
+	ipix = hp.ang2pix(nside, theta, phi, nest=nest)
+	return sum(posterior>=posterior[ipix])*hp.nside2pixarea(nside, degrees=degrees)
 
 ###
 def est_cos_dtheta(posterior, theta, phi):
@@ -97,7 +99,7 @@ def num_modes(posterior, theta, phi, nside=None, nest=False):
 	return len( __into_modes(nside, pix) )
 
 ###
-def __into_mode(nside, pix):
+def __into_modes(nside, pix):
 	"""
 	divides the list of pixels (pix) into simply connected modes
 	"""
@@ -107,10 +109,10 @@ def __into_mode(nside, pix):
 		to_check = [pix.pop(0)] # take the first pixel
 		while len(to_check): # there are pixels in this mode we have to check
 			ipix = to_check.pop() # take one pixel from those to be checked.
-			for neighbour in healpy.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
+			for neighbour in hp.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
 				# try to find pixel in skymap
 				try:
-					_ipix = skymap.pop( skymap.index( neighbour ) ) ### find pixel in skymap and remove it
+					_ipix = pix.pop( pix.index( neighbour ) ) ### find pixel in skymap and remove it
 					mode.append( _ipix ) # add pixel to this mode
 					to_check.append( _ipix ) # add pixel to to_check
 				except ValueError: # neighbour not in list
@@ -126,7 +128,21 @@ def entropy(posterior, base=2.0):
 		base=2 => bits
 		base=e => nats
 	"""
+	posterior = posterior[posterior > 0.0] ### log(0)*0 -> 0
 	return -np.sum( np.log(posterior)*posterior)/np.log(base)
+
+###
+def information(posterior, base=2.0):
+	"""
+	computes the shannon entropy in the posterior
+	we compute the entropy with base=base
+		base=2 => bits
+		base=e => nats
+	"""
+	n = len(posterior)
+	posterior = posterior[posterior > 0.0] ### log(0)*0 -> 0
+	logbase = np.log(base)
+	return (np.log(n) + np.sum( np.log(posterior)*posterior) )/np.log(base)
 
 #=================================================
 #
