@@ -9,6 +9,7 @@ pickle = utils.pickle
 import triang
 time = triang.time
 plt = triang.plt
+import skymap_stats
 import detector_cache as det_cache
 
 import healpy as hp
@@ -313,27 +314,35 @@ if __name__ == "__main__":
 				statsfilename = "%s/stats-%d%s.txt"%(opts.output_dir, toa_ind, opts.tag)
 			
 				### angular offset between max of the posterior and injection
-				cosDtheta = np.cos(est_theta)*np.cos(inj_theta) + np.sin(est_theta)*np.sin(inj_theta)*np.cos(est_phi - inj_phi)
+#				cosDtheta = np.cos(est_theta)*np.cos(inj_theta) + np.sin(est_theta)*np.sin(inj_theta)*np.cos(est_phi - inj_phi)
+				cosDtheta = skymap_stats.cos_dtheta(est_theta, est_phi, inj_theta, inj_phi)
+
 				### searched area
 				injpix = hp.ang2pix(nside, inj_theta, inj_phi)
-				posterior = posterior[posterior[:,1].argsort()[::-1]] # sort by posterior weight
-				n_sapix = 0
-				cum = 0.0
-				for ipix, p in posterior:
-					n_sapix += 1
-					cum += p
-					if ipix == injpix:
-						break
-				else:
-					raise ValueError, "could not find injpix=%d in posterior"%injpix
-				searched_area = pixarea_deg*n_sapix
+#				posterior = posterior[posterior[:,1].argsort()[::-1]] # sort by posterior weight
+#				n_sapix = 0
+#				cum = 0.0
+#				for ipix, p in posterior:
+#					n_sapix += 1
+#					cum += p
+#					if ipix == injpix:
+#						break
+#				else:
+#					raise ValueError, "could not find injpix=%d in posterior"%injpix
+#				searched_area = pixarea_deg*n_sapix
+				cum = np.sum( posterior[:,1][posterior[:,1]>=posterior[injpix,1]] )
+				searched_area = skymap_stats.searched_area(posterior[:,1], inj_theta, inj_phi, degrees=True)
+
+				### entropy
+				entropy = skymap_stats.entroyp(posterior[:,1])
 
 				statsfile = open(statsfilename, "w")
-				print >> statsfile, "cos(ang_offset) = %.6f\nsearched_area = %.6f deg2\np_value = %.6f"%(cosDtheta, searched_area, cum)
+				print >> statsfile, "cos(ang_offset) = %.6f\nsearched_area = %.6f deg2\np_value = %.6f\nentropy = %f"%(cosDtheta, searched_area, cum, entropy)
 				statsfile.close()
+
 				if opts.verbose: 
 					print "\t\t", statsfilename
-					print "\t\tcos(ang_offset) = %.6f\n\t\tsearched_area = %.6f deg2"%(cosDtheta, searched_area)
+					print "\t\tcos(ang_offset) = %.6f\n\t\tsearched_area = %.6f deg2\np_value = %.6f\nentropy = %f"%(cosDtheta, searched_area, cum, entropy)
 					if opts.time: print "\t\t", time.time()-to, "sec"
 
 		#================================================
