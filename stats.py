@@ -162,7 +162,7 @@ def fidelity(posterior1, posterior2):
 	computes the fidelity between the two posteriors
 		sum (p1*p2)**0.5
 	"""
-	return np.sum( posterior1*posterior2**0.5 )
+	return np.sum( (posterior1*posterior2)**0.5 )
 
 ###
 def KLdivergence(posterior1, posterior2, base=2.0):
