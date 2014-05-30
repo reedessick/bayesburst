@@ -86,6 +86,39 @@ def min_cos_dtheta(posterior, theta, phi, nside=None, nest=False):
 	return np.min(cos_dtheta(thetas, phis, t, p))
 
 ###
+def num_modes(posterior, theta, phi, nside=None, nest=False):
+	"""
+	computes the number of modes in the area bounded by theta, phi
+	"""
+	npix = len(posterior)
+	if not nside:
+		nside = hp.npix2nside(npix)
+	pix = list(np.arange(npix)[posterior>=posterior[hp.ang2pix(nside, theta, phi, nest=nest)]]) ## get list of pixels
+	return len( __into_modes(nside, pix) )
+
+###
+def __into_mode(nside, pix):
+	"""
+	divides the list of pixels (pix) into simply connected modes
+	"""
+	modes = []
+	while len(pix):
+		mode = []
+		to_check = [pix.pop(0)] # take the first pixel
+		while len(to_check): # there are pixels in this mode we have to check
+			ipix = to_check.pop() # take one pixel from those to be checked.
+			for neighbour in healpy.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
+				# try to find pixel in skymap
+				try:
+					_ipix = skymap.pop( skymap.index( neighbour ) ) ### find pixel in skymap and remove it
+					mode.append( _ipix ) # add pixel to this mode
+					to_check.append( _ipix ) # add pixel to to_check
+				except ValueError: # neighbour not in list
+					pass
+		modes.append( mode )
+	return modes
+
+###
 def entropy(posterior, base=2.0):
 	"""
 	computes the shannon entropy in the posterior
