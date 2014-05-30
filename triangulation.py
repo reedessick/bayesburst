@@ -9,7 +9,7 @@ pickle = utils.pickle
 import triang
 time = triang.time
 plt = triang.plt
-import skymap_stats
+import stats
 import detector_cache as det_cache
 
 import healpy as hp
@@ -315,7 +315,7 @@ if __name__ == "__main__":
 			
 				### angular offset between max of the posterior and injection
 #				cosDtheta = np.cos(est_theta)*np.cos(inj_theta) + np.sin(est_theta)*np.sin(inj_theta)*np.cos(est_phi - inj_phi)
-				cosDtheta = skymap_stats.cos_dtheta(est_theta, est_phi, inj_theta, inj_phi)
+				cosDtheta = stats.cos_dtheta(est_theta, est_phi, inj_theta, inj_phi)
 
 				### searched area
 				injpix = hp.ang2pix(nside, inj_theta, inj_phi)
@@ -331,10 +331,10 @@ if __name__ == "__main__":
 #					raise ValueError, "could not find injpix=%d in posterior"%injpix
 #				searched_area = pixarea_deg*n_sapix
 				cum = np.sum( posterior[:,1][posterior[:,1]>=posterior[injpix,1]] )
-				searched_area = skymap_stats.searched_area(posterior[:,1], inj_theta, inj_phi, degrees=True)
+				searched_area = stats.searched_area(posterior[:,1], inj_theta, inj_phi, degrees=True)
 
 				### entropy
-				entropy = skymap_stats.entroyp(posterior[:,1])
+				entropy = stats.entroyp(posterior[:,1])
 
 				statsfile = open(statsfilename, "w")
 				print >> statsfile, "cos(ang_offset) = %.6f\nsearched_area = %.6f deg2\np_value = %.6f\nentropy = %f"%(cosDtheta, searched_area, cum, entropy)
