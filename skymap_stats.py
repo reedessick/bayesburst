@@ -177,7 +177,12 @@ def structural_similarity(posterior1, posterior2, c1=(0.01)**2, c2=(0.03)**2):
 	m1 = np.mean(posterior1)
 	m2 = np.mean(posterior2)
 	covar = np.cov(posterior1, posterior2)
-
 	return ( (2*m1*m2+c1)*(2*covar[0,1] + c2) ) / ( (m1**2 + m2**2 + c1)*(covar[0,0] + covar[1,1] + c2) )
 
-
+### 
+def pearson(posterior1, posterior2):
+	"""
+	computes the pearson correlation coefficient
+	"""
+	covar = np.cov(posterior1, posterior2)
+	return covar[0,1]/(covar[0,0]*covar[1,1])**0.5
