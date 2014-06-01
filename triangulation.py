@@ -30,6 +30,8 @@ if __name__ == "__main__":
 	parser.add_option("-v", "--verbose", dest="verbose", default=False, action="store_true")
 
 	parser.add_option("-a", "--arrivals-cache", dest="a_cache", default=False, type="string", help="a cache file containing the times-of-arrival for the detectors in this network")
+	parser.add_option("-A", "--new-arrivals-cache", default=False, type="string")
+
 	parser.add_option("", "--deg", default=False, action="store_true", help="if True, we convert injected phi,theta to radians. only important for --arrivals-cache (for which posteriors are calculated).")
 
 	parser.add_option("-N", "--timingNetwork", default=False, type="string", help="the filename of a pickled TimingNetwork. if --errors-cache is also supplied, the constructed TimingNetwork will be written into --timingNetwork.")
@@ -278,6 +280,8 @@ if __name__ == "__main__":
                         	np.save(filename, posterior)
 	                        if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
 
+				toa_event['fits'] = filename
+
 #				raise StandardError, "write code that plots posteriors and saves them into FITs format!"
 	
 			### plot posteriors
@@ -371,3 +375,9 @@ if __name__ == "__main__":
 			if opts.time and opts.verbose:
 				print time.time()-to, "sec"
 
+		if opts.new_arrivals_cache:
+			if opts.verbose:
+				print "writing data to", opts.new_arrivals_cache
+				file_obj = open(opts.new_arrivals_cache, "w")
+				pickle.dump(a_cache, file_obj)
+				file_obj.close()
