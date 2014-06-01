@@ -98,6 +98,17 @@ def num_modes(posterior, theta, phi, nside=None, nest=False):
 	pix = list(np.arange(npix)[posterior>=posterior[hp.ang2pix(nside, theta, phi, nest=nest)]]) ## get list of pixels
 	return len( __into_modes(nside, pix) )
 
+### 
+def size_modes(posterior, theta, phi, nside=None, nest=False, degrees=False):
+	"""
+	computes the sizes of modes in the area bounded by theta, phi
+	"""
+	npix = len(posterior)
+	if not nside:
+		nside = hp.npix2nside(npix)
+	pix = list(np.arange(npix)[posterior>=posterior[hp.ang2pix(nside, theta, phi, nest=nest)]])
+	return [len(_)*hp.nside2pixarea(nside, degrees=degrees) for _ in __into_modes(nside, pix)]
+
 ###
 def __into_modes(nside, pix):
 	"""
