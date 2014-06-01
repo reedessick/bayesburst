@@ -46,6 +46,15 @@ def resample(posterior, new_nside, nest=False):
 		return new_posterior
 
 ###
+def p_value(posterior, theta, phi, nside=None):
+	"""
+	computes the p-value at which a given point was found
+	"""
+	if not nside:
+		nside = hp.npix2nside(len(posterior))
+	return np.sum(posterior[posterior>=posterior[hp.ang2pix(nside, theta, phi)]])
+
+###
 def estang(posterior, nside=None):
 	"""
 	returns the position associated with the maximum of the posterior
