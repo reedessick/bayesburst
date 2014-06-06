@@ -451,6 +451,36 @@ We should be careful that we add likelihoods using the same wave-frame coordinat
 With this posterior in hand, we can make definite statements about the p-value associated with an observed strain that is inconsistent with no-signal. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsubsection{model selection}
+
+As we have currently formulated our posterior, each frequency bin is independent and we assign two parameters to each frequency bin. This can be detrimental if we include too many frequency bins when modeling our signal, in particular if we include frequency bins where there is no signal and we simply reconstruct noise. These extra, uninformative, parameters add uncertainty through their marginalization but do not add information through the likelihood. If we include too many bins, we can become dominated by the marginalization, which is independent of data.
+
+However, bayesian statistics naturally includes a way to select models based on the evidence. We can implement this through a \emph{Bayes Factor}
+
+\begin{equation}
+B \equiv \frac{p(signal+noise|d_\beta)}{p(noise|d_\beta)}\cdot\frac{p(noise)}{p(signal+noise)} = \frac{\int\mathrm{d}\cos\theta\mathrm{d}\phi\mathcal{D}h_j p(d_\beta|\theta,\phi,h_j,signal+noise)p(h_j|signal+noise)}{p(d_\beta|noise)}
+\end{equation}
+
+We can compute the bayes factor separately for each frequency bin through straightforward marginalization. The integral over all possible waveforms can be done analytically, but the marginalization over the source position must be done numerically. There are two ways to proceed once we have the bayes factors:
+
+\begin{enumerate}
+	\item{Apply a threshold to $B(f)$ and only include frequency bins with $B\geq B_{thr}$ in our reconstruction. This introduces an arbitrary threshold for $B$.}
+	\item{Model-average for each frequency bin and compute the total posterior as the product of the posteriors for each bin. This avoids the arbitrary threshold for $B$ but requires knowledge of the prior odds.}
+\end{enumerate}
+
+Model-averaging each frequency bin is straightforward. In essence, we weight the posterior for $(\theta,\phi)$ by the posterior for each model.
+
+\begin{eqnarray}
+p(\theta,\phi|d_\beta) & = & p(\theta,\phi|d_\beta,signal+noise)p(signal+noise|d_\beta) + p(\theta,\phi|d_\beta,noise)p(noise|d_\beta) \\
+                       & = & p(noise|d_\beta)\left(p(\theta,\phi|d_\beta,signal+noise)\cdot B\frac{p(signal+noise)}{p(noise)} + \frac{1}{4\pi}\right) \\
+\end{eqnarray}
+
+and we notice that $p(noise|d_\beta)$ is a constant independent of the source position and will be normalized away. We also not that we've set the somewhat ambiguously defined $p(\theta,\phi|d_\beta,noise)=1/4\pi$, so that it is constant over the entire sky. This is done so that if $B\ll1$, the posterior approaches a constant (and therefore uniformative) distribution. In this way, when there is little evidence for signal in the data, the contribution of this frequency bin is simply a constant independent of $(\theta,\phi)$. We do introduce the prior odds in this expression, which are difficult to determine. However, we can set them to some small number so that the data must be very informative for us to consider a model with $signal+noise$ over a model with only $noise$. By taking the product of over all frequency bins, we consider every possible combination of signal/no-signal in the frequency bins.
+
+With either choice, we can naturally downselect the frequency bins in our model to contain only those that are likely to have signal based on the observed data. This eliminates our problem of having too many parameters.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Example: one polarization, two detectors}
 
 For a single polarization, $A_{jk}=A \rightarrow (A^{-1}) = 1/A$. Therefore, we can write our estimator as
