@@ -274,10 +274,12 @@ if __name__ == "__main__":
                 	        if opts.verbose:
                         	        print "\twriting posterior"
                                 	if opts.time: to=time.time()
-	                        filename = "%s/posterior-%d%s.npy"%(opts.output_dir, toa_ind, opts.tag)
+#	                        filename = "%s/posterior-%d%s.npy"%(opts.output_dir, toa_ind, opts.tag)
+	                        filename = "%s/posterior-%d%s.fits.gz"%(opts.output_dir, toa_ind, opts.tag)
         	                if opts.verbose:
                 	                print "\t\t", filename
-                        	np.save(filename, posterior)
+#                        	np.save(filename, posterior)
+                        	hp.write_map(filename, posterior)
 	                        if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
 
 				toa_event['fits'] = filename
