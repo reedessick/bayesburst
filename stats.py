@@ -21,12 +21,13 @@ def cos_dtheta(theta1, phi1, theta2, phi2):
 # methods involving manipulating a posterior
 #
 #=================================================
-def rankmap(posterior):
+def rankmap(posterior, npix=None):
         """
         converts a posterior into a rank map. Small ranks correspond to large posterior weight
         WARNING: rankmaps do not sum to unity!
         """
-        npix = len(posterior)
+	if not npix:
+	        npix = len(posterior)
         rankmap = np.empty(npix,int)
         rankmap[posterior.argsort()] = np.arange(npix)[::-1]
         return rankmap
@@ -233,3 +234,27 @@ def pearson(posterior1, posterior2):
 	"""
 	covar = np.cov(posterior1, posterior2)
 	return covar[0,1]/(covar[0,0]*covar[1,1])**0.5
+
+###
+def geometric_overlap(posterior1, posterior2, p_value, degrees=False):
+	"""
+	computes the amount of area in the intersection and union of confidence regions from p1 and p2 defined by p_value
+	"""
+	npix = len(posterior1)
+	nside = hp.npix2nside(npix)
+	pixarea = hp.nside2pixarea(nside, degrees=degrees)
+
+	truth1 = posterior1 >= p_value
+	truth2 = posterior2 >= p_value
+
+	intersection = np.sum( truth1*truth2 )
+	return intersection*pixarea, (np.sum(truth1+truth2) - intersection)*pixarea
+
+###
+def dot(posterior1, posterior2):
+	"""
+	takes the "inner product" of the two posteriors and returns the cos(theta) between them
+	"""
+	return posterior1*posterior2/(np.sum(posterior1**2)*np.sum(posterior2**2))
+
+
