@@ -39,23 +39,25 @@ def resample(posterior, new_nside, nest=False):
 		if new_nside > nside: we assign each new pixel an equal fraction of the parent pixel's value
 		if new_nside < nside: we assign each new pixel the sum of the contained pixels
 	"""
-	npix = len(posterior)
-	new_npix = hp.nside2npix(new_nside)
-	if npix == new_npix:
-		return posterior
-	elif npix < new_npix:
-		### upsample by assiging a fraction of the probability to each new pixel
-		nside = hp.npix2nside(npix)
-		new_t, new_p = hp.pix2ang(new_nside, np.arange(new_npix), nest=nest) # location of new pixels
-		return posterior[hp.ang2pix(nside, new_t, new_p, nest=nest)]*1.0*npix/new_npix
-	else: #npix > new_npix
-		### downsample by assigning the sum of containted probability to each new pixel
-                nside = hp.npix2nside(npix)
-		new_posterior = np.zeros((new_npix,))
-		for ipix, post in enumerate(posterior): ### iterate over old posterior and add contributions to new posterior
-			t, p = hp.pix2ang(nside, ipix)
-			new_posterior[hp.ang2pix(new_nside, t, p, nest=nest)] += post
-		return new_posterior
+	return hp.ud_grade(posterior, new_nside, power=-2)
+
+#	npix = len(posterior)
+#	new_npix = hp.nside2npix(new_nside)
+#	if npix == new_npix:
+#		return posterior
+#	elif npix < new_npix:
+#		### upsample by assiging a fraction of the probability to each new pixel
+#		nside = hp.npix2nside(npix)
+#		new_t, new_p = hp.pix2ang(new_nside, np.arange(new_npix), nest=nest) # location of new pixels
+#		return posterior[hp.ang2pix(nside, new_t, new_p, nest=nest)]*1.0*npix/new_npix
+#	else: #npix > new_npix
+#		### downsample by assigning the sum of containted probability to each new pixel
+#                nside = hp.npix2nside(npix)
+#		new_posterior = np.zeros((new_npix,))
+#		for ipix, post in enumerate(posterior): ### iterate over old posterior and add contributions to new posterior
+#			t, p = hp.pix2ang(nside, ipix)
+#			new_posterior[hp.ang2pix(new_nside, t, p, nest=nest)] += post
+#		return new_posterior
 
 ###
 def p_value(posterior, theta, phi, nside=None):
@@ -202,7 +204,8 @@ def KLdivergence(posterior1, posterior2, base=2.0):
 	computes the Kullback-Leibler divergence
 		sum log(p1/p2) * p1
 	"""
-	return np.sum( np.log(posterior1/posterior2)*posterior1 )/np.log(base)
+	truth = posterior1>0
+	return np.sum( np.log(posterior1[truth]/posterior2[truth])*posterior1[truth] )/np.log(base)
 
 ###
 def symmetric_KLdivergence(posterior1, posterior2, base=2.0):
@@ -210,7 +213,8 @@ def symmetric_KLdivergence(posterior1, posterior2, base=2.0):
 	computes the symmetric Kullback-Leibler divergence
 		sum log(p1/p2)*(p1 - p2)
 	"""
-	return np.sum( np.log(posterior1/posterior2)*(posterior1 - posterior2) )/np.log(base)
+	return KLdivergence(posterior1, posterior2, base=base) + KLdivergence(posterior2, posterior2, base=base)
+#	return np.sum( np.log(posterior1/posterior2)*(posterior1 - posterior2) )/np.log(base)
 
 ###
 def structural_similarity(posterior1, posterior2, c1=(0.01)**2, c2=(0.03)**2):
@@ -236,25 +240,26 @@ def pearson(posterior1, posterior2):
 	return covar[0,1]/(covar[0,0]*covar[1,1])**0.5
 
 ###
-def geometric_overlap(posterior1, posterior2, p_value, degrees=False):
-	"""
-	computes the amount of area in the intersection and union of confidence regions from p1 and p2 defined by p_value
-	"""
-	npix = len(posterior1)
-	nside = hp.npix2nside(npix)
-	pixarea = hp.nside2pixarea(nside, degrees=degrees)
-
-	truth1 = posterior1 >= p_value
-	truth2 = posterior2 >= p_value
-
-	intersection = np.sum( truth1*truth2 )
-	return intersection*pixarea, (np.sum(truth1+truth2) - intersection)*pixarea
-
-###
 def dot(posterior1, posterior2):
 	"""
 	takes the "inner product" of the two posteriors and returns the cos(theta) between them
 	"""
 	return posterior1*posterior2/(np.sum(posterior1**2)*np.sum(posterior2**2))
 
+###
+def geometric_overlap(pix1, pix2, nside, degrees=False):
+        """
+        computes the amount of area in the intersection and union of confidence regions from p1 and p2 defined by p_value
+        """
+        npix = hp.nside2npix(nside)
+        pixarea = hp.nside2pixarea(nside, degrees=degrees)
+
+	posterior1 = np.zeros((npix,),int)
+	posterior2 = np.zeros((npix,),int)
+
+	posterior1[pix1] = 1
+	posterior2[pix2] = 1
+
+        intersection = np.sum( posterior1*posterior2 )
+        return intersection*pixarea, (np.sum(posterior1+posterior2) - intersection)*pixarea
 
