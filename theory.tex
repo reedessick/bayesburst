@@ -41,7 +41,7 @@
 \end{itemize}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\thispagestyle{empty}
+%\thispagestyle{empty}
 \tableofcontents
 \newpage
 
@@ -688,6 +688,67 @@ Fortunately, the LIGO detectors are nearly aligned, which means they are effecti
 
 We should also note that triangulation gives very different error regions depending on $N_{ifo}$ and $\left(N_{p}\right)_{\mathrm{eff}}$. For the LHO-LLO network, the locus of points that gives a consistent time-of-arrival using a single polarization is an annulus. This annulus can be a great circle and will typically contain a large portion of the sky. The annulus's width is controlled by the accuracy to which observers can determine the time-of-flight between detectors. For the LHO-LLO-Virgo netowrk, assuming all three detectors participate, triangulation gives 2 points in the sky, which reflects a symmetry with respect to reflection about the plane defined by the three detectors. We expect the error region to consist of blobs centered around these points, with the blob radius determined by the accuracy to which we measure time-of-flight between the various pairs of detectors.
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{analytic triangulation for 2 detectors}
+
+If we assume there are only 2 detectors, then we can write the \emph{likelihood} component of the posterior as
+
+\begin{eqnarray}
+\hat{h}_j^\ast A_{jk} \hat{h}_k & = & \left( d_A B_{Ak} + d_B B_{Bk} \right) \left(A^{-1}\right)_{kj} \left( d_A^\ast B_{Ak}^\ast + d_B^\ast B_{Bk}^\ast \right) \\
+& = & |d_A|^2 B_{Ak} \left(A^{-1}\right)_{kj} B_{Aj}^\ast + |d_B|^2 B_{Bk} \left(A^{-1}\right)_{kj} B_{Bj}^\ast \\
+& = & + 2\mathbb{R}\left\{ d_A d_B^\ast B_{Ak} \left(A^{-1}\right)_{kj} B_{Bj} \right\} \\
+\end{eqnarray}
+
+and if we define $B_{\alpha k} = F_{\alpha k}/S_\alpha = \mathcal{F}_{\alpha k}e^{-2\pi i f \Delta t} / S_\alpha = C_{\alpha k} e^{-2\pi i f \Delta t}$, we can write this as
+
+\begin{eqnarray}
+\hat{h}_j^\ast A_{jk} \hat{h}_k & = & |d_A|^2 C_{Ak} \left(A^{-1}\right)_{kj} C_{Aj} + |d_B|^2 C_{Bk} \left(A^{-1}\right)_{kj} C_{Bj} \\
+& = & + 2 C_{Ak} \left(A^{-1}\right)_{kj} C_{Bj} \cdot \mathbb{R}\left\{d_A d_B^\ast e^{-2\pi i f \left(\Delta t_A - \Delta t_B\right) }\right\} \\
+\end{eqnarray}
+
+Already, we can clearly see that there is an oscilatory term that compares the time-shifted signal (embedded in the data) and the expected time-shift. This oscillatory term either adds to the log-likelihood if the time shift is about right or it subtracts from the likelihood if the shift is very wrong.
+
+To investigate further, let us restrict ourselves to the case of a single polarization and consider the case where $F_{\alpha}h \gg n_\alpha$ (high snr). We can then write
+
+\begin{eqnarray}
+\hat{h}_j^\ast A_{jk} \hat{h}_k & = & \frac{1}{A}\left( \left|\frac{d_A \mathcal{F}_A}{S_A}\right|^2 + \left|\frac{d_B \mathcal{F}_B}{S_B}\right|^2 \right. \\
+&  & \left. + 2 \frac{\mathcal{F}_{A} \mathcal{F}_{B}}{S_A S_B} \mathbb{R}\left\{d_A d_B^\ast e^{-2\pi i f \left(\Delta t_A - \Delta t_B\right) }\right\}\right) \\
+& = & \frac{1}{A}\left( \left|\frac{h \mathcal{F}_A^2}{S_A}\right|^2 + \left|\frac{h \mathcal{F}_B^2}{S_B}\right|^2 \right. \\
+&  & \left. + 2 \frac{|h \mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A S_B} \mathbb{R}\left\{e^{+2\pi i f\left(\left(\delta t_A\right)_{src} - \left(\Delta t_B\right)_{src}\right)} e^{-2\pi i f \left(\Delta t_A - \Delta t_B\right) }\right\}\right) \\
+& = & \frac{|h|^2}{A}\left( \left|\frac{\mathcal{F}_A^2}{S_A}\right|^2 + \left|\frac{\mathcal{F}_B^2}{S_B}\right|^2 \right. \\
+&  & \left. + 2 \frac{|\mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A S_B} \cos\left(2\pi f\left(\delta t - \left(\delta t\right)_{src}\right)\right)\right)
+\end{eqnarray}
+
+Now, the total likelihood contains the integral of this quantity over all frequencies
+
+\begin{eqnarray}
+\log\mathcal{L} & \supset & \int\mathrm{d}f\, \hat{h}_j^\ast A_{jk} \hat{h}_k \\
+& = & \int\mathrm{d}f\, \frac{|h|^2}{A}\left( \left|\frac{\mathcal{F}_A^2}{S_A}\right|^2 + \left|\frac{\mathcal{F}_B^2}{S_B}\right|^2 \right. \\
+&   & \ \ \left. + 2 \frac{|\mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A S_B} \cos\left(2\pi f\left(\delta t - \left(\delta t\right)_{src}\right)\right)\right)\\ 
+\end{eqnarray}
+
+We can see that there will always be positive support when $\delta t - \left(\delta t\right)_{src}\sim 0$ because the frequency dependence of that oscillatory term cancels. This corresponds to the \emph{main} triangulation ring. However, if the gravitational wave can be approximated as $h(f) \sim h(f_o)\cdot(\Theta(f-f_o+\epsilon) - \Theta(f-f_o-\epsilon))$, and that the noise spectra are nearly constant in this bandwidth, then we can approximate the integrals as follows.
+
+\begin{eqnarray}
+\log\mathcal{L} & \supset & \frac{|h(f_o)|^2}{A(f_o)}\left( \left|\frac{\mathcal{F}_A^2}{S_A(f_o)}\right|^2 + \left|\frac{\mathcal{F}_B^2}{S_B(f_o)}\right|^2\right) 2\epsilon \\
+&  & + 2\frac{|h(f_o)|^2}{A(f_o)} \frac{|\mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A(f_o) S_B(f_o)}\frac{1}{2\pi \left(\delta t - \left(\delta t\right)_{src}\right)} \left( \sin\left(2\pi (f_o-\epsilon) \left(\delta t - \left(\delta t\right)_{src}\right)\right) - \sin\left(2\pi (f_o-\epsilon) \left(\delta t - \left(\delta t\right)_{src}\right)\right) \right) \\
+& \supset & 2\frac{|h(f_o)|^2}{A(f_o)} \frac{|\mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A(f_o) S_B(f_o)}\frac{2}{2\pi \left(\delta t - \left(\delta t\right)_{src}\right)} \cos\left(2\pi f_o \left(\delta t - \left(\delta t\right)_{src}\right)\right)\sin\left(2\pi \epsilon \left(\delta t - \left(\delta t\right)_{src}\right)\right) \\
+\end{eqnarray}
+
+and we notice that there are now two oscillatory contributions from $\delta t - \left(\delta t\right)_{src}$. However, note that there is a \emph{non oscillatory} contribution from $\delta t - \left(\delta t\right)_{src}$, which breaks the total periodicity of the function. Therefore, we would in general only expect weight to accumulate when $\delta t - \left(\delta t\right)_{src}\sim 0$. There is an important exception to this conclusion, which occurs in the limit when $f_o \gg \epsilon$, so that the first oscillatory component can execute several cylces before the second's argument changes much. In this limit, we can expand the second oscillatory function, which yields
+
+\begin{eqnarray}
+\log\mathcal{L} & \supset & 2\frac{|h(f_o)|^2}{A(f_o)} \frac{|\mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A(f_o) S_B(f_o)}\frac{2}{2\pi \left(\delta t - \left(\delta t\right)_{src}\right)} \cos\left(2\pi f_o \left(\delta t - \left(\delta t\right)_{src}\right)\right)\sin\left(2\pi \epsilon \left(\delta t - \left(\delta t\right)_{src}\right)\right) \\
+& \sim & 2\frac{|h(f_o)|^2}{A(f_o)} \frac{|\mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A(f_o) S_B(f_o)}\frac{2}{2\pi \left(\delta t - \left(\delta t\right)_{src}\right)} \cos\left(2\pi f_o \left(\delta t - \left(\delta t\right)_{src}\right)\right)2\pi \epsilon \left(\delta t - \left(\delta t\right)_{src}\right) + O(\epsilon^3) \\
+& \sim & 4\epsilon\frac{|h(f_o)|^2}{A(f_o)} \frac{|\mathcal{F}_{A} \mathcal{F}_{B}|^2}{S_A(f_o) S_B(f_o)}\cos\left(2\pi f_o \left(\delta t - \left(\delta t\right)_{src}\right)\right) + O(\epsilon^3) \\
+\end{eqnarray}
+
+and we see that the non-oscillatory component has cancelled. Therefore, in this limit we obtain an oscillatory function, with multiple nearly equivalent peaks. These correspond to \emph{fringe peaks} in the posterior, and the angular separation between such finges is determined by $\cos\delta\theta \sim 1/f_o$. 
+
+\textbf{This means that we should expect fringe peaks whenever $f_o \gg \epsilon$.} We can predict with the existence of fringe peaks with knowledge of the waveform, or we can infer something about the waveform by observing the fringe peaks.
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{effective priors on $(\theta,\phi)$}
 
@@ -698,7 +759,7 @@ However, we can also derive an \emph{effective} prior on $(\theta,\phi)$ using k
 Sources are uniformly distributed in volume, independently of their morphology or intrinsic strength. However, we can relate the observed strain to the energy in the wave and the distance through
 
 \begin{equation}
-\frac{E_{GW}}/D_L^2 \int\mathrm{d}f\, (f h_{j}^\ast)(f h_{j}) \approx f_o^2 \int\mathrm{d}f\, h_{j}^\ast h_{j}
+\frac{E_{GW}}{D_L^2} \int\mathrm{d}f\, (f h_{j}^\ast)(f h_{j}) \approx f_o^2 \int\mathrm{d}f\, h_{j}^\ast h_{j}
 \end{equation}
 
 where our approximation assumes a narrow-band signal. Furthermore, working in the dominant polarization frame (so things are diagonal)
