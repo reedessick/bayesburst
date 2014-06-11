@@ -275,11 +275,12 @@ if __name__ == "__main__":
                         	        print "\twriting posterior"
                                 	if opts.time: to=time.time()
 #	                        filename = "%s/posterior-%d%s.npy"%(opts.output_dir, toa_ind, opts.tag)
-	                        filename = "%s/posterior-%d%s.fits.gz"%(opts.output_dir, toa_ind, opts.tag)
+#	                        filename = "%s/posterior-%d%s.fits.gz"%(opts.output_dir, toa_ind, opts.tag)
+	                        filename = "%s/posterior-%d%s.fits"%(opts.output_dir, toa_ind, opts.tag)
         	                if opts.verbose:
                 	                print "\t\t", filename
 #                        	np.save(filename, posterior)
-                        	hp.write_map(filename, posterior)
+                        	hp.write_map(filename, posterior[:,1])
 	                        if opts.verbose and opts.time: print "\t\t", time.time()-to, "sec"
 
 				toa_event['fits'] = filename
@@ -331,7 +332,7 @@ if __name__ == "__main__":
 				num_mode = stats.num_modes(posterior[:,1], inj_theta, inj_phi, nside=nside)
 
 				### min{cosDtheta}
-				min_cosDtheta = stats.min_cos_dtheta(posterior[:1], inj_theta, inj_phi, nside=nside)
+				min_cosDtheta = stats.min_cos_dtheta(posterior[:,1], inj_theta, inj_phi, nside=nside)
 
 				### entropy
 				entropy = stats.entropy(posterior[:,1])
