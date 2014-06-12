@@ -244,7 +244,7 @@ def dot(posterior1, posterior2):
 	"""
 	takes the "inner product" of the two posteriors and returns the cos(theta) between them
 	"""
-	return posterior1*posterior2/(np.sum(posterior1**2)*np.sum(posterior2**2))
+	return np.sum(posterior1*posterior2)/(np.sum(posterior1**2)*np.sum(posterior2**2))
 
 ###
 def geometric_overlap(pix1, pix2, nside, degrees=False):
