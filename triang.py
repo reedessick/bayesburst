@@ -350,12 +350,18 @@ def singlekde(samples, tof_err, e, precision_limit=0.001, max_iters=5, verbose=F
 	if verbose and timing: print "\t\t", time.time()-t1, "sec"
 
 	### iterate with point_wide kde and look for convergence
+
+#	z = 1.0 ### fraction of e used as scale 
+	z = 1000/(1.0+len(tof_err)) ### fraction of e used as scale
+	                            ### ad hoc formula that will use larger scales for smaller sample sets
+	                            ### may not be optimal...
+
 	for _ in range(max_iters):
 		if verbose:
 			print "\tpoint_wise kde"
 			if timing: t1=time.time()
 		old_samples_kde = samples_kde
-		samples_kde = pdfe.point_wise_gaussian_kde(samples, tof_err, scale=0.5*e, pilot_x=samples, pilot_y=samples_kde)
+		samples_kde = pdfe.point_wise_gaussian_kde(samples, tof_err, scale=z*e, pilot_x=samples, pilot_y=samples_kde)
 		precision = 1 - sum(samples_kde*old_samples_kde)/(sum(samples_kde**2) * sum(old_samples_kde**2))**0.5
 		if verbose:
 			print "\t\tprecision=%.6f"%precision
