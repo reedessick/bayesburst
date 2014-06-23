@@ -428,10 +428,9 @@ Furthermore, we can approximate this function as a sum of gaussians
 p(h_j(f)) & \approx & \sum\limits_n C_n \mathrm{exp}\left(-Z_n \int\mathrm{d}f h_j^\ast h_j \right) \\
           & = & \sum\limits_n C_n \mathrm{exp}\left(-\int\mathrm{d}f\, h_j^\ast Z_n\delta_{jk} h_k\right) \\
           & = & \sum\limits_n C_n \prod\limits_f \mathrm{exp}\left(-h_j^\ast(f) Z_n\delta_{jk} h_k(f)\right) \\
-          & = & \prod\limits_f \sum\limits_n C_n \mathrm{exp}\left(-h_j^\ast(f) Z_n\delta_{jk} h_k(f)\right)
 \end{eqnarray}
 
-which looks like \emph{the same sum of gaussians} independently for each frequency component in the signal. We therefore can implement this astrophysical prior in a straightforward way within our existing framework. If we want to look for wide-band signals, then perhaps we should modify $Z_n\rightarrow f^2 Z_n$, so there is a frequency dependent prior. The argument about the energy scaling with luminosity distance is then exact, regardless of the signal's bandwidth.
+We note that \emph{this is not equivalent to the product of independent priors on each frequency compenent}, because in this case the sum of the product is not the product of the sum. However, this can still be implemented in a straightforward way within our existing framework. If we want to look for wide-band signals, then perhaps we should modify $Z_n\rightarrow f^2 Z_n$, so there is a frequency dependent prior. The argument about the energy scaling with luminosity distance is then exact, regardless of the signal's bandwidth.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsubsection{singular $A_{jk}$ and priors on $h_j$}
