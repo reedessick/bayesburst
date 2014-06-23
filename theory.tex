@@ -2,6 +2,7 @@
 
 \bibliographystyle{plain}
 
+\usepackage{comment}
 \usepackage{fullpage}
 \usepackage{color}
 \usepackage{amsmath}
@@ -399,31 +400,40 @@ Alternatively, we can write down some astrophysically motivated prior, such as u
 \frac{E_{GW}}{D_L^2} \propto \int\mathrm{d}f\, f^2 h_j^\ast h_j
 \end{equation}
 
-To obtain a prior on $h_j$, we should marginalize over all possible $D_L$ and $E_{GW}$\footnote{This assumes all signals have the same intrinsic \emph{standard candle} $E_{GW}$ regardless of their frequency content, which may not be true.}
+To obtain a prior on $h_j$, we should marginalize over all possible $D_L$ and $E_{GW}$.
 
 \begin{eqnarray}
-p(h_j) & \propto & \int p(h_j|D_L, E_{GW})p(D_L)p(E_{GW})\mathrm{d}D_L\mathrm{d}E_{GW} \\
-& = & \int \delta\left( D_L - \sqrt{\frac{E_{GW}}{\int\mathrm{d}f\,f^2h_j^\ast h_j}} \right) p(D_L) p(E_{GW})\mathrm{d}D_L\mathrm{d}E_{GW} \nonumber \\
-& = & \int \delta\left( D_L - \sqrt{\frac{E_{GW}}{\int\mathrm{d}f\,f^2h_j^\ast h_j}} \right) (4\pi D_L^2) p(E_{GW})\mathrm{d}D_L\mathrm{d}E_{GW} \ \ \ (\mathrm{for}\ z\ll 1) \nonumber\\
-& = & \int 4\pi \frac{E_{GW}}{\int\mathrm{d}f\, f^2h_j^\ast h_j}p(E_{GW})\mathrm{d}E_{GW} \nonumber \\
-& = & \frac{4\pi \left<E_{GW}\right>}{\int\mathrm{d}f\, f^2h_j^\ast h_j}
+p(h,E,D)\mathrm{d}h\mathrm{dE}\mathrm{dD} & = & p(h|E,D)\mathrm{d}h \cdot p(E)\mathrm{d}E \cdot p(D)\mathrm{d}D \\
+                                          & \propto & \delta\left(h-\sqrt{\frac{E}{D^2}}\right)\mathrm{d}h \cdot \mathrm{d}E \cdot D^2 \mathrm{d}D \\
 \end{eqnarray}
 
-Notice that this does the something reasonable in that it prefers signals with smaller $h_j$, because they're likely to have come from farther away. However, this renders the posterior nearly impossible to compute analytically:
+where $h^2=\int\mathrm{d}f\, f^2 h_j^\ast h_j$. Marginalization yields
+
+\begin{eqnarray}
+p(h) & \propto & \int\mathrm{d}E\int\mathrm{d}D D^2 \delta\left(h-\sqrt{\frac{E}{D^2}}\right) \\
+     & \propto & \int\mathrm{d}E\int\mathrm{d}D D^2 \delta\left(D-\sqrt{\frac{E}{h^2}}\right)\frac{\sqrt{E}}{h^2} \\
+     & \propto & \int\mathrm{d}E E^{3/2} h^{-4} \\
+     & \propto & h^{-4}
+\end{eqnarray}
+
+We therefore expect an astrophycially motivated prior on $h_j$ to be something like
 
 \begin{equation}
-p(\theta,\phi|d_\beta) = p(\theta,\phi)\int\mathcal{D}\epsilon_j \mathrm{exp}\left( \int\mathrm{d}f\, d_\beta^\ast B_{\beta j}^\ast \left(A^{-1}\right)_{jk} B_{\alpha k} d_\alpha - \epsilon_j^\ast A_{jk} \epsilon_k \right) \frac{4\pi \left<E_{GW}\right>}{\int\mathrm{d}f\, f^2 (\hat{h}_j^\ast+\epsilon_j^\ast) (\hat{h}_j+\epsilon_j)}
+p(h_j(f)) \propto \left(\int\mathrm{d}f h_j^\ast h_j \right)^-2
 \end{equation}
 
-In fact, we can do a little better than this by expanding the denomenator of the prior in a power series and noting that all odd powers of $\epsilon_j$ will vanish? At least this is true of the linear terms. Depending on the width $A_{jk}$ and the energy contained in the maximum likelihood estimate, we may be able to truncate the series after a few terms, which we can evaluate analtyically. 
+Furthermore, we can approximate this function as a sum of gaussians
 
-\begin{itemize}
-	\item{separate into different frequency components? $\Rightarrow$ make the measure a product?}
-	\item{Can we Taylor expand the integral with respect to each frequency component?}
-\end{itemize}
+\begin{eqnarray}
+p(h_j(f)) & \approx & \sum\limits_n C_n \mathrm{exp}\left(-Z_n \int\mathrm{d}f h_j^\ast h_j \right) \\
+          & = & \sum\limits_n C_n \mathrm{exp}\left(-\int\mathrm{d}f\, h_j^\ast Z_n\delta_{jk} h_k\right) \\
+          & = & \sum\limits_n C_n \prod\limits_f \mathrm{exp}\left(-h_j^\ast(f) Z_n\delta_{jk} h_k(f)\right) \\
+          & = & \prod\limits_f \sum\limits_n C_n \mathrm{exp}\left(-h_j^\ast(f) Z_n\delta_{jk} h_k(f)\right)
+\end{eqnarray}
 
-Using this as motivation, we may be able to expand this prior into a sum of gaussians and use our previous result to evaluate the marginalization analytically.
+which looks like \emph{the same sum of gaussians} independently for each frequency component in the signal. We therefore can implement this astrophysical prior in a straightforward way within our existing framework.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsubsection{singular $A_{jk}$ and priors on $h_j$}
 
 If $A_{jk}$ is singular, then the network is insensitive to at least one polarization. We can simply restrict ourselves to a subset of polarizations to which the detector network is sensitive if we properly normalize our priors so that
@@ -896,6 +906,8 @@ p(D_L) \propto D_L^2 & \approx & \frac{E_{GW}/f_o^2}{\int\mathrm{d}f\, h_{j}^\as
                      & \sim & S s_j \sim F^\ast F \\
                      & = & p_{\mathrm{eff}}(\theta,\phi)
 \end{eqnarray}
+
+However, our marginalization is over $h_j$, so we should consider $p(h)\mathrm{d}h\sim(F^\ast F)^{3/2}$ for an astrophysical population. Essentially, this argues that the likelihood is sharply peaked and we can approximate the marginalization with the value of the prior near the maximum likelihood estimate. The marginalized signal will be proportional to the antenna pattern in this way, where we really expect $F^\ast F$ to go like the maximum eigenvalue of the sensitivity matrix.
 
 There is a considerable amount of hand-waving in this argument, and it really holds closely when $\left(N_{p}\right)_{\mathrm{eff}} = 1$, and there is only a single polarization. This is the case for the LHO-LLO network, and indeed we observe a distribution of detected signals that closely follows the predicted form. 
 
