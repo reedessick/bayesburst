@@ -258,10 +258,10 @@ class BinnedTimingNetwork(utils.Network):
 		if not isinstance(bin_edges, list):
 			bin_edges = list(bin_edges)
 		if not len(bin_edges):
-			bin_edges =  np.array([0,np.infty])
-		elif bin_edges[0] > 0:
+			return  np.array([0,np.infty])
+		if bin_edges[0] > 0:
 			bin_edges.insert(0, 0.0)
-		elif bin_edges[-1] < np.infty:
+		if bin_edges[-1] < np.infty:
 			bin_edges.append( np.infty )
 		return np.array(bin_edges)
 
@@ -284,7 +284,7 @@ class BinnedTimingNetwork(utils.Network):
                 return sorted(keys)
 
 	###
-	def toacache_to_errs(self, toacache, dt=1e-5, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag="", diag=False):
+	def toacache_to_errs(self, toacache, dt=1e-5, verbose=False, timing=False, hist_errors=False, scatter_errors=False, output_dir="./", tag="", diag=False, snr_key="snr", freq_key="freq", bandwidth_key="bandwidth"):
 		""" builds errors structure and computes basis from toacache. Results are stored within network """
         	self.errors = [ [ [[] for bdw_bin_ind in xrange(self.n_bandwidth_bin)] for frq_bin_ind in xrange(self.n_freq_bin) ] for snr_bin_ind in xrange(self.n_snr_bin) ]
 	        n_err = len(toacache)
@@ -316,9 +316,9 @@ class BinnedTimingNetwork(utils.Network):
 		frqs = np.empty((n_err,),float)
 		bdws = np.empty((n_err,),float)
 		for toa_ind, toa_event in enumerate(toacache):
-			snrs[toa_ind] = toa_event["snr"]
-			frqs[toa_ind] = toa_event["freq"]
-			bdws[toa_ind] = toa_event["bandwidth"]
+			snrs[toa_ind] = toa_event[snr_key]
+			frqs[toa_ind] = toa_event[freq_key]
+			bdws[toa_ind] = toa_event[bandwidth_key]
 
 		### iterate through bins, downselecting data as we go
 		for snr_bin_ind in xrange(self.n_snr_bin):
@@ -342,7 +342,7 @@ class BinnedTimingNetwork(utils.Network):
 					_tof_errs = tof_errs[:,snr_truth*frq_truth*bdw_truth] ### only those events that live in all selected bins
 					_n_err = len(_tof_errs[0])
 					if verbose:
-						print "snr_bin:\t%d/%d\nfreq_bin:\t%d/%d\nbandwidth_bin:\t%d/%d"%(snr_bin_ind, self.n_snr_bin, frq_bin_ind, self.n_freq_bin, bdw_bin_ind, self.n_bandwidth_bin)
+						print "snr_bin:\t%d/%d\nfreq_bin:\t%d/%d\nbandwidth_bin:\t%d/%d"%(snr_bin_ind, self.n_snr_bin, freq_bin_ind, self.n_freq_bin, bdw_bin_ind, self.n_bandwidth_bin)
 						print "%d / %d events"%(_n_err, n_err)
 
 					### compute covariance matrix and diagonalize
@@ -365,7 +365,7 @@ class BinnedTimingNetwork(utils.Network):
 							truth = eigvals >= dt**2 # figure out which eigvals are measurable
 							eigvecs = np.empty((n_tof,sum(truth))) # array for new basis
 							eig_ind = 0
-							for tof_ind in xrange(_n_tof):
+							for tof_ind in xrange(n_tof):
 								if truth[tof_ind]: # variance is big enough to measure
 									eigvecs[:,eig_ind] = _eigvecs[:,tof_ind]
 									eig_ind += 1
@@ -378,12 +378,12 @@ class BinnedTimingNetwork(utils.Network):
 								print "new cov:\n", cov
 						else:
 							eigvecs = _eigvecs
-							eig_ind = _n_tof
+							eig_ind = n_tof
 					else: 
 						eigvecs = np.eye(n_tof)
 						eig_ind = n_tof # all the eigvals are allowable
 
-					self.basis[snr_bin_ind][frq_bin_ind][bdw_bin_ind] = eigvecs ### establish basis for this bin
+					self.basis[snr_bin_ind][freq_bin_ind][bdw_bin_ind] = eigvecs ### establish basis for this bin
 
 					### iterate through basis and compute errors
 					if scatter_errors:
@@ -402,7 +402,8 @@ class BinnedTimingNetwork(utils.Network):
 						e = np.std(e_tof_err)
 		
 	        			        z = 0.1 # consistency check to make sure the tof errors are not crazy
-			        	        if abs(m) > z*e:
+			        	        if False:
+#			        	        if abs(m) > z*e:
                 				        ans = raw_input("\nmeasured mean (%f) is larger than %.3f of the standard deviation (%f) for tof_ind: %d\n\tcontinue? [Y/n] "%(m,z,e,tof_ind))
 			                        	if ans != "Y":
                         			        	raise ValueError, "measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof: %d"%(m,z,e,tof_ind)
@@ -411,14 +412,14 @@ class BinnedTimingNetwork(utils.Network):
 
 			                	### add errors to the errs
 				                if self.error_approx == "gaussian":
-			        	                self.errors[snr_bin_ind][frq_bin_ind][bdw_bin_ind].append( e )
+			        	                self.errors[snr_bin_ind][freq_bin_ind][bdw_bin_ind].append( e )
 							kde = None # for hist_errors
 
 				                elif self.error_approx == "kde": ### single kde estimate for the entire sky
 			        	                samples = np.arange(-bound, bound+dt, dt)
 #							samples = np.linspace(-10*e, 10*e, 1e5+1)
 							kde = singlekde(samples, e_tof_err, e, verbose=verbose, timing=timing)
-							self.errors[snr_bin_ind][frq_bin_ind][bdw_bin_ind].append( kde )
+							self.errors[snr_bin_ind][freq_bin_ind][bdw_bin_ind].append( kde )
 			                	else:
 			                        	raise ValueError, "error-approx=%s not understood"%self.binnedTimingNetwork.error_approx
 
@@ -429,7 +430,7 @@ class BinnedTimingNetwork(utils.Network):
 				
 			                		fig, ax = self.__hist_errors(e_tof_err, label, n_err=_n_err, m=m, e=e, kde=kde)
 
-		        			        figname = output_dir+"/s-%d_f-%d_b-%d__tof-err_%s%s.png"%(snr_bin_ind, frq_bin_ind, bdw_bin_ind, label,tag)
+		        			        figname = output_dir+"/s-%d_f-%d_b-%d__tof-err_%s%s.png"%(snr_bin_ind, freq_bin_ind, bdw_bin_ind, label,tag)
 			        		        if verbose: print "\tsaving", figname
 			                		fig.savefig(figname)
 				                	plt.close(fig)
@@ -449,18 +450,18 @@ class BinnedTimingNetwork(utils.Network):
 			                        	        fig.text(0.15+0.025, 0.925-0.025, "$\mu=%.3f\mathrm{ms}$\n$\sigma=%.3f\mathrm{ms}$"%(m*1e3, e*1e3), ha="left", va="top", color="b", fontsize=12)
 			                                	fig.text(0.975-0.025, 0.700-0.025, "$\mu=%.3f\mathrm{ms}$\n$\sigma=%.3f\mathrm{ms}$"%(_m*1e3, _e*1e3), ha="right", va="top", color="b", fontsize=12)
 
-								figname = output_dir+"//s-%d_f-%d_b-%d__tof-scat_%d_%d%s.png"%(snr_bin_ind, frq_bin_ind, bdw_bin_ind, tof_ind, _tof_ind, tag)
+								figname = output_dir+"//s-%d_f-%d_b-%d__tof-scat_%d_%d%s.png"%(snr_bin_ind, freq_bin_ind, bdw_bin_ind, tof_ind, _tof_ind, tag)
 			        	                        if verbose: print "\tsaving", figname
 			                	                fig.savefig(figname)
                         				        plt.close(fig)
 
 							tof_errs_summary.append( (e_tof_err, m, e) ) ### add only at the end to we don't plot auto-correlations
 
-					if self.error_approx == "gaussian":
-						self.errors = np.array(self.errors)
+		if self.error_approx == "gaussian":
+			self.errors = np.array(self.errors)
 
-					elif self.error_approx == "kde":
-						self.errors = [ [ [ IndependentKDE( self.errors[snr_bin_ind][frq_bin_ind][bdw_bin_ind] ) for bdw_bin_ind in xrange(self.n_bandwidth_bin)] for frq_bin_ind in xrange(self.n_freq_bin)]for snr_bin_ind in xrange(self.n_snr_bin)]
+		elif self.error_approx == "kde":
+			self.errors = [ [ [ IndependentKDE( self.errors[snr_bin_ind][frq_bin_ind][bdw_bin_ind] ) for bdw_bin_ind in xrange(self.n_bandwidth_bin)] for frq_bin_ind in xrange(self.n_freq_bin)]for snr_bin_ind in xrange(self.n_snr_bin)]
 
 
 	#========================

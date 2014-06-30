@@ -52,6 +52,10 @@ if __name__ == "__main__":
 	parser.add_option("", "--default-freq", default=100, type="float", help="default to this freq value if toa event does not contain the key \"freq\"")
 	parser.add_option("", "--default-bandwidth", default=10, type="float", help="default to this bandwidth value if toa event does not contain the key \"bandwidth\"")
 
+	parser.add_option("", "--snr-key", default="snr", type="string")
+	parser.add_option("", "--freq-key", default="freq", type="string")
+	parser.add_option("", "--bandwidth-key", default="bandwidth", type="string")
+
 	parser.add_option("-n", "--nside-exp", default=7, type="int", help="HEALPix NSIDE parameter for pixelization is 2**opts.nside_exp")
 
 	parser.add_option("", "--prior", default="shells", type="string", help="flat, shells, spheres, or a float")
@@ -134,7 +138,7 @@ if __name__ == "__main__":
 			if opts.time: to = time.time()
 		### load errors and build estimation functions
 		e_cache = utils.load_toacache(opts.e_cache)
-		network.toacache_to_errs(e_cache, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, scatter_errors=opts.scatter_errors, output_dir=opts.output_dir, tag=opts.tag, diag=opts.diag, dt=1e-5)	
+		network.toacache_to_errs(e_cache, verbose=opts.verbose, timing=opts.time, hist_errors=opts.hist_errors, scatter_errors=opts.scatter_errors, output_dir=opts.output_dir, tag=opts.tag, diag=opts.diag, dt=1e-5, snr_key=opts.snr_key, freq_key=opts.freq_key, bandwidth_key=opts.bandwidth_key)	
 		if opts.verbose:
 			print "built TimingNetwork\n\t", network
 			if opts.time: print "\t", time.time()-to, "sec"
@@ -261,20 +265,20 @@ if __name__ == "__main__":
 			#======================
 			# signal parameters
 			#======================
-			if toa_event.has_key("snr"):
-				snr = toa_event["snr"]
+			if toa_event.has_key(opts.snr_key):
+				snr = toa_event[opts.snr_key]
 			else:
 				if opts.verbose: print "\t\tusing default_snr"
 				snr = opts.default_snr
 
-			if toa_event.has_key("freq"):
-				freq = toa_event["freq"]
+			if toa_event.has_key(opts.freq_key):
+				freq = toa_event[opts.freq_key]
 			else:
 				if opts.verbose: print "\t\tusing default_freq"
 				freq = opts.default_freq
 
-			if toa_event.has_key("bandwidth"):
-				bandwidth = toa_event["bandwidth"]
+			if toa_event.has_key(opts.bandwidth_key):
+				bandwidth = toa_event[opts.bandwidth_key]
 			else:
 				if opts.verbose: print "\t\tusing default_bandwidth"
 				bandwidth = opts.default_bandwidth
