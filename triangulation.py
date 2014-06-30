@@ -238,7 +238,8 @@ if __name__ == "__main__":
 			title_template = ""
 			for name1, name2 in tof_names:
 				title_template += "$t_{%s}-t_{%s}="%(name1,name2)+"%.3f\mathrm{ms}$\n"
-			title_template = title_template[:-1]
+#			title_template = title_template[:-1]
+			title_template += "snr=%.1f freq=%.1f bndwth=%.1f"
 
 		### loop over events
 		for toa_ind, toa_event in enumerate(a_cache):
@@ -343,7 +344,7 @@ if __name__ == "__main__":
 					print "\tplotting posterior"
 					if opts.time: to=time.time()
         	                figname = "%s/posterior-%d%s.png"%(opts.output_dir, toa_ind, opts.tag)
-				title = title_template%tuple(toa*1e3)
+				title = title_template%tuple(list(toa*1e3)+[snr,freq,bandwidth])
 				unit = "probability per steradian"
 
 				fig_ind = toa_ind+100
