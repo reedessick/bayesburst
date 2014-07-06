@@ -36,7 +36,11 @@ parser.add_option("", "--samp-freq", default=4096., type="float", help="The samp
 parser.add_option("-N", "--num-proc", default=1, type="int", help="the number of processors used to parallelize posterior computation")
 parser.add_option("-T", "--num-runs", default=1, type="int", help="the number of injections to simulate")
 
-parser.add_option("", "--thresh", default=1.e4, type="float", help="The threshld ratio between min and max eigenvalues of A for a given pixel.  If the ratio exceeds the threshold for a pixel, the number of effective polarizations is reduced by 1")
+parser.add_option("", "--thresh", default=1.e4, type="float", help="The thresholdld ratio between min and max eigenvalues of A for a given pixel.  If the ratio exceeds the threshold for a pixel, the number of effective polarizations is reduced by 1")
+
+parser.add_option("", "--snrcut", default=9., type="float", help="The SNR threshold above which a proposed event is accepted")
+parser.add_option("", "--hrss", default=7.e-22, type="float", help="The proposed hrss for an event")
+
 
 opts, args = parser.parse_args()
 
@@ -118,7 +122,7 @@ plt.close(fig)
 if opts.verbose:
 	print "generating %d random source locations"%n_runs
 
-signal_h, angles, snrs = inj.skypos_uni_vol(detectors=[detectors[i] for i in detectors], freqs=freqs, to=0, phio=np.pi/2., fo=200, tau=0.01, hrss=22e-22, alpha=np.pi/2., snrcut=30., n_runs=n_runs, num_pol=num_pol)
+signal_h, angles, snrs = inj.skypos_uni_vol(detectors=[detectors[i] for i in detectors], freqs=freqs, to=0, phio=np.pi/2., fo=200, tau=0.01, hrss=opts.hrss, alpha=np.pi/2., snrcut=opts.snrcut, n_runs=n_runs, num_pol=num_pol)
 
 for i_ang in xrange(n_runs):
 
