@@ -17,11 +17,19 @@ nside_exp = 5
 
 num_proc = 6
 
-n_runs = 10
+n_runs = 1
 
-threshold = 1.e0
+threshold = 1.e4
 
-freqs = np.arange(40. , 1000., 0.025)
+flow = 150.
+fhigh = 250.
+
+seg_len = .1 #in seconds
+samp_freq = 4096  #in HZ
+df = 1./seg_len
+Nbins = samp_freq*seg_len
+
+freqs = np.arange(flow, fhigh, df)
 
 detectors = {}
 detectors["H1"] = utils.LHO
@@ -35,15 +43,15 @@ nfreqs = len(freqs)
 ndet = len(detectors)
 print 'ndet = ', ndet
 
-hprior_amplitudes, hprior_means, hprior_covariance, num_gaus = priors.hpri_neg4(len_freqs=nfreqs, num_pol=num_pol)
+hprior_amplitudes, hprior_means, hprior_covariance, num_gaus = priors.hpri_neg4(len_freqs=nfreqs, num_pol=num_pol, Nbins=Nbins)
 
 network = utils.Network(detectors=[detectors[i] for i in detectors], freqs=freqs, Np = num_pol)
 hprior = priors.hPrior(freqs=freqs, means=hprior_means, covariance=hprior_covariance, amplitudes=hprior_amplitudes, num_gaus=num_gaus, num_pol=num_pol)
 angprior = priors.angPrior(nside_exp=nside_exp)
 
 fig = plt.figure()
-for h in np.logspace(start=-25,stop=-18,num=500):
-	plt.plot(h, hprior.prior_weight_f(h=[h,0], f=freqs[0]), 'ro')
+for h in np.logspace(start=-24,stop=-20.,num=500):
+	plt.plot(h, hprior.prior_weight_f(h=[h,0], f=freqs[0], Nbins=Nbins), 'ro')
 	plt.plot(h, h**(-4.), 'bo')
 plt.xlabel("Strain")
 plt.xscale('log')
@@ -55,16 +63,10 @@ plt.close(fig)
 ################################################################################
 ###################### init signal for each run ############################
 
-cos_theta = np.random.uniform(low=-1., high=1., size=n_runs)
-phi = np.random.uniform(low=0., high=2.*np.pi, size=n_runs)
-angles = np.zeros((n_runs, 2.))
-angles[:,0] = np.arccos(cos_theta)
-angles[:,1] = phi
+signal_h, angles, snrs = inj.skypos_uni_vol(detectors=[detectors[i] for i in detectors], freqs=freqs, to=0, phio=np.pi/2., fo=200, tau=0.01, hrss=22e-22, alpha=np.pi/2., snrcut=30., n_runs=n_runs, num_pol=num_pol)
 
 for i_ang in xrange(n_runs):
 	
-	signal_h = inj.sinegaussian_f(f=freqs, to=0., phio=np.pi/2., fo=200., tau=0.01, hrss=5.e-22, alpha=np.pi/2)
-
 	fig = plt.figure()
 	plt.plot(freqs, np.real(signal_h[:,0]), 'r', label="Real h0")
 	plt.plot(freqs, np.imag(signal_h[:,0]), 'ro', label="Imag h0")
@@ -79,6 +81,7 @@ for i_ang in xrange(n_runs):
 	
 	theta = angles[i_ang,0]
 	phi = angles[i_ang,1]
+	snr = snrs[i_ang]
 
 	F = np.zeros((nfreqs, num_pol, ndet), 'complex')
 	signal = np.zeros((nfreqs, ndet), 'complex')
@@ -89,7 +92,7 @@ for i_ang in xrange(n_runs):
 	noise = np.zeros((nfreqs, ndet), 'complex')
 	for i_det, det in enumerate(network.detector_names_list()):
 		for i_f in xrange(nfreqs):
-			noise[i_f,i_det] = np.random.normal(loc=0, scale=np.sqrt( network.detectors[det].psd.interpolate(freqs[i_f]) ) ) * np.exp(np.random.uniform(0.,2*np.pi)*1.j)
+			noise[i_f,i_det] = 0.#np.random.normal(loc=0, scale=np.sqrt( network.detectors[det].psd.interpolate(freqs[i_f])/df ) ) * np.exp(np.random.uniform(0.,2*np.pi)*1.j)
 		
 	data = signal + noise
 	for i_det, det in enumerate(network.detector_names_list()):
@@ -106,12 +109,8 @@ for i_ang in xrange(n_runs):
 	###############################################################################
 	############################# Find posterior  ################################
 
-	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp)
+	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp, Nbins=Nbins)
 	post_built = posterior.build_posterior(num_proc=num_proc, threshold=threshold)
-
-	for i in xrange( np.shape(post_built)[0] ):
-		if post_built[i,1] == 0:
-			post_built[i,1] = 1.e-323
 
 	############################################################################
 	##########   Save Signal Stuff ############################################
@@ -131,11 +130,11 @@ for i_ang in xrange(n_runs):
 
 	np.savetxt('posterior_nd%d_%d'%(ndet, i_ang), post_built)
 
-	posterior.plot_posterior(posterior=post_built, figname='skymap_nd%d_%d'%(ndet, i_ang),title="theta %f, phi %f"%(theta,phi), unit='log posterior density', inj_theta=theta, inj_phi=phi)
+	posterior.plot_posterior(posterior=post_built, figname='skymap_nd%d_%d'%(ndet, i_ang),title="theta %f, phi %f, snr %f"%(theta,phi,snr), unit='posterior density', inj_theta=theta, inj_phi=phi)
 
 	fig = plt.figure()
-	plt.hist(post_built[:,1])#plt.hist(np.log10(post_built[:,1]))
-	plt.xlabel("Log Posterior")
+	plt.hist(post_built[:,1])
+	plt.xlabel("Posterior")
 	fig.savefig("post_dens_hist_nd%d_%d"%(ndet, i_ang))
 	plt.close(fig)
 

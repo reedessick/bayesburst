@@ -22,7 +22,7 @@ class Posterior(object):
 	#write function to estimate location of the event
 	
 	###
-	def __init__(self, freqs, network, hprior, angprior, data, nside_exp):
+	def __init__(self, freqs, network, hprior, angprior, data, nside_exp, Nbins):
 		"""
 		*freqs is a 1-D array of frequencies
 		*network is a Network object defined in utils.py
@@ -56,7 +56,7 @@ class Posterior(object):
 		self.freqs = np.array(freqs)  #1-D array of specified frequencies
 		if (self.freqs.all() != hprior.freqs.all()) or (self.freqs.all() != network.freqs.all()):  #check that same freqs are used for prior and network
 			raise ValueError, "specified frequencies must match those in hprior and angprior"
-		self.delta_f = (self.freqs[-1] - self.freqs[0])/(float(self.len_freqs) - 1.)  #frequency spacing
+		self.Nbins = Nbins
 
 		#Initialize data
 		if np.shape(np.array(data))[0] != self.len_freqs:  #check that data is specified at every frequency
@@ -217,10 +217,10 @@ class Posterior(object):
 						for m in xrange(num_pol_eff):
 							for n in xrange(num_pol_eff):
 								term3_jmnk +=  vec_j * Z[:,j,m,gaus] * inP[:,m,n,gaus] * Z[:,n,k,gaus] * vec_k
-			
-				log_exp_f = self.delta_f * np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential, 1-D array (frequencies)
+		
+				log_exp_f = np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e) / self.Nbins  #log exponential, 1-D array (frequencies)
 				log_amp_f = np.log10(self.hprior.amplitudes[:,gaus])  #log amplitude, 1-D array (frequencies)
-				log_det_f = 0.5 * np.log10( (2*np.pi/self.delta_f)**(num_pol_eff) * linalg.det(inP[:,:,:,gaus]) * linalg.det(Z[:,:,:,gaus]) )  #log determinant, 1-D array (frequencies)
+				log_det_f = 0.5 * np.log10( (2.*np.pi*self.Nbins)**(num_pol_eff) * linalg.det(inP[:,:,:,gaus]) * linalg.det(Z[:,:,:,gaus]) )  #log determinant, 1-D array (frequencies)
 					
 				g_array[gaus] = np.sum(log_exp_f + log_amp_f + log_det_f)  #array containing the necessary sum of logs
 				
@@ -307,9 +307,9 @@ class Posterior(object):
 		#Calculate area of each pixel
 		pixarea = hp.nside2pixarea(self.nside)  #area of each pixel
 		
-		#Plot log posterior probability density function as skymap
+		#Plot posterior probability density function as skymap
 		fig = plt.figure(0)
-		hp.mollview(np.log10(posterior[:,1]), fig=0, title=title, unit=unit, flip="geo", min=min_val, max=max_val)
+		hp.mollview(posterior[:,1], fig=0, title=title, unit=unit, flip="geo", min=min_val, max=max_val)
 		ax = fig.gca()
 		hp.graticule()
 		
