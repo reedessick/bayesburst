@@ -85,7 +85,7 @@ def searched_area(posterior, theta, phi, nside=None, nest=False, degrees=False):
 	if not nside:
 		nside = hp.npix2nside(len(posterior))
 	ipix = hp.ang2pix(nside, theta, phi, nest=nest)
-	return sum(posterior>=posterior[ipix])*hp.nside2pixarea(nside, degrees=degrees)
+	return np.sum(posterior>=posterior[ipix])*hp.nside2pixarea(nside, degrees=degrees)
 
 ###
 def est_cos_dtheta(posterior, theta, phi):

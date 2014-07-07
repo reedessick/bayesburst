@@ -13,22 +13,23 @@ import time
 #=================================================
 
 
-def hpri_neg4(len_freqs, num_pol):
+def hpri_neg4(len_freqs, num_pol, Nbins):
 	"""
 	Build the hprior of p(h) \propto h^(-4)
 	"""
-	num_gaus = 16
-	variances = np.logspace(start=-56,stop=-41,num=num_gaus)
-	amp_powers = np.logspace(start=112,stop=82,num=num_gaus)
+	num_gaus = 28
+	start_var = -45
+	variances = np.power(np.logspace(start=(num_gaus/4.)*start_var,stop=(num_gaus/4.)*start_var + (num_gaus - 1.),num=num_gaus), 4./num_gaus)
+	amp_powers = variances**(-2.)
 	
-	amplitudes = 2.21807*amp_powers*np.ones((len_freqs, num_gaus))  #2-D array (frequencies x Gaussians)
+	amplitudes = (8.872256/num_gaus)*amp_powers*np.ones((len_freqs, num_gaus))  #2-D array (frequencies x Gaussians)
 	means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
 	covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
 	for n in xrange(num_gaus):
 		for i in xrange(num_pol):
 			for j in xrange(num_pol):
 				if i == j:
-					covariance[:,i,j,n] = variances[n]  #non-zero on polarization diagonals
+					covariance[:,i,j,n] = variances[n]/Nbins  #non-zero on polarization diagonals
 	return amplitudes, means, covariance, num_gaus
 
 
@@ -132,7 +133,7 @@ class hPrior(object):
 		return self.freqs[i]
 		
 	###	
-	def prior_weight_f(self, h, f):
+	def prior_weight_f(self, h, f, Nbins):
 		"""
 		returns value of prior weight (i.e. unnormalized hPrior value) for a strain vector (defined
 		for each polarization) for a given freqiency
@@ -146,7 +147,7 @@ class hPrior(object):
 		h = np.array(h)  #1-D array (polarizations)
 		
 		#Find index of specified frequency
-		f_in = f2i(f)
+		f_in = self.f2i(f)
 		
 		weight = 0.
 		for n in xrange(self.num_gaus):
@@ -159,7 +160,7 @@ class hPrior(object):
 			exponent_n = 0.  #exponential term of Gaussian
 			for i in xrange(self.num_pol):
 				for j in xrange(self.num_pol):
-					exponent_n += -displacement_conj[i] * matrix[i,j] * displacement[j]
+					exponent_n += -displacement_conj[i] * matrix[i,j] * displacement[j] / Nbins
 			weight += self.amplitudes[f_in,n]*np.exp(exponent_n)
 			
 		return weight
