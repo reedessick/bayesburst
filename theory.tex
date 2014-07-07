@@ -846,7 +846,7 @@ In this case, we have
 
 \begin{eqnarray}
 \log p(\theta,\phi|d_\beta) & \supset & \int\mathrm{d}f\,\sum\limits_{\alpha\neq\beta} M_{\beta\alpha} \left(\mathcal{F}_{\beta j}\left(h_j\right)_o \mathcal{F}_{\alpha k}\left(h_k\right)_o \right)e^{-2(f-f_o)^2\pi^2\tau^2+2\pi i f \delta t_{\alpha\beta}} \\
-& = & \sum\limits_{\alpha\neq\beta} M_{\beta\alpha} \left(\mathcal{F}_{\beta j}\left(h_j\right)_o \mathcal{F}_{\alpha k}\left(h_k\right)_o \right) e^{2\pi i f_o \delta t_{\alpha\beta}}\int\mathcal{d}x\, e^{-2x^2\pi^2\tau^2+2\pi i x \delta t_{\alpha\beta}} \\
+& = & \sum\limits_{\alpha\neq\beta} M_{\beta\alpha} \left(\mathcal{F}_{\beta j}\left(h_j\right)_o \mathcal{F}_{\alpha k}\left(h_k\right)_o \right) e^{2\pi i f_o \delta t_{\alpha\beta}}\int\mathrm{d}x\, e^{-2x^2\pi^2\tau^2+2\pi i x \delta t_{\alpha\beta}} \\
 & = & \sum\limits_{\alpha\neq\beta} M_{\beta\alpha} \left(\mathcal{F}_{\beta j}\left(h_j\right)_o \mathcal{F}_{\alpha k}\left(h_k\right)_o \right) e^{2\pi i f_o \delta t_{\alpha\beta}}\frac{1}{\sqrt{2}\tau} e^{-\frac{(\delta t_{\alpha\beta})^2}{2\tau^2}} \\
 \end{eqnarray}
 
@@ -863,6 +863,8 @@ By taking limits of the sinegaussian, we see that gaussian signals have no fring
 We also note that $M$ has units of $1/S$, so the factor that multiplies the oscillatory function looks like a SNR ($\rho^2\sim D^\ast D/S$). Therefore, we expect the amplitude of these oscillations to scale linearly with $\rho^2$. Intepreting the leading order terms as a contribution to the Fisher information matrix, we would then expect the timing errors to scale inversely with $\rho$. 
 
 Finally, we note that $C_{\alpha j}A^{-1}_{jk}C_{\beta k} = S_\alpha^{-1}\delta_{\alpha\beta}$ when $N_{ifo}=N_{pol}$. This means the triangulation terms cancel exactly (no fast modulation) and the slow ``amplitude consistency'' terms become independent of the source location. The only contributions we get in this case come from the marginalization over the prior. Otherwise, the posterior would be degenerate over the entire sky.
+
+Furthermore, a simple Fisher matrix computation shows that the expected width of the error region goes like $\sigma_\theta\sim(4\pi^2 f_o^2 + \tau^{-2})^{-1}$, and we see that for large $\tau$ the uncertainty is simply the spacing between adjacent fringes (not surprising), and for small $\tau$ the width of each ring can be much smaller than the spacing between fringes. Furthermore, for small $\tau$, their is significant surpression between neighboring fring peaks, so they contain less weight in the posterior.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{effective priors on $(\theta,\phi)$}
