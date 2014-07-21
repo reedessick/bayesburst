@@ -312,7 +312,26 @@ class Network(object):
 	def contains_name(self, name):
 		"""checks to see if name is associated with any detector in the network"""
 		return self.detectors.has_key(name)
-	
+
+	###
+	def ang_res(self, f, degrees=False):
+		"""computes the minimum angular resolution achievable with this network for a signal at frequency "f" 
+		approximates timing uncertainty by dt ~ 0.5/f
+		approximates smallest dtheta allowable by dtheta >= dt/(d*sin(theta)) >= dt/d
+		returns dtheta (radians)
+		"""
+		detectors = self.detector_list()
+		d = 0.0
+		for ind, detector1 in enumerate(detectors):
+			for detector2 in detectors[ind:]:
+				this_d = abs(np.sum(detector1.dr-detector2.dr)**2) ### compute baseline between detectors (in sec)
+				if this_d > d: ### keep only the biggest baseline
+					d = this_d
+		dtheta = (0.5/f)/d
+		if degrees:
+			dtheta *= 180/np.pi
+		return dtheta
+
 	###
 	def F_det(self, det_name, theta, phi, psi=0.):
 		"""Calculates 2-D antenna pattern array (frequencies x polarizations) for a given detector"""
