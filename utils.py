@@ -126,7 +126,7 @@ class PSD(object):
 		elif len_freqs == 1:
 			freqs = np.array(2*list(freqs))
 			psd = np.array(2*list(psd))
-		from scipy.interpolate import interp1d
+#		from scipy.interpolate import interp1d
 		self.freqs = freqs
 		self.psd = psd
 #		self.interp = interp1d(freqs, psd, kind=kind, copy=False)
