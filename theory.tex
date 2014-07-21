@@ -443,14 +443,14 @@ Furthermore, we can apply additional constraints on the polarization of the grav
           & = & - \begin{bmatrix} h_1 & h_2 \end{bmatrix}^\ast \begin{bmatrix} \sigma_a^{-2}+\sigma_b^{-2} & \sigma_a^{-2}-\sigma_b^{-2} \\ \sigma_a^{-2}-\sigma_b^{-2}  & \sigma_a^{-2}+\sigma_b^{-2}  \end{bmatrix} \begin{bmatrix} h_1 \\ h_2 \end{bmatrix} \\
 \end{eqnarray}
 
-where we expect $\sigma_a \gg \sigma_b$, so there is very little freedom between the to polarizations. Similarly, we can expand this to an elliptically polarized signal.
+where we expect $\sigma_a \gg \sigma_b$, so there is very little freedom between the to polarizations. Similarly, we can expand this to an elliptically polarized signal: $h_+ = h_o\cos\alpha$, $h_\times = ih_o\sin\alpha$.
 
 \begin{eqnarray}
-\log p(h) & = & - \begin{bmatrix} h_1\cos\alpha +ih_2\sin\alpha & h_1\cos\alpha -ih_2\sin\alpha \end{bmatrix}^\ast \begin{bmatrix} \sigma_a^{-2} & 0 \\ 0 & \sigma_b^{-2} \end{bmatrix} \begin{bmatrix} h_1\cos\alpha +ih_2\sin\alpha \\ h_1\cos\alpha -ih_2\sin\alpha \end{bmatrix} \\
-          & = & - \begin{bmatrix} h_1 & h_2 \end{bmatrix}^\ast \begin{bmatrix} \cos^2\alpha \left(\sigma_a^{-2} + \sigma_b^{-2}\right) & i\sin\alpha\cos\alpha\left(\sigma_a^{-2} - \sigma_b^{-2}\right) \\ -i\sin\alpha\cos\alpha\left(\sigma_a^{-2} - \sigma_b^{-2}\right) & \sin^2\alpha \left(\sigma_a^{-2} + \sigma_b^{-2}\right) \end{bmatrix} \begin{bmatrix} h_1 \\ h_2 \end{bmatrix} \\
+\log p(h) & = & - \begin{bmatrix} h_1\sec\alpha +ih_2\csc\alpha & h_1\sec\alpha -ih_2\csc\alpha \end{bmatrix}^\ast \begin{bmatrix} \sigma_a^{-2} & 0 \\ 0 & \sigma_b^{-2} \end{bmatrix} \begin{bmatrix} h_1\sec\alpha +ih_2\csc\alpha \\ h_1\sec\alpha -ih_2\csc\alpha \end{bmatrix} \\
+          & = & - \begin{bmatrix} h_1 & h_2 \end{bmatrix}^\ast \begin{bmatrix} \left(\sigma_a^{-2} + \sigma_b^{-2}\right)(\cos\alpha)^{-2} & i(\sin\alpha\cos\alpha)^{-1}\left(\sigma_a^{-2} - \sigma_b^{-2}\right) \\ -i(\sin\alpha\cos\alpha)^{-1}\left(\sigma_a^{-2} - \sigma_b^{-2}\right) & \left(\sigma_a^{-2} + \sigma_b^{-2}\right)(\sin\alpha)^{-2} \end{bmatrix} \begin{bmatrix} h_1 \\ h_2 \end{bmatrix} \\
 \end{eqnarray}
 
-And we see that a matrix of the form
+We note that this quantity is not invarient under U(1) transformations between polarizations ($h_j \rightarrow U_{ji}h_i | |U|=1$) unles $\alph=\pi/4$. And we see that a matrix of the form
 
 \begin{equation}
 Z = \begin{bmatrix} a & b \\ b^\ast & c \end{bmatrix}
