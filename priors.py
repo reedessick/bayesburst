@@ -15,14 +15,14 @@ import time
 
 def hpri_neg4(len_freqs, num_pol, Nbins):
 	"""
-	Build the hprior of p(h) \propto h^(-4)
+	Build the hprior of p(h) \propto hhrss^(-4)
 	"""
-	num_gaus = 28
+	num_gaus = 4
 	start_var = -45
 	variances = np.power(np.logspace(start=(num_gaus/4.)*start_var,stop=(num_gaus/4.)*start_var + (num_gaus - 1.),num=num_gaus), 4./num_gaus)
 	amp_powers = variances**(-2.)
 	
-	amplitudes = (8.872256/num_gaus)*amp_powers*np.ones((len_freqs, num_gaus))  #2-D array (frequencies x Gaussians)
+	amplitudes = (8.872256/num_gaus)*amp_powers*np.ones(num_gaus)/2.22e67  #1-D array (Gaussians)
 	means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
 	covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
 	for n in xrange(num_gaus):
@@ -57,7 +57,7 @@ class hPrior(object):
 			*freqs is a 1-D array
 			*means is a 3-D array, (frequencies x polarizations x Gaussians)
 			*covariance is a 4-D array, (frequencies x polarizations x polarizations x Gaussians)
-			*amplitudes is a 2-D array, (frequencies x Gaussians)
+			*amplitudes is a 1-D array, (Gaussians)
 		N.b that values must be specified over relevant frequency range
 		"""
 		
@@ -75,13 +75,11 @@ class hPrior(object):
 		#Initialize amplitudes
 		self.num_gaus = num_gaus
 		if type(amplitudes) == int or type(amplitudes) == float:
-			self.amplitudes = amplitudes*np.ones((self.len_freqs, self.num_gaus))  #2-D array (frequencies x Gaussians)
+			self.amplitudes = amplitudes*np.ones(self.num_gaus)  #1-D array (Gaussians)
 		else:
-			if np.shape(np.array(amplitudes))[0] != self.len_freqs:  #make sure amplitude defined at every frequency
-				raise ValueError, "Freqs and amplitudes must have the same length"
-			if np.shape(np.array(amplitudes))[1] != self.num_gaus:  #make sure amplitude defined for every Gaussian
+			if np.shape(np.array(amplitudes))[0] != self.num_gaus:  #make sure amplitude defined for every Gaussian
 				raise ValueError, "Must define amplitude for every Gaussian"
-			self.amplitudes = np.array(amplitudes)  #2-D array (frequencies x Gaussians)
+			self.amplitudes = np.array(amplitudes)  #1-D array (Gaussians)
 		
 		#Initialize prior means
 		if type(means) == int or type(means) == float:
@@ -114,29 +112,12 @@ class hPrior(object):
 		self.incovariance = np.zeros((self.len_freqs, self.num_pol, self.num_pol, self.num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)	
 		for n in xrange(self.num_gaus):
 			self.incovariance[:,:,:,n] = linalg.inv(self.covariance[:,:,:,n])
-	
-	###	
-	def f2i(self, f):
-		"""
-		takes frequency and returns index
-		"""
-		i = np.where(self.freqs == f)
-		if i[0].tolist() == []:
-			raise ValueError, "Specified frequency not contained in frequency array"
-		return i[0][0]
-	
-	###
-	def i2f(self, i):
-		"""
-		takes index and returns frequency
-		"""
-		return self.freqs[i]
 		
 	###	
-	def prior_weight_f(self, h, f, Nbins):
+	def prior_weight(self, h, freqs, Nbins):
 		"""
 		returns value of prior weight (i.e. unnormalized hPrior value) for a strain vector (defined
-		for each polarization) for a given freqiency
+		for each polarization) summed over all frequencies
 		"""
 		
 		#Initialize strain at f
@@ -144,24 +125,23 @@ class hPrior(object):
 			raise ValueError, "Please define h as either list or array over polarizations at f"
 		if np.shape(np.array(h))[0] != self.num_pol:  #make sure h defined at every polarization
 			raise ValueError, "Must define value of h for each polarization"
-		h = np.array(h)  #1-D array (polarizations)
-		
-		#Find index of specified frequency
-		f_in = self.f2i(f)
+		h_array = np.zeros((len(freqs),self.num_pol))  #1-D array (polarizations)
+		for f in xrange(len(freqs)):
+			h_array[f,:] = h
 		
 		weight = 0.
 		for n in xrange(self.num_gaus):
 			#Calculate matrix multiplication components at f
-			displacement = h - self.means[f_in,:,n]
+			displacement = h_array - self.means[:,:,n]
 			displacement_conj = np.conj(displacement)
-			matrix = self.incovariance[f_in,:,:,n]
+			matrix = self.incovariance[:,:,:,n]
 		
 			#Calculate prior weight through matrix multiplication
 			exponent_n = 0.  #exponential term of Gaussian
 			for i in xrange(self.num_pol):
 				for j in xrange(self.num_pol):
-					exponent_n += -displacement_conj[i] * matrix[i,j] * displacement[j] / Nbins
-			weight += self.amplitudes[f_in,n]*np.exp(exponent_n)
+					exponent_n += (- displacement_conj[:,i] * matrix[:,i,j] * displacement[:,j])/ Nbins
+			weight += self.amplitudes[n]*np.exp(sum(exponent_n))
 			
 		return weight
 	 
@@ -201,14 +181,15 @@ class angPrior(object):
 		"""
 		
 		#Perform checks on angular coordinates
-		if (theta < 0.) or (theta > np.pi):  #check value of theta
-			raise ValueError, "theta must be between 0 and pi"
-		if (phi < 0.) or (phi > 2.*np.pi):  #check value of phi
-			raise ValueError, "phi must be between 0 and 2*pi"
+		for tmp_theta, tmp_phi in zip(theta,phi):
+			if (tmp_theta < 0.) or (tmp_theta > np.pi):  #check value of theta
+				raise ValueError, "theta must be between 0 and pi"
+			if (tmp_phi < 0.) or (tmp_phi > 2.*np.pi):  #check value of phi
+				raise ValueError, "phi must be between 0 and 2*pi"
 		
 		#Calculate prior_weight depending on what prior_opt is being used
 		if self.prior_opt == 'uniform':
-			return 1.
+			return np.ones(len(theta))
 		else:
 			raise ValueError, "Currently only compatible with uniform angPrior option"
 	

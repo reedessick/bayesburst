@@ -107,9 +107,9 @@ if opts.verbose:
 
 fig = plt.figure()
 for h in np.logspace(start=-24,stop=-20.,num=500):
-	plt.plot(h, hprior.prior_weight_f(h=[h,0], f=freqs[0], Nbins=Nbins), 'ro')
-	plt.plot(h, h**(-4.), 'bo')
-plt.xlabel("Strain")
+	plt.plot(h, hprior.prior_weight(h=[h/np.sqrt(num_pol*nfreqs)]*num_pol, freqs=freqs, Nbins=Nbins), 'ro')
+	plt.plot(h, h**(-4.)/2.22e67, 'bo')
+plt.xlabel("Strain ($h_{rss}$)")
 plt.xscale('log')
 plt.yscale('log')
 plt.grid()
@@ -205,7 +205,8 @@ for i_ang in xrange(n_runs):
 		if opts.time: to=time.time()
 		
 	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp, Nbins=Nbins)
-	post_built = posterior.build_posterior(num_proc=num_proc, threshold=threshold)
+	g_array = posterior.build_log_gaussian_array(num_proc=num_proc, threshold=threshold)
+	post_built = posterior.build_posterior(g_array=g_array, f_low=freqs[0], f_up=freqs[-1])
 	
 	if opts.verbose and opts.time:
 		print "\t\t", time.time()-to
