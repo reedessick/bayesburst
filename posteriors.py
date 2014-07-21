@@ -65,10 +65,11 @@ class Posterior(object):
 			raise ValueError, "data must be defined for each of the detectors"
 		self.data = np.array(data)  #2-D array (frequencies x detectors)
 		
-		#Initialize nside (sky pixelization)
+		#Initialize sky pixelization
 		if type(nside_exp) != int:
 			raise ValueError, "nside_exp must be an integer"
 		self.nside = 2**nside_exp
+		self.npix = hp.nside2npix(self.nside)  #number of pixels
 
 	###		
 	def h_ML(self, theta, phi, psi=0., Apass=None, inApass=None, Bpass=None, eff_pol=None):
@@ -123,9 +124,9 @@ class Posterior(object):
 		return h_ML
 	
 	### 	
-	def log_posterior_weight(self, thetas, phis, psi=0., connection=None, threshold=0.):
+	def log_gaussian_data(self, thetas, phis, psi=0., connection=None, threshold=0.):
 		"""
-		*Calculates log posterior weight (i.e. unnormalized log posterior value) at a set of angular coordinates
+		*Calculates log of Gaussian terms for each frequency at a set of angular coordinates
 		*Theta, phi, and psi are angular coordinates (in radians).
 		"""
 		
@@ -138,8 +139,9 @@ class Posterior(object):
 		if len(thetas) != len(phis):
 			raise ValueError, "Must give same number of thetas and phis"
 		
-		log_posterior_weight = np.zeros(len(thetas))
+		npix = len(thetas)
 		pix_ind = 0
+		g_array = np.zeros((npix, self.hprior.num_gaus, self.len_freqs))  #3-D array (pixels * Gaussian terms * frequencies)
 		
 		for theta, phi in zip(thetas,phis):
 			
@@ -198,60 +200,50 @@ class Posterior(object):
 			means_conj = np.conj(means)
 			
 			#Calculate log posterior_weight
-			g_array = np.zeros(self.hprior.num_gaus)
-			for gaus in xrange(self.hprior.num_gaus):
+			for igaus in xrange(self.hprior.num_gaus):
 				
 				term1_jk = np.zeros(self.len_freqs, 'complex')
 				term2_jk = np.zeros(self.len_freqs, 'complex')
 				term3_jmnk = np.zeros(self.len_freqs, 'complex')
 				
 				for j in xrange(num_pol_eff):
-					vec_j = h_ML_conj[:,j] - means_conj[:,j,gaus]
+					vec_j = h_ML_conj[:,j] - means_conj[:,j,igaus]
 					
 					for k in xrange(num_pol_eff):
-						vec_k = h_ML[:,k] - means[:,k,gaus]
+						vec_k = h_ML[:,k] - means[:,k,igaus]
 						
 						term1_jk += h_ML_conj[:,j]*A[:,j,k]*h_ML[:,k]
-						term2_jk += vec_j * Z[:,j,k,gaus] * vec_k
+						term2_jk += vec_j * Z[:,j,k,igaus] * vec_k
 						
 						for m in xrange(num_pol_eff):
 							for n in xrange(num_pol_eff):
-								term3_jmnk +=  vec_j * Z[:,j,m,gaus] * inP[:,m,n,gaus] * Z[:,n,k,gaus] * vec_k
+								term3_jmnk +=  vec_j * Z[:,j,m,igaus] * inP[:,m,n,igaus] * Z[:,n,k,igaus] * vec_k
 		
 				log_exp_f = np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e) / self.Nbins  #log exponential, 1-D array (frequencies)
-				log_amp_f = np.log10(self.hprior.amplitudes[:,gaus])  #log amplitude, 1-D array (frequencies)
-				log_det_f = 0.5 * np.log10( (2.*np.pi*self.Nbins)**(num_pol_eff) * linalg.det(inP[:,:,:,gaus]) * linalg.det(Z[:,:,:,gaus]) )  #log determinant, 1-D array (frequencies)
+				log_det_f = 0.5 * np.log10( (2.*np.pi)**num_pol_eff * linalg.det(inP[:,:,:,igaus]) )  #log determinant, 1-D array (frequencies)	
 					
-				g_array[gaus] = np.sum(log_exp_f + log_amp_f + log_det_f)  #array containing the necessary sum of logs
+				g_array[pix_ind, igaus,:] = log_exp_f + log_det_f  #array containing the necessary sum of logs for each pixel, Gaussian, and frequency
 				
-			max_log = max(g_array)  #find maximum value
-			g_array -= max_log  #factor out maximum value
-			g_array = pow(10., g_array)  #convert from log value to actual value for each gaussian term
-			log_posterior_weight_i = max_log + np.log10( sum(g_array) )
-			log_posterior_weight_i += np.log10( self.angprior.prior_weight(theta=theta, phi=phi) )
-		
-			log_posterior_weight[pix_ind] = log_posterior_weight_i
 			pix_ind += 1
 		
-		connection.send(log_posterior_weight)
+		connection.send(g_array)
 	
 	###
-	def build_posterior(self, num_proc=1, threshold=0.):
+	def build_log_gaussian_array(self, num_proc=1, threshold=0.):
 		"""
-		Builds the posterior over the entire sky.
+		Builds data array for each pixel, Gaussian term, and frequency.
 		"""
 		
 		#Pixelate the sky
-		npix = hp.nside2npix(self.nside)  #number of pixels
-		pixarray = np.zeros((npix,3))  #initializes a 2-D array (pixels x (ipix, theta, phi)'s)
-		for ipix in xrange(npix):
+		pixarray = np.zeros((self.npix,3))  #initializes a 2-D array (pixels x (ipix, theta, phi)'s)
+		for ipix in xrange(self.npix):
 			theta, phi = hp.pix2ang(self.nside, ipix)  #maps theta and phi to ipix
 			pixarray[ipix,:] = np.array([ipix, theta, phi])
 		
 		#Launch processes that calculate posterior
 		procs = []  #holders for process identification
 		
-		proc_num_pix = np.ceil(npix/num_proc)
+		proc_num_pix = np.ceil(self.npix/num_proc)
 		proc_pix_start = 0
 		proc_pix_end = proc_num_pix
 		
@@ -262,7 +254,7 @@ class Posterior(object):
 			con1, con2 = mp.Pipe()
 			args = (proc_thetas, proc_phis, 0., con2, threshold)
 			
-			p = mp.Process(target=self.log_posterior_weight, args=args)
+			p = mp.Process(target=self.log_gaussian_data, args=args)
 			p.start()
 			con2.close()  # this way the process is the only thing that can write to con2
 			procs.append((p, proc_pix_start, proc_pix_end, con1))
@@ -271,25 +263,89 @@ class Posterior(object):
 			proc_pix_end += proc_num_pix
 					
 		#Build unnormalized log posterior over whole sky
-		log_posterior = np.zeros((npix,2)) # initalizes 2-D array (pixels x (ipix, log posterior weight)'s)
-		log_posterior[:,0] = pixarray[:,0]  #assigns pixel indices
-		
+		g_array = np.zeros((self.npix, self.hprior.num_gaus, self.len_freqs)) #3-D array (pixels * Gaussian terms * frequencies)
+		print np.shape(g_array)
 		while len(procs):
 			for ind, (p, _, _, _) in enumerate(procs):
 				if not p.is_alive():
 					p, proc_pix_start, proc_pix_end, con1 = procs.pop(ind)
-					log_posterior[proc_pix_start:proc_pix_end,1] = con1.recv()
-				
+					g_array[proc_pix_start:proc_pix_end,:,:] = con1.recv()
+		
+		return g_array
+	
+	###
+	def calculate_posterior_weight(self, g_array, f_low, f_up):
+		"""
+		Calculates posterior weight
+		"""
+		
+		#Pixelate the sky
+		pixarray = np.zeros((self.npix,3))  #initializes a 2-D array (pixels x (ipix, theta, phi)'s)
+		for ipix in xrange(self.npix):
+			theta, phi = hp.pix2ang(self.nside, ipix)  #maps theta and phi to ipix
+			pixarray[ipix,:] = np.array([ipix, theta, phi])
+		thetas = pixarray[:,1]
+		phis = pixarray[:,2]
+		
+		#Find indices of flow and fhigh
+		iflow = np.where(self.freqs==f_low)[0][0]
+		ifup = np.where(self.freqs==f_up)[0][0]
+		num_f = iflow - ifup
+		num_g = np.shape(g_array)[1]
+		
+		#sum Gaussians over frequency range
+		g_array_summed = np.sum(g_array[:,:,iflow:(ifup+1)], axis=2)
+		
+		#Add Gaussian terms together
+		max_log = np.amax(g_array_summed, axis=1) #find maximum Gaussian-term value for each pixel
+		max_log_array = np.ones((self.npix,num_g))*np.array([max_log]*num_g).transpose()
+		g_array_summed -= max_log_array  #factor out maximum value for each pixel
+		amplitudes = np.array([self.hprior.amplitudes]*self.npix)
+		g_array_summed = amplitudes*np.power(10., g_array_summed)  #convert from log value to actual value for each gaussian term and add amplitudes
+		log_posterior_weight = max_log + np.log10( np.sum(g_array_summed, axis=1) )
+		log_posterior_weight += np.log10( self.angprior.prior_weight(theta=thetas, phi=phis) )
+		
 		#Find max log posterior value and subtract it from all log posterior values (partial normalization)
-		max_log_pos = max(log_posterior[:,1])		
-		log_posterior[:,1] -= max_log_pos
-		
-		#Convert log posterior to normal posterior
-		posterior = np.zeros((npix,2)) # initalizes 2-D array (pixels x (ipix, posterior weight)'s)
-		posterior[:,0] = log_posterior[:,0]
-		posterior[:,1] = pow(10., log_posterior[:,1])
+		max_log_pos = max(log_posterior_weight)		
+		log_posterior_weight -= max_log_pos
 
+		#Convert log posterior to normal posterior
+		posterior_weight = np.power(10., log_posterior_weight)
+
+		return posterior_weight, max_log_pos
 		
+	
+	###
+	def calculate_log_bfactor(self, posterior_weight, max_log_pos, fmin, fmax):
+		"""
+		Calculates bayes factor for a given frequency range
+		"""
+		
+		#Calculate and print log Bayes factor
+		log_sum_term = np.log10(sum(posterior[:,1]))
+		log_B = max_log_pos + log_sum_term
+		return log_B
+			
+	###
+	def model_select(self, g_array, fmin, fmax):
+		"""
+		Model select to select optimal frequency window to build a posterior with
+		"""
+		flow = fmin
+		f_up = fmax
+		return f_low, f_up
+		
+	###
+	def build_posterior(self, g_array, f_low, f_up):
+		"""
+		Builds the posterior over the entire sky.
+		"""
+		
+		#Get posterior weights		
+		posterior = np.zeros((self.npix,2)) # initalizes 2-D array (pixels x (ipix, log posterior weight)'s)
+		posterior[:,0] = np.array(range(self.npix))  #assigns pixel indices
+		posterior[:,1] = self.calculate_posterior_weight(g_array=g_array, f_low=f_low, f_up=f_up)[0]
+			
 		#Normalize posterior
 		posterior[:,1] /= sum(posterior[:,1])
 		
