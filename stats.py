@@ -133,6 +133,7 @@ def size_modes(posterior, theta, phi, nside=None, nest=False, degrees=False):
 	return [len(_)*hp.nside2pixarea(nside, degrees=degrees) for _ in __into_modes(nside, pix)]
 
 ###
+'''
 def __into_modes(nside, pix):
 	"""
 	divides the list of pixels (pix) into simply connected modes
@@ -146,12 +147,45 @@ def __into_modes(nside, pix):
 			for neighbour in hp.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
 				# try to find pixel in skymap
 				try:
-					_ipix = pix.pop( pix.index( neighbour ) ) ### find pixel in skymap and remove it
-					mode.append( _ipix ) # add pixel to this mode
-					to_check.append( _ipix ) # add pixel to to_check
+#					_ipix = pix.pop( pix.index( neighbour ) ) ### find pixel in skymap and remove it
+					pix.remove( neighbour ) ### find pixel in skymap and remove it
+					mode.append( neighbour ) # add pixel to this mode
+					to_check.append( neighbour ) # add pixel to to_check
 				except ValueError: # neighbour not in list
 					pass
 		modes.append( mode )
+	return modes
+'''
+def __into_modes(nside, pix):
+	"""
+	divides the list of pixels (pix) into simply connected modes
+	"""
+	### establish an array representing the included pixels
+	npix = hp.nside2npix(nside)
+
+	truth = np.zeros((npix,),int)
+	truth[pix] = 1
+
+	pixnums = np.arange(npix) ### convenient array we establish once
+
+	modes = []
+	while truth.any():
+		mode = []
+		ipix = pixnums[truth][0] ### take the first pixel
+		truth[ipix] = 0 ### remove it from the global set
+		to_check = [ipix] ### add it to the list of things to check
+		while len(to_check): # there are pixels in this mode we have to check
+			ipix = to_check.pop() # take one pixel from those to be checked.
+			for neighbour in hp.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
+				# try to find pixel in skymap
+				if truth[neighbour]: ### pixel in the set and has not been visited before
+					truth[neighbour] = 0 ### remove neighbour from global set
+					mode.append( neighbour ) ### add to this mode
+					to_check.append( neighbour ) ### add to list of things to check
+				else: ### pixel not in the set or has been visited before
+					pass 
+		modes.append( mode )
+
 	return modes
 
 ###
