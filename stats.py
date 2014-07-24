@@ -140,9 +140,15 @@ def __into_modes(nside, pix):
 	"""
 	modes = []
 	while len(pix):
-		mode = []
-		to_check = [pix.pop(0)] # take the first pixel
+		
+		print len(modes)
+
+		mode = [pix.pop(0)] ### take the first pixel
+		to_check = mode[:]
 		while len(to_check): # there are pixels in this mode we have to check
+
+			print "\t", len(mode)
+
 			ipix = to_check.pop() # take one pixel from those to be checked.
 			for neighbour in hp.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
 				# try to find pixel in skymap
@@ -170,7 +176,7 @@ def __into_modes(nside, pix):
 
 	modes = []
 	while truth.any():
-		ipix = pixnums[truth][0] ### take the first pixel
+		ipix = pixnums[truth>0][0] ### take the first pixel
 		truth[ipix] = 0 ### remove it from the global set
 		mode = [ipix]
 		to_check = [ipix] ### add it to the list of things to check
