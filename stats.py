@@ -170,9 +170,9 @@ def __into_modes(nside, pix):
 
 	modes = []
 	while truth.any():
-		mode = []
 		ipix = pixnums[truth][0] ### take the first pixel
 		truth[ipix] = 0 ### remove it from the global set
+		mode = [ipix]
 		to_check = [ipix] ### add it to the list of things to check
 		while len(to_check): # there are pixels in this mode we have to check
 			ipix = to_check.pop() # take one pixel from those to be checked.
