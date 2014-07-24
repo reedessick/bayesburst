@@ -180,11 +180,16 @@ def __into_modes(nside, pix):
 		truth[ipix] = 0 ### remove it from the global set
 		mode = [ipix]
 		to_check = [ipix] ### add it to the list of things to check
+
 		while len(to_check): # there are pixels in this mode we have to check
 			ipix = to_check.pop() # take one pixel from those to be checked.
+
 			for neighbour in hp.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
+
+				if neighbour == -1: ### when neighbour == -1, there is no corresponding pixel in this direction
+					pass
 				# try to find pixel in skymap
-				if truth[neighbour]: ### pixel in the set and has not been visited before
+				elif truth[neighbour]: ### pixel in the set and has not been visited before
 					truth[neighbour] = 0 ### remove neighbour from global set
 					mode.append( neighbour ) ### add to this mode
 					to_check.append( neighbour ) ### add to list of things to check
