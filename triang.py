@@ -402,8 +402,8 @@ class BinnedTimingNetwork(utils.Network):
 						e = np.std(e_tof_err)
 		
 	        			        z = 0.1 # consistency check to make sure the tof errors are not crazy
-			        	        if False:
-#			        	        if abs(m) > z*e:
+#			        	        if False:
+			        	        if abs(m) > z*e:
                 				        ans = raw_input("\nmeasured mean (%f) is larger than %.3f of the standard deviation (%f) for tof_ind: %d\n\tcontinue? [Y/n] "%(m,z,e,tof_ind))
 			                        	if ans != "Y":
                         			        	raise ValueError, "measured mean (%f) is larger than %.3f of the standard deviation (%f) for tof: %d"%(m,z,e,tof_ind)
