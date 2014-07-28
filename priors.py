@@ -1,37 +1,16 @@
+usage="""a module storing the methods to build priors decomposed into gaussian terms used in the analytic marginalization over all possible signals"""
+
+#=================================================
+
 import numpy as np
-from numpy import linalg
+np.linalg = linalg
 import healpy as hp
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import time
 
-#=================================================
-#
-#                Stored Priors
-#
-#=================================================
-
-
-def hpri_neg4(len_freqs, num_pol, Nbins):
-	"""
-	Build the hprior of p(h) \propto hhrss^(-4)
-	"""
-	num_gaus = 4
-	start_var = -45
-	variances = np.power(np.logspace(start=(num_gaus/4.)*start_var,stop=(num_gaus/4.)*start_var + (num_gaus - 1.),num=num_gaus), 4./num_gaus)
-	amp_powers = variances**(-2.)
-	
-	amplitudes = (8.872256/num_gaus)*amp_powers*np.ones(num_gaus)/2.22e67  #1-D array (Gaussians)
-	means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
-	covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
-	for n in xrange(num_gaus):
-		for i in xrange(num_pol):
-			for j in xrange(num_pol):
-				if i == j:
-					covariance[:,i,j,n] = variances[n]/Nbins  #non-zero on polarization diagonals
-	return amplitudes, means, covariance, num_gaus
-
+plt.rcParams.update({"text.usetex":True})
 
 #=================================================
 #
@@ -41,79 +20,195 @@ def hpri_neg4(len_freqs, num_pol, Nbins):
 
 class hPrior(object):
 	"""
-	An object that creates the strain prior.  Because this framework is an excercise
-	in Gaussian integral, we will assume that the priors can be decomposed into
-	a series of Gaussians.
+	An object representing the prior on strain.  
+	We analytically marginalize over all possible signals with gaussian integrals, and therefore decompose the prior into a sum of gaussians.
+	This appears to work well for Pareto distributions with lower bounds.
 	"""
 	
 	#maybe add function that calculates full prior over all freqs
 	
 	###
-	def __init__(self, freqs, means, covariance, amplitudes=1., num_gaus=1, num_pol=2):
+	def __init__(self, freqs, means, covariance, amplitudes=1., n_gaus=1, n_pol=2):
 		"""
 		Priors are assumed to have form \sum_over N{
-		C_N(f) * exp( - ( h_k(f) - mean_k(f)_N )^* Z_kj(f)_N ( h_j(f) - mean_j(f)_N ) ) }
-		Thus:
+		C_N(f) * exp( - conj( h_k(f) - mean_k(f)_N ) * Z_kj(f)_N * ( h_j(f) - mean_j(f)_N ) ) }
+
+		We require:
 			*freqs is a 1-D array
-			*means is a 3-D array, (frequencies x polarizations x Gaussians)
-			*covariance is a 4-D array, (frequencies x polarizations x polarizations x Gaussians)
-			*amplitudes is a 1-D array, (Gaussians)
-		N.b that values must be specified over relevant frequency range
+				np.shape(freqs) = (num_freqs,)
+			*means is a 3-D array or a scalar
+				np.shape(means) = (num_freqs, num_pol, num_gaus)
+			*covariance is a 4-D array or a scalar
+				np.shape(covariance) = (num_freqs, num_pol, num_pol, num_gaus)
+			*amplitudes is a 1-D array or a scalar
+				np.shape(amplitudes) = (num_gaus,)
+			
+			if any of the above are a scalar (except freqs, which must be an array), they are cast to the correct shape. 
+			If not enough information is provided to determine the shape of these arrays, we default to the optional arguments
+				n_gaus, n_pol
+			otherwise these are ignored
 		"""
 		
-		#Initialize frequencies
-		self.len_freqs = len(np.array(freqs))
-		if not self.len_freqs:
+		### check frequencies
+		if not isinstance(freqs, (np.ndarray)):
+			freqs = np.array(freqs)
+		if len(np.shape(freqs)) != 1:
+			raise ValueError, "bad shape for freqs"
+		n_freqs = len(freqs)
+		if not n_freqs:
 			raise ValueError, "freqs must have at least 1 entry"
-		self.freqs = np.array(freqs)
-		
-		#Initialize polarizations
-		if not num_pol:
-			raise ValueError, "Must specify at least one polarization"
-		self.num_pol = num_pol
-		
-		#Initialize amplitudes
-		self.num_gaus = num_gaus
-		if type(amplitudes) == int or type(amplitudes) == float:
-			self.amplitudes = amplitudes*np.ones(self.num_gaus)  #1-D array (Gaussians)
+
+		### check means and covariance
+		scalar_means = isinstance(means, (int, float))
+		scalar_covar = isinstance(means, (int,float))
+
+		if scalar_means and scalar_covar: ### both are scalars
+			### build means
+			means = means * np.ones((n_freqs, n_pol, n_gaus), float)
+			### build covariance
+			cov = covariance
+			covariance = np.zeros((n_freqs, n_pol, n_pol, n_gaus))
+                        for i in xrange(self.num_pol):  ### fill in diagonals for n_pol polarizations
+				covariance[:,i,i,:] = cov
+
+		elif scalar_covar: ### means is an array, covariance is a scalar
+			### check means
+			if not isinstance(means, np.ndarray):
+                                means = np.array(means)
+                        if len(np.shape(means)) != 3:
+                                raise ValueError, "bad shape for means"
+                        n_f, n_pol, n_gaus = np.shape(means)
+                        if n_freqs != n_f:
+                                raise ValueError, "shape mismatch between freqs and means"
+                        if n_pol <= 0:
+                                raise ValueError, "must have a positive definite number of polarizations"
+
+			### build covariance
+			c = covariance
+			covariance = np.zeros((n_freqs, n_pol, n_pol, n_gaus),float)
+			for i in xrange(n_pol):
+				covariance[:,i,i,:] = cov
+
+		elif scalar_means: ### covariance is an array, means is a scalar
+			### check covariance
+			if not isinstance(covariance, np.ndarray):
+				covariance = np.array(covariance)
+			if len(np.shape(covariance)) != 4:
+				raise ValueError, "bad shape for covariance"
+			n_f, n_pol, n_p, n_gaus = np.shape(covariance)
+			if n_freqs != n_f:
+				raise ValueError, "shape mismatch between freqs and covariance"
+			if n_pol != n_p:
+				raise ValueError, "inconsistent shape within covariance"
+			### build means
+			means = means * np.ones((n_freqs, n_pol, n_gaus), float)
+
+		else: ### both are arrays
+                        ### check means
+                        if not isinstance(means, np.ndarray):
+                                means = np.array(means)
+                        if len(np.shape(means)) != 3:
+                                raise ValueError, "bad shape for means"
+                        n_f, n_pol, n_gaus = np.shape(means)
+                        if n_freqs != n_f:
+                                raise ValueError, "shape mismatch between freqs and means"
+                        if n_pol <= 0:
+                                raise ValueError, "must have a positive definite number of polarizations"
+                        ### check covariance
+                        if not isinstance(covariance, np.ndarray):
+                                covariance = np.array(covariance)
+                        if len(np.shape(covariance)) != 4:
+                                raise ValueError, "bad shape for covariance"
+                        n_f, n_p1, n_p2, n_g = np.shape(covariance)
+                        if n_freqs != n_f:
+                                raise ValueError, "shape mismatch between freqs and covariance"
+                        if n_p1 != n_p2:
+                                raise ValueError, "inconsistent shape within covariance"
+			if (n_p1 != n_pol) or (n_g != n_gaus):
+				raise ValueError, "shape mismatch between means and covariance"
+
+                ### set up the inverse covariance 
+                incovariance = np.zeros_like(covariance, dtype=float)
+                for n in xrange(n_gaus):
+                        incovariance[:,:,:,n] = linalg.inv(covariance[:,:,:,n])
+
+                ### set up and store amplitudes
+                if isinstance(amplitudes, (int, float)):
+                        amplitudes = amplitudes * np.ones((n_gaus,), float)
+                else:
+			if not isinstance(amplitudes, np.ndarray):
+				amplitudes = np.array(amplitudes)
+			if len(np.shape(amplitudes)) != 1:
+				raise ValueError, "bad shape for amplitudes"
+                        if len(amplitudes) != n_gaus:  #make sure amplitude defined for every Gaussian
+                                raise ValueError, "shape mismatch between amplitudes and means"
+
+		### store basic data about decomposition
+		self.n_freqs = n_freqs
+		self.n_pol = n_pol
+		self.n_gaus = n_gaus
+
+		### store all arrays
+		self.freqs = freqs
+		self.means = means
+		self.covariance = covariance
+		self.incovariance = incovariance
+		self.amplitudes = amplitudes
+
+	###
+	def __call__(self, h):
+		"""
+		evaluates the prior for the strain "h"
+
+                We require:
+			*h is a 2-D array
+				np.shape(h) = (self.n_freqs, self.n_pol)
+			if h is a 1-D array, we check to see if the shape matches either n_freqs or n_pol. 
+				if it does, we broadcast it to the correct 2-D array
+			if h is a scalar, we broadcast it to the correct 2-D array
+		"""
+
+		### make sure h has the expected shape
+		if isinstance(h, (int, float): ### h is a scalar
+			h = h * np.ones((self.n_freqs, self.n_pol), float)
+		elif not isinstance(h, np.ndarray):
+			h = np.ndarray
+
+		h_shape = np.shape(h)
+		nD = len(h_shape)
+		if nD == 1: ### h is a 1-D array
+			len_h = len(h)
+			if len_h == self.n_pol: ### broadcast to n_freq x n_pol
+				h = np.outer(np.ones((self.n_freqs,),float), h)
+			elif len_h == self.n_freqs: ### broadcast to n_freq x n_pol
+				h = np.outer(h, np.ones((self.n_pol,),float))
+			else:
+				raise ValueError, "bad shape for h"
+
+		elif nD == 2: ### h is a 2-D array
+			if (self.n_freqs, self.n_pol) != h_shape:
+				raise ValueError, "bad shape for h"
 		else:
-			if np.shape(np.array(amplitudes))[0] != self.num_gaus:  #make sure amplitude defined for every Gaussian
-				raise ValueError, "Must define amplitude for every Gaussian"
-			self.amplitudes = np.array(amplitudes)  #1-D array (Gaussians)
-		
-		#Initialize prior means
-		if type(means) == int or type(means) == float:
-			self.means = means*np.ones((self.len_freqs, self.num_pol, self.num_gaus))  #3-D array (frequencies x polarizations x # Gaussians)
-		else:
-			if np.shape(np.array(means))[0] != self.len_freqs:  #make sure mean vector specified at each frequency
-				raise ValueError, "Freqs and means must have the same length"
-			if np.shape(np.array(means))[1] != self.num_pol: #make sure mean specified for each polarization
-				raise ValueError, "Must specify means for correct number of polarizations"
-			if np.shape(np.array(means))[2] != self.num_gaus:  #make sure mean defined for every Gaussian
-				raise ValueError, "Must define mean for every Gaussian"
-			self.means = np.array(means)  #3-D array (frequencies x polarizations x # Gaussians)
-		
-		#Initialize prior covariance	
-		if type(covariance) == int or type(covariance) == float:
-			self.covariance = np.zeros((self.len_freqs, self.num_pol, self.num_pol, self.num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
-			for i in xrange(self.num_pol):
-				for j in xrange(self.num_pol):
-					if i == j:
-						self.covariance[:,i,j,:] = covariance  #covariance on polarization diagonals		
-		else:
-			if np.shape(covariance)[0] != self.len_freqs:  #make sure covariance matrix defined at every frequency
-				raise ValueError, "Covariance matrices must have correct frequency length"
-			if (np.shape(covariance)[1] != self.num_pol) or (np.shape(covariance)[2] != self.num_pol):  #make sure covariance matrices are square in correct # of polarizations
-				raise ValueError, "At a given frequency, covariance matrix must be square in correct # of polarizations"
-			if np.shape(covariance)[3] != self.num_gaus:  #make sure covariance defined for every Gaussian
-				raise ValueError, "Must define covariance for every Gaussian"
-			self.covariance = np.array(covariance)  #4-D array (frequencies x polarizations x polarizations x Gaussians)
-			
-		self.incovariance = np.zeros((self.len_freqs, self.num_pol, self.num_pol, self.num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)	
-		for n in xrange(self.num_gaus):
-			self.incovariance[:,:,:,n] = linalg.inv(self.covariance[:,:,:,n])
-		
-	###	
+			raise ValueError, "bad shape for h"
+
+		### compute prior evaluated for this strain
+		p = 0.0
+		for n in xrange(self.n_gaus): ### sum over all gaussian terms
+			d = h - self.means[:,:,n] ### difference from mean values
+			dc = np.conj(d)
+			m = self.incovariance[:,:,:,n] ### covariance matricies
+
+			### compute exponential term			
+			e = np.zeros_like(self.freqs, float)
+			for i in xrange(self.n_pol): ### sum over all polarizations
+				for j in xrange(self.n_pol):
+					e -= dc[:,i] * m[:,i,j] * d[:,j]
+
+			### add to total prior
+			p += self.amplitudes[n] * np.exp( np.sum(e) )
+
+		return p
+
 	def prior_weight(self, h, freqs, Nbins):
 		"""
 		returns value of prior weight (i.e. unnormalized hPrior value) for a strain vector (defined
@@ -251,3 +346,53 @@ class angPrior(object):
 		#~~~checks on figname
 		fig.savefig(figname)
 		plt.close(fig)
+
+#=================================================
+#
+#                Stored Priors
+#
+#=================================================
+
+def hpri_neg4(len_freqs, num_pol, Nbins):
+        """
+        Build the hprior of p(h) \propto hhrss^(-4)
+        """
+        num_gaus = 4
+        start_var = -45
+        variances = np.power(np.logspace(start=(num_gaus/4.)*start_var,stop=(num_gaus/4.)*start_var + (num_gaus - 1.),num=num_gaus), 4./num_gaus)
+        amp_powers = variances**(-2.)
+
+        amplitudes = (8.872256/num_gaus)*amp_powers*np.ones(num_gaus)/2.22e67  #1-D array (Gaussians)
+        means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
+        covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
+        for n in xrange(num_gaus):
+                for i in xrange(num_pol):
+                        for j in xrange(num_pol):
+                                if i == j:
+                                        covariance[:,i,j,n] = variances[n]/Nbins  #non-zero on polarization diagonals
+        return amplitudes, means, covariance, num_gaus
+
+###
+def hpri_neg4(n_freqs, n_pol, n_bins, n_gaussians=4, log10_start=-45, log10_stop=-41):
+        """
+        Build the hprior of p(h) \propto hhrss^(-4)
+        """
+        variances = np.logspace(log10_start, log10_stop, n_gaussians) ### set up the variences we 
+
+        variances = np.power(
+np.logspace(start=(num_gaus/4.)*start_var,stop=(num_gaus/4.)*start_var + (num_gaus - 1.),num=num_gaus)
+, 4./num_gaus)
+        amp_powers = variances**(-2.)
+
+        amplitudes = (8.872256/num_gaus)*amp_powers*np.ones(num_gaus)/2.22e67  #1-D array (Gaussians)
+        means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
+        covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
+
+        for n in xrange(num_gaus):
+                for i in xrange(num_pol):
+                        for j in xrange(num_pol):
+                                if i == j:
+                                        covariance[:,i,j,n] = variances[n]/Nbins  #non-zero on polarization diagonals
+
+        return amplitudes, means, covariance, num_gaus
+
