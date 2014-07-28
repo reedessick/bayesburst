@@ -13,24 +13,27 @@ import time
 #=================================================
 
 
-def hpri_neg4(len_freqs, num_pol, Nbins):
+def hpri_neg4(len_freqs, seg_len, num_pol, num_gaus=8):
 	"""
 	Build the hprior of p(h) \propto hhrss^(-4)
 	"""
-	num_gaus = 4
-	start_var = -45
-	variances = np.power(np.logspace(start=(num_gaus/4.)*start_var,stop=(num_gaus/4.)*start_var + (num_gaus - 1.),num=num_gaus), 4./num_gaus)
+	start_var = -46.
+	end_var = -40.
+	range_var = end_var - start_var
+	
+	variances = np.power(np.logspace(start=(num_gaus/range_var)*start_var,stop=(num_gaus/range_var)*start_var + (num_gaus - 1.),num=num_gaus), range_var/num_gaus)  #1-D array (Gaussians)
 	amp_powers = variances**(-2.)
 	
-	amplitudes = (8.872256/num_gaus)*amp_powers*np.ones(num_gaus)/2.22e67  #1-D array (Gaussians)
+	amplitudes = (13.3084/num_gaus)*amp_powers*np.ones(num_gaus)  #1-D array (Gaussians), note these are unnormalized
+	
 	means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
 	covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
 	for n in xrange(num_gaus):
 		for i in xrange(num_pol):
 			for j in xrange(num_pol):
 				if i == j:
-					covariance[:,i,j,n] = variances[n]/Nbins  #non-zero on polarization diagonals
-	return amplitudes, means, covariance, num_gaus
+					covariance[:,i,j,n] = variances[n]  #non-zero on polarization diagonals
+	return amplitudes, means, covariance
 
 
 #=================================================
@@ -114,7 +117,7 @@ class hPrior(object):
 			self.incovariance[:,:,:,n] = linalg.inv(self.covariance[:,:,:,n])
 		
 	###	
-	def prior_weight(self, h, freqs, Nbins):
+	def prior_weight(self, h, freqs, seg_len):
 		"""
 		returns value of prior weight (i.e. unnormalized hPrior value) for a strain vector (defined
 		for each polarization) summed over all frequencies
@@ -125,7 +128,7 @@ class hPrior(object):
 			raise ValueError, "Please define h as either list or array over polarizations at f"
 		if np.shape(np.array(h))[0] != self.num_pol:  #make sure h defined at every polarization
 			raise ValueError, "Must define value of h for each polarization"
-		h_array = np.zeros((len(freqs),self.num_pol))  #1-D array (polarizations)
+		h_array = np.zeros((len(freqs),self.num_pol))  #2-D array (frequency * polarizations)
 		for f in xrange(len(freqs)):
 			h_array[f,:] = h
 		
@@ -140,8 +143,8 @@ class hPrior(object):
 			exponent_n = 0.  #exponential term of Gaussian
 			for i in xrange(self.num_pol):
 				for j in xrange(self.num_pol):
-					exponent_n += (- displacement_conj[:,i] * matrix[:,i,j] * displacement[:,j])/ Nbins
-			weight += self.amplitudes[n]*np.exp(sum(exponent_n))
+					exponent_n += (- displacement_conj[:,i] * matrix[:,i,j] * displacement[:,j]) * ( 2./seg_len)
+			weight += self.amplitudes[n]*np.exp(np.sum(exponent_n))
 			
 		return weight
 	 

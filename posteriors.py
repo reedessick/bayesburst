@@ -22,7 +22,7 @@ class Posterior(object):
 	#write function to estimate location of the event
 	
 	###
-	def __init__(self, freqs, network, hprior, angprior, data, nside_exp, Nbins):
+	def __init__(self, freqs, network, hprior, angprior, data, nside_exp, seg_len):
 		"""
 		*freqs is a 1-D array of frequencies
 		*network is a Network object defined in utils.py
@@ -56,7 +56,9 @@ class Posterior(object):
 		self.freqs = np.array(freqs)  #1-D array of specified frequencies
 		if (self.freqs.all() != hprior.freqs.all()) or (self.freqs.all() != network.freqs.all()):  #check that same freqs are used for prior and network
 			raise ValueError, "specified frequencies must match those in hprior and angprior"
-		self.Nbins = Nbins
+		
+		#Initialize segment length
+		self.seg_len = seg_len
 
 		#Initialize data
 		if np.shape(np.array(data))[0] != self.len_freqs:  #check that data is specified at every frequency
@@ -140,10 +142,9 @@ class Posterior(object):
 			raise ValueError, "Must give same number of thetas and phis"
 		
 		npix = len(thetas)
-		pix_ind = 0
-		g_array = np.zeros((npix, self.hprior.num_gaus, self.len_freqs))  #3-D array (pixels * Gaussian terms * frequencies)
+		g_array = np.zeros((npix, self.hprior.num_gaus, self.len_freqs, 2))  #4-D array (pixels * Gaussian terms * frequencies * (data, num_pol_eff))
 		
-		for theta, phi in zip(thetas,phis):
+		for pix_ind,(theta, phi) in enumerate(zip(thetas,phis)):
 			
 			#Perform checks on angular coordinates
 			if (theta < 0.) or (theta > np.pi):  #check value of theta
@@ -160,9 +161,9 @@ class Posterior(object):
 			
 			#Calculate eigenvalues of A, apply effective number of polarizations
 			eig_vals, eig_vecs = linalg.eigh(A)  #sorted by eigenvalue (small to large), note A is Hermitian
-			
+						
 			num_pol_eff = self.num_pol
-			if any(eig_vals[:,1]/eig_vals[:,0] >= threshold):
+			if any(eig_vals[:,1]/eig_vals[:,0] >= threshold):  #reduce number of polarizations by 1 if eigenvalue ratio > thresh
 				
 				num_pol_eff -= 1
 									
@@ -219,17 +220,17 @@ class Posterior(object):
 							for n in xrange(num_pol_eff):
 								term3_jmnk +=  vec_j * Z[:,j,m,igaus] * inP[:,m,n,igaus] * Z[:,n,k,igaus] * vec_k
 		
-				log_exp_f = np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e) / self.Nbins  #log exponential, 1-D array (frequencies)
-				log_det_f = 0.5 * np.log10( (2.*np.pi)**num_pol_eff * linalg.det(inP[:,:,:,igaus]) )  #log determinant, 1-D array (frequencies)	
+				log_exp_f = (2./self.seg_len)*np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential, 1-D array (frequencies)
+				log_det_f = 0.5 * np.log10( (np.pi*self.seg_len/2.)**num_pol_eff * linalg.det(inP[:,:,:,igaus]) )  #log determinant, 1-D array (frequencies)	
 					
-				g_array[pix_ind, igaus,:] = log_exp_f + log_det_f  #array containing the necessary sum of logs for each pixel, Gaussian, and frequency
+				g_array[pix_ind, igaus, :, 0] = log_exp_f + log_det_f  #array containing the necessary sum of logs for each pixel, Gaussian, and frequency
 				
-			pix_ind += 1
-		
+			g_array[pix_ind, :, :, 1] = num_pol_eff  #also store efective number of polarizations used for each pixel
+			
 		connection.send(g_array)
-	
+		
 	###
-	def build_log_gaussian_array(self, num_proc=1, threshold=0.):
+	def build_log_gaussian_array(self, num_processes, max_processors=1, threshold=0.):
 		"""
 		Builds data array for each pixel, Gaussian term, and frequency.
 		"""
@@ -240,37 +241,64 @@ class Posterior(object):
 			theta, phi = hp.pix2ang(self.nside, ipix)  #maps theta and phi to ipix
 			pixarray[ipix,:] = np.array([ipix, theta, phi])
 		
-		#Launch processes that calculate posterior
-		procs = []  #holders for process identification
+		#Divide pixels up among processes
+		processes = []  #holders for process identification
+		process_num_pix = np.ceil(float(self.npix)/float(num_processes))
+		process_pix_start = 0
+		process_pix_end = process_num_pix
+		finished = 0
 		
-		proc_num_pix = np.ceil(self.npix/num_proc)
-		proc_pix_start = 0
-		proc_pix_end = proc_num_pix
+		#Initiate g_array, which hold calculated quantities for each pixel, gaussian, and frequency
+		g_array = np.zeros((self.npix, self.hprior.num_gaus, self.len_freqs, 2)) #4-D array (pixels * Gaussian terms * frequencies * (data, num_pol_eff))
 		
-		for iproc in xrange(num_proc):
-			proc_thetas = pixarray[proc_pix_start:proc_pix_end,1]
-			proc_phis = pixarray[proc_pix_start:proc_pix_end,2]
-			
-			con1, con2 = mp.Pipe()
-			args = (proc_thetas, proc_phis, 0., con2, threshold)
-			
-			p = mp.Process(target=self.log_gaussian_data, args=args)
-			p.start()
-			con2.close()  # this way the process is the only thing that can write to con2
-			procs.append((p, proc_pix_start, proc_pix_end, con1))
-			
-			proc_pix_start += proc_num_pix
-			proc_pix_end += proc_num_pix
-					
-		#Build unnormalized log posterior over whole sky
-		g_array = np.zeros((self.npix, self.hprior.num_gaus, self.len_freqs)) #3-D array (pixels * Gaussian terms * frequencies)
-		print np.shape(g_array)
-		while len(procs):
-			for ind, (p, _, _, _) in enumerate(procs):
+		#Launch processes, limiting the number of active processes to max_processors 
+		for iproc in xrange(num_processes):
+			if len(processes) <= max_processors:  #launch another process if there are empty processors
+				process_thetas = pixarray[process_pix_start:process_pix_end,1]
+				process_phis = pixarray[process_pix_start:process_pix_end,2]
+				
+				con1, con2 = mp.Pipe()
+				args = (process_thetas, process_phis, 0., con2, threshold)
+				
+				p = mp.Process(target=self.log_gaussian_data, args=args)
+				p.start()
+				con2.close()  # this way the process is the only thing that can write to con2
+				processes.append((p, process_pix_start, process_pix_end, con1))
+				
+				process_pix_start += process_num_pix
+				process_pix_end += process_num_pix
+			else:
+				while len(processes) >=  max_processors:  #wait for processes to finish if processors are full
+					for ind, (p, _, _, _) in enumerate(processes):
+						if not p.is_alive():  #update g_array with results of finished processes
+							p, fill_pix_start, fill_pix_end, con1 = processes.pop(ind)
+							g_array[fill_pix_start:fill_pix_end,:,:,:] = con1.recv()
+							finished += 1
+							print "Finished %s out of %s processes"%(finished, num_processes)
+				
+				#Launch next process once a process has finished
+				process_thetas = pixarray[process_pix_start:process_pix_end,1]				
+				process_phis = pixarray[process_pix_start:process_pix_end,2]
+				
+				con1, con2 = mp.Pipe()
+				args = (process_thetas, process_phis, 0., con2, threshold)
+				
+				p = mp.Process(target=self.log_gaussian_data, args=args)
+				p.start()
+				con2.close()  # this way the process is the only thing that can write to con2
+				processes.append((p, process_pix_start, process_pix_end, con1))
+				
+				process_pix_start += process_num_pix
+				process_pix_end += process_num_pix
+		
+		#Wait for processes to all finish, update g_array as they do finish				
+		while len(processes):
+			for ind, (p, _, _, _) in enumerate(processes):
 				if not p.is_alive():
-					p, proc_pix_start, proc_pix_end, con1 = procs.pop(ind)
-					g_array[proc_pix_start:proc_pix_end,:,:] = con1.recv()
-		
+					p, fill_pix_start, fill_pix_end, con1 = processes.pop(ind)
+					g_array[fill_pix_start:fill_pix_end,:,:,:] = con1.recv()
+					finished += 1
+					print "Finished %s out of %s processes"%(finished, num_processes)
 		return g_array
 	
 	###
@@ -290,23 +318,35 @@ class Posterior(object):
 		#Find indices of flow and fhigh
 		iflow = np.where(self.freqs==f_low)[0][0]
 		ifup = np.where(self.freqs==f_up)[0][0]
-		num_f = iflow - ifup
+		num_f = ifup - iflow
 		num_g = np.shape(g_array)[1]
 		
 		#sum Gaussians over frequency range
-		g_array_summed = np.sum(g_array[:,:,iflow:(ifup+1)], axis=2)
+		g_array_summed = np.sum(g_array[:,:,iflow:(ifup+1),0], axis=2)
 		
 		#Add Gaussian terms together
 		max_log = np.amax(g_array_summed, axis=1) #find maximum Gaussian-term value for each pixel
 		max_log_array = np.ones((self.npix,num_g))*np.array([max_log]*num_g).transpose()
 		g_array_summed -= max_log_array  #factor out maximum value for each pixel
-		amplitudes = np.array([self.hprior.amplitudes]*self.npix)
-		g_array_summed = amplitudes*np.power(10., g_array_summed)  #convert from log value to actual value for each gaussian term and add amplitudes
+		amplitudes_unnormed = np.array([self.hprior.amplitudes]*self.npix)
+		g_array_summed = amplitudes_unnormed*np.power(10., g_array_summed)  #convert from log value to actual value for each gaussian term and add amplitudes
 		log_posterior_weight = max_log + np.log10( np.sum(g_array_summed, axis=1) )
+		
+		#Add contribution of angular prior
 		log_posterior_weight += np.log10( self.angprior.prior_weight(theta=thetas, phi=phis) )
 		
+		#Find normalization factor for prior on h
+		eff_num_pol = g_array[:,:,0,1]  #2-D array (pixels * Gaussians)
+		log_var_terms = (eff_num_pol*num_f/2.)*np.log10([self.hprior.covariance[0,0,0,:]]*self.npix)  #2-D array (pixels * Gaussians)
+		log_var_max = np.amax(log_var_terms, axis=1)
+		log_var_max_array = np.ones((self.npix,num_g))*np.array([log_var_max]*num_g).transpose()
+		log_var_terms -= log_var_max_array
+		hpri_sum_terms = amplitudes_unnormed * np.power(10., log_var_terms)
+		log_hpri_norm = (eff_num_pol[:,0]*num_f/2.)*np.log10(np.pi*self.seg_len/2.) + log_var_max + np.log10( np.sum(hpri_sum_terms, axis=1))
+		log_posterior_weight -= log_hpri_norm
+		
 		#Find max log posterior value and subtract it from all log posterior values (partial normalization)
-		max_log_pos = max(log_posterior_weight)		
+		max_log_pos = np.amax(log_posterior_weight)		
 		log_posterior_weight -= max_log_pos
 
 		#Convert log posterior to normal posterior
@@ -322,7 +362,7 @@ class Posterior(object):
 		"""
 		
 		#Calculate and print log Bayes factor
-		log_sum_term = np.log10(sum(posterior[:,1]))
+		log_sum_term = np.log10(np.sum(posterior_weight))
 		log_B = max_log_pos + log_sum_term
 		return log_B
 			
@@ -343,11 +383,14 @@ class Posterior(object):
 		
 		#Get posterior weights		
 		posterior = np.zeros((self.npix,2)) # initalizes 2-D array (pixels x (ipix, log posterior weight)'s)
-		posterior[:,0] = np.array(range(self.npix))  #assigns pixel indices
-		posterior[:,1] = self.calculate_posterior_weight(g_array=g_array, f_low=f_low, f_up=f_up)[0]
-			
+		posterior[:,0] = np.arange(self.npix)  #assigns pixel indices
+		posterior[:,1], max_log_pos = self.calculate_posterior_weight(g_array=g_array, f_low=f_low, f_up=f_up)
+		
+		#Print Log Bayes Factor
+		print "LogB = ", self.calculate_log_bfactor(posterior_weight=posterior[:,1], max_log_pos=max_log_pos, fmin=f_low, fmax=f_up)
+		
 		#Normalize posterior
-		posterior[:,1] /= sum(posterior[:,1])
+		posterior[:,1] /= np.sum(posterior[:,1])
 		
 		return posterior
 	
