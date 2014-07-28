@@ -17,7 +17,9 @@ plt.rcParams.update({"text.usetex":True})
 #               Prior Classes
 #
 #=================================================
-
+#================================================
+#  prior on strain
+#=================================================
 class hPrior(object):
 	"""
 	An object representing the prior on strain.  
@@ -209,6 +211,8 @@ class hPrior(object):
 
 		return p
 
+	'''
+	###
 	def prior_weight(self, h, freqs, Nbins):
 		"""
 		returns value of prior weight (i.e. unnormalized hPrior value) for a strain vector (defined
@@ -220,7 +224,7 @@ class hPrior(object):
 			raise ValueError, "Please define h as either list or array over polarizations at f"
 		if np.shape(np.array(h))[0] != self.num_pol:  #make sure h defined at every polarization
 			raise ValueError, "Must define value of h for each polarization"
-		h_array = np.zeros((len(freqs),self.num_pol))  #1-D array (polarizations)
+		h_array = np.zeros((len(freqs),self.num_pol))  #2-D array (frequency * polarizations)
 		for f in xrange(len(freqs)):
 			h_array[f,:] = h
 		
@@ -235,12 +239,15 @@ class hPrior(object):
 			exponent_n = 0.  #exponential term of Gaussian
 			for i in xrange(self.num_pol):
 				for j in xrange(self.num_pol):
-					exponent_n += (- displacement_conj[:,i] * matrix[:,i,j] * displacement[:,j])/ Nbins
-			weight += self.amplitudes[n]*np.exp(sum(exponent_n))
+					exponent_n += (- displacement_conj[:,i] * matrix[:,i,j] * displacement[:,j]) * ( 2./seg_len)
+			weight += self.amplitudes[n]*np.exp(np.sum(exponent_n))
 			
 		return weight
-	 
+	 '''
 
+#=================================================
+# prior on sky location
+#=================================================
 class angPrior(object):
 	"""
 	An object that creates the sky position prior in angular coordinates.
@@ -349,10 +356,9 @@ class angPrior(object):
 
 #=================================================
 #
-#                Stored Priors
+# Known priors
 #
 #=================================================
-
 def hpri_neg4(len_freqs, num_pol, Nbins):
         """
         Build the hprior of p(h) \propto hhrss^(-4)

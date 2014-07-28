@@ -33,10 +33,14 @@ parser.add_option("", "--fmax", default=1000, type="float", help="the highest fr
 parser.add_option("", "--seg-len", default=0.1, type="float", help="The time duration of the data segment, in seconds")
 parser.add_option("", "--samp-freq", default=4096., type="float", help="The sampling frequency, in Hz")
 
-parser.add_option("-N", "--num-proc", default=1, type="int", help="the number of processors used to parallelize posterior computation")
+parser.add_option("-N", "--num-processes", default=1000, type="int", help="the number of processes used to parallelize posterior computation")
+parser.add_option("-X", "--max-processors", default=1, type="int", help="the maximum number of processors used at any one time when parallelizing the code")
 parser.add_option("-T", "--num-runs", default=1, type="int", help="the number of injections to simulate")
 
-parser.add_option("", "--thresh", default=1.e4, type="float", help="The thresholdld ratio between min and max eigenvalues of A for a given pixel.  If the ratio exceeds the threshold for a pixel, the number of effective polarizations is reduced by 1")
+parser.add_option("-G", "--num-gaus", default=1, type="int", help="the number of Gaussian terms used to approximate the prior")
+
+#Currently the code sets thresh=0, meaning we reduce to 1 effective polarization.  Need to figure out normalizations/singular matrices to work with 2 or mixed polarizations.
+parser.add_option("", "--thresh", default=0.0, type="float", help="The thresholdld ratio between min and max eigenvalues of A for a given pixel.  If the ratio exceeds the threshold for a pixel, the number of effective polarizations is reduced by 1")
 
 parser.add_option("", "--snrcut", default=9., type="float", help="The SNR threshold above which a proposed event is accepted")
 parser.add_option("", "--hrss", default=7.e-22, type="float", help="The proposed hrss for an event")
@@ -46,10 +50,12 @@ opts, args = parser.parse_args()
 
 #=================================================
 
-num_pol   = opts.num_pol
+num_pol = opts.num_pol
 nside_exp = opts.nside_exp
-num_proc  = opts.num_proc
-n_runs    = opts.num_runs
+num_processes = opts.num_processes
+max_processors = opts.max_processors
+n_runs = opts.num_runs
+num_gaus  = opts.num_gaus
 threshold = opts.thresh
 flow = opts.fmin
 fhigh = opts.fmax
@@ -58,7 +64,6 @@ samp_freq = opts.samp_freq  #in HZ
 
 
 df = 1./seg_len
-Nbins = samp_freq*seg_len
 freqs = np.arange(flow, fhigh, df)
 
 ### load detectors
@@ -82,13 +87,13 @@ for arg in args:
 
 nfreqs = len(freqs)
 ndet = len(detectors)
-print 'ndet = ', ndet
+print 'Number of detectors = ', ndet
 
 if opts.verbose:
 	print "building prior objects"
 	if opts.time: to = time.time()
 
-hprior_amplitudes, hprior_means, hprior_covariance, num_gaus = priors.hpri_neg4(len_freqs=nfreqs, num_pol=num_pol, Nbins=Nbins)
+hprior_amplitudes, hprior_means, hprior_covariance = priors.hpri_neg4(len_freqs=nfreqs, seg_len=seg_len, num_pol=num_pol, num_gaus=num_gaus)
 hprior = priors.hPrior(freqs=freqs, means=hprior_means, covariance=hprior_covariance, amplitudes=hprior_amplitudes, num_gaus=num_gaus, num_pol=num_pol)
 angprior = priors.angPrior(nside_exp=nside_exp)
 
@@ -106,14 +111,14 @@ if opts.verbose:
 	if opts.time: print "\t", time.time()-to
 
 fig = plt.figure()
-for h in np.logspace(start=-24,stop=-20.,num=500):
-	plt.plot(h, hprior.prior_weight(h=[h/np.sqrt(num_pol*nfreqs)]*num_pol, freqs=freqs, Nbins=Nbins), 'ro')
-	plt.plot(h, h**(-4.)/2.22e67, 'bo')
-plt.xlabel("Strain ($h_{rss}$)")
+for hrss in np.logspace(start=-23.5,stop=-19.5,num=500):
+	plt.plot(hrss, hprior.prior_weight(h=[hrss/np.sqrt(2*num_pol*nfreqs/seg_len)]*num_pol, freqs=freqs, seg_len=seg_len), 'ro')
+	plt.plot(hrss, hrss**(-4.), 'bo')
+plt.xlabel("$h_{rss}$")
 plt.xscale('log')
 plt.yscale('log')
 plt.grid()
-fig.savefig("hprior_nd%d"%ndet)
+fig.savefig("hrss_prior_nd%d"%ndet)
 plt.close(fig)
 
 ################################################################################
@@ -172,7 +177,7 @@ for i_ang in xrange(n_runs):
 	noise = np.zeros((nfreqs, ndet), 'complex')
 	for i_det, det in enumerate(network.detector_names_list()):
 		for i_f in xrange(nfreqs):
-			noise[i_f,i_det] = 0.#np.random.normal(loc=0, scale=np.sqrt( network.detectors[det].psd.interpolate(freqs[i_f])*Nbins ) ) * np.exp(np.random.uniform(0.,2*np.pi)*1.j)
+			noise[i_f,i_det] = 0.#np.random.normal(loc=0, scale=np.sqrt( network.detectors[det].psd.interpolate(freqs[i_f])) ) * np.exp(np.random.uniform(0.,2*np.pi)*1.j)
 		
 	if opts.verbose and opts.time:
 		print "\t\t", time.time()-to
@@ -204,9 +209,10 @@ for i_ang in xrange(n_runs):
 		print "\tcomputing posterior"
 		if opts.time: to=time.time()
 		
-	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp, Nbins=Nbins)
-	g_array = posterior.build_log_gaussian_array(num_proc=num_proc, threshold=threshold)
+	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp, seg_len=seg_len)
+	g_array = posterior.build_log_gaussian_array(num_processes=num_processes, max_processors=max_processors, threshold=threshold)
 	post_built = posterior.build_posterior(g_array=g_array, f_low=freqs[0], f_up=freqs[-1])
+	
 	
 	if opts.verbose and opts.time:
 		print "\t\t", time.time()-to

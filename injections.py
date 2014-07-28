@@ -96,12 +96,11 @@ def skypos_uni_vol(detectors, freqs, to, phio, fo, tau, hrss, alpha, snrcut, n_r
 	
 	df_test = 0.1
 	freqs_test = np.arange(10., 2048., df_test)
-	len_freqs_test = len(freqs_test)
 	test_network = utils.Network(detectors=detectors, freqs=freqs_test, Np = num_pol)
-	h_test = sinegaussian_f(f=freqs_test, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=alpha)
+	h_test = sinegaussian_f(f=freqs_test, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=alpha)  #2-D array (frequencies x polarizations)
 	h_test_conj = np.conj(h_test)
 	
-	h = sinegaussian_f(f=freqs, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=alpha) #2-D array (frequencies x polarizations)
+	h = sinegaussian_f(f=freqs, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=alpha)  #2-D array (frequencies x polarizations)
 	
 	for i in xrange(n_runs):
 		snr = 0.
@@ -116,17 +115,23 @@ def skypos_uni_vol(detectors, freqs, to, phio, fo, tau, hrss, alpha, snrcut, n_r
 			
 			for m in xrange(num_pol):
 				for n in xrange(num_pol):
-					snr += 4.*np.sum(h_test_conj[:,m]*A[:,m,n]*h_test[:,n])/len_freqs_test
+					snr += (4.*df_test)*np.sum(h_test_conj[:,m]*A[:,m,n]*h_test[:,n])
 			snr = np.sqrt(snr)
 			
 			count+=1
 			if count >= 1000:
-				raise ValueError, "Couldn't find sky location that gives SNR %f with an hrss %f in 1000 iterations"%(snrcut, hrss)
+				raise ValueError, "Couldn't find sky location that gives SNR %f with an hrss %e in 1000 iterations"%(snrcut, hrss)
 		
-		print "Found SNR of event %u to be %f after %u iterations"%(i, snr, count)
+		print "Found SNR of event %u to be %f after %u iterations"%(i, np.real(snr), count)
 		angles[i,0] = theta
 		angles[i,1] = phi
-		snrs[i] = snr
+		snrs[i] = np.real(snr)
+		
+		hrss_calc = 0.
+		for m in xrange(num_pol):
+			hrss_calc += (2.*df_test)*np.sum(h_test_conj[:,m]*h_test[:,m])
+		print "given hrss = ", hrss
+		print "calculated hrss = ", np.real(np.sqrt(hrss_calc))
 		
 	return h, angles, snrs
 	
