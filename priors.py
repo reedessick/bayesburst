@@ -192,7 +192,9 @@ class angPrior(object):
 		
 		#Calculate prior_weight depending on what prior_opt is being used
 		if self.prior_opt == 'uniform':
-			return np.ones(len(theta))
+			values = np.ones(len(theta))
+			values /= np.sum(values)
+			return values
 		else:
 			raise ValueError, "Currently only compatible with uniform angPrior option"
 	

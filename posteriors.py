@@ -206,6 +206,7 @@ class Posterior(object):
 				term1_jk = np.zeros(self.len_freqs, 'complex')
 				term2_jk = np.zeros(self.len_freqs, 'complex')
 				term3_jmnk = np.zeros(self.len_freqs, 'complex')
+				term_test = np.zeros(self.len_freqs, 'complex')
 				
 				for j in xrange(num_pol_eff):
 					vec_j = h_ML_conj[:,j] - means_conj[:,j,igaus]
@@ -216,11 +217,16 @@ class Posterior(object):
 						term1_jk += h_ML_conj[:,j]*A[:,j,k]*h_ML[:,k]
 						term2_jk += vec_j * Z[:,j,k,igaus] * vec_k
 						
+						for beta in xrange(self.num_detect):
+							for alpha in xrange(self.num_detect):
+								term_test += np.conj(self.data[:,beta] * B[:,j,beta]) * inP[:,j,k,igaus] * B[:,k,alpha] * self.data[:,alpha]
+						
 						for m in xrange(num_pol_eff):
 							for n in xrange(num_pol_eff):
 								term3_jmnk +=  vec_j * Z[:,j,m,igaus] * inP[:,m,n,igaus] * Z[:,n,k,igaus] * vec_k
 		
-				log_exp_f = (2./self.seg_len)*np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential, 1-D array (frequencies)
+				log_exp_f = (2./self.seg_len)*np.real( term_test) * np.log10(np.e)  #log exponential, 1-D array (frequencies)
+				#log_exp_f = (2./self.seg_len)*np.real( term1_jk - term2_jk + term3_jmnk ) * np.log10(np.e)  #log exponential, 1-D array (frequencies)
 				log_det_f = 0.5 * np.log10( (np.pi*self.seg_len/2.)**num_pol_eff * linalg.det(inP[:,:,:,igaus]) )  #log determinant, 1-D array (frequencies)	
 					
 				g_array[pix_ind, igaus, :, 0] = log_exp_f + log_det_f  #array containing the necessary sum of logs for each pixel, Gaussian, and frequency
@@ -253,7 +259,7 @@ class Posterior(object):
 		
 		#Launch processes, limiting the number of active processes to max_processors 
 		for iproc in xrange(num_processes):
-			if len(processes) <= max_processors:  #launch another process if there are empty processors
+			if len(processes) < max_processors:  #launch another process if there are empty processors
 				process_thetas = pixarray[process_pix_start:process_pix_end,1]
 				process_phis = pixarray[process_pix_start:process_pix_end,2]
 				
@@ -274,7 +280,7 @@ class Posterior(object):
 							p, fill_pix_start, fill_pix_end, con1 = processes.pop(ind)
 							g_array[fill_pix_start:fill_pix_end,:,:,:] = con1.recv()
 							finished += 1
-							print "Finished %s out of %s processes"%(finished, num_processes)
+							print "Finished %s out of %s g_array processes"%(finished, num_processes)
 				
 				#Launch next process once a process has finished
 				process_thetas = pixarray[process_pix_start:process_pix_end,1]				
@@ -298,7 +304,7 @@ class Posterior(object):
 					p, fill_pix_start, fill_pix_end, con1 = processes.pop(ind)
 					g_array[fill_pix_start:fill_pix_end,:,:,:] = con1.recv()
 					finished += 1
-					print "Finished %s out of %s processes"%(finished, num_processes)
+					print "Finished %s out of %s g_array processes"%(finished, num_processes)
 		return g_array
 	
 	###
@@ -356,38 +362,116 @@ class Posterior(object):
 		
 	
 	###
-	def calculate_log_bfactor(self, posterior_weight, max_log_pos, fmin, fmax):
+	def calculate_log_bfactor(self, g_array, flow, fhigh, connection=None):
 		"""
 		Calculates bayes factor for a given frequency range
 		"""
 		
+		if connection == None:
+			raise ValueError, "Must provide mp connection"
+		
 		#Calculate and print log Bayes factor
+		posterior_weight, max_log_pos = self.calculate_posterior_weight(g_array=g_array, f_low=flow, f_up=fhigh)
 		log_sum_term = np.log10(np.sum(posterior_weight))
 		log_B = max_log_pos + log_sum_term
-		return log_B
+		
+		connection.send(log_B)
 			
 	###
-	def model_select(self, g_array, fmin, fmax):
+	def model_select(self, g_array, fmin, fmax, ms_params, max_processors=1):
 		"""
 		Model select to select optimal frequency window to build a posterior with
 		"""
-		flow = fmin
-		f_up = fmax
-		return f_low, f_up
+		
+		#Initialize model selection windows		
+		win_bins = ms_params  #number of frequency bins to use as model selection window
+		
+		bmin = np.where(self.freqs==fmin)[0][0]  #bin index of fmin
+		bmax = np.where(self.freqs==fmax)[0][0]  #bin index of fmax
+				
+		array_length = bmax + 1 - bmin - win_bins  #span of frequencies over which to model select
+		
+		ms_array = np.zeros((array_length, 3))  #2-D array (window position * (f_low, f_up, log bfactor))
+		ms_array[:,0] = self.freqs[bmin:(bmax-win_bins+1)]
+		ms_array[:,1] = self.freqs[(bmin+win_bins):(bmax+1)]
+		
+		#Set up parallelization
+		#Divide windows up among processes
+		processes = []  #holders for process identification
+		finished = 0  #number of finished events
+		
+		#Launch processes, limiting the number of active processes to max_processors 
+		for iproc in xrange(array_length):
+			if len(processes) < max_processors:  #launch another process if there are empty processors
+				
+				fl=ms_array[iproc,0]
+				fh=ms_array[iproc,1]
+				
+				con1, con2 = mp.Pipe()
+				args = (g_array, fl, fh, con2)
+				
+				p = mp.Process(target=self.calculate_log_bfactor, args=args)
+				p.start()
+				con2.close()  # this way the process is the only thing that can write to con2
+				processes.append((p, iproc, con1))
+				
+			else:
+				while len(processes) >=  max_processors:  #wait for processes to finish if processors are full
+					for ind, (p, _, _) in enumerate(processes):
+						if not p.is_alive():  #update ms_array with results of finished processes
+							p, ifill, con1 = processes.pop(ind)
+							ms_array[ifill,2] = con1.recv()
+							finished += 1
+							print "Finished %s out of %s model select processes"%(finished, array_length)
+				
+				#Launch next process once a process has finished
+				fl=ms_array[iproc,0]
+				fh=ms_array[iproc,1]
+				
+				con1, con2 = mp.Pipe()
+				args = (g_array, fl, fh, con2)
+				
+				p = mp.Process(target=self.calculate_log_bfactor, args=args)
+				p.start()
+				con2.close()  # this way the process is the only thing that can write to con2
+				processes.append((p, iproc, con1))
+		
+		#Wait for processes to all finish, update ms_array as they do finish				
+		while len(processes):
+			for ind, (p, _, _) in enumerate(processes):
+				if not p.is_alive():
+					p, ifill, con1 = processes.pop(ind)
+					ms_array[ifill,2] = con1.recv()
+					finished += 1
+					print "Finished %s out of %s model select processes"%(finished, array_length)
+		
+		#Choose window with highest Bayes factor		
+		max_log_B = np.amax(ms_array[:,2])
+		imax = np.where(ms_array[:,2]==max_log_B)[0][0]
+		
+		f_low = ms_array[imax,0]
+		f_up = ms_array[imax,1]
+				
+		return f_low, f_up, max_log_B
 		
 	###
-	def build_posterior(self, g_array, f_low, f_up):
+	def build_posterior(self, g_array, fmin, fmax, ms_params, max_processors=1):
 		"""
 		Builds the posterior over the entire sky.
 		"""
 		
+		f_low, f_up, bfact = self.model_select(g_array=g_array, fmin=fmin, fmax=fmax, ms_params=ms_params, max_processors=max_processors)
+		
+		#Print model selection results
+		print "Num freq bins = ", ms_params
+		print "f_low = ", f_low
+		print "f_up = ", f_up
+		print "LogB = ", bfact
+		
 		#Get posterior weights		
 		posterior = np.zeros((self.npix,2)) # initalizes 2-D array (pixels x (ipix, log posterior weight)'s)
 		posterior[:,0] = np.arange(self.npix)  #assigns pixel indices
-		posterior[:,1], max_log_pos = self.calculate_posterior_weight(g_array=g_array, f_low=f_low, f_up=f_up)
-		
-		#Print Log Bayes Factor
-		print "LogB = ", self.calculate_log_bfactor(posterior_weight=posterior[:,1], max_log_pos=max_log_pos, fmin=f_low, fmax=f_up)
+		posterior[:,1] = self.calculate_posterior_weight(g_array=g_array, f_low=f_low, f_up=f_up)[0]
 		
 		#Normalize posterior
 		posterior[:,1] /= np.sum(posterior[:,1])
