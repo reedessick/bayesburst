@@ -2,7 +2,7 @@
 
 \bibliographystyle{plain}
 
-%\usepackage{comment}
+\usepackage{comment}
 %\usepackage{fullpage}
 \usepackage{color}
 \usepackage{amsmath}
@@ -435,6 +435,76 @@ We note that \emph{this is not equivalent to the product of independent priors o
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsubsection{constraints between polarizations}
 
+We can apply additional constraints on the polarization of the gravitational wave signal. We work this out in detail for 2 polarizations, but an analogous derivation should be possible for an arbitrary number of polarizations.
+
+Assume we have the following constraint:
+
+\begin{equation}
+h_1\sin\alpha = h_2 \cos\alpha e^{i\psi}
+\end{equation}
+
+where $\psi$ is the relative phase between the polarizations and $\alpha$ is related to the relative amplitudes between the polarizations. We can implement this by rotating our polarizations into a different linear combination. In particular, we have
+
+\begin{equation}
+\begin{bmatrix}
+a \\ 
+b
+\end{bmatrix}
+=
+\begin{bmatrix}
+\cos\alpha & \sin\alpha e^{i\psi} \\
+-\sin\alpha e^{-i\psi} & \cos\alpha \\
+\end{bmatrix}
+\begin{bmatrix}
+h_1 \\
+h_2
+\end{bmatrix}
+= 
+\begin{bmatrix}
+h_1\cos\alpha + h_2\sin\alpha e^{i\psi} \\
+-h_1\sin\alpha e^{-i\psi} + h_2\cos\alpha
+\end{bmatrix}
+\end{equation}
+
+and we notice that we expect the distribution of $a$ to have a \emph{much} larger width than the distribution of $b$, because of our constraint. We can write the exponential of the prior as
+
+\begin{equation}
+\begin{bmatrix} a^\ast & b^\ast \end{bmatrix} \begin{bmatrix} \frac{1}{2\sigma_a^2} & 0 \\ 0 & \frac{1}{2\sigma_b^2} \end{bmatrix} \begin{bmatrix} a \\ b \end{bmatrix}
+\end{equation}
+
+where $\sigma_a\gg\sigma_b$. We can express this in terms of the two polarizations $h_1$ and $h_2$ as
+
+\begin{equation}
+\begin{bmatrix} h_1^\ast & h_2^\ast \end{bmatrix}
+\begin{bmatrix}
+\cos\alpha & -\sin\alpha e^{i\psi} \\
+\sin\alpha e^{-i\psi} & \cos\alpha \\
+\end{bmatrix}
+ \begin{bmatrix}
+ \frac{1}{2\sigma_a^2} & 0 \\ 
+0 & \frac{1}{2\sigma_b^2} 
+\end{bmatrix}
+\begin{bmatrix}
+\cos\alpha & \sin\alpha e^{i\psi} \\
+-\sin\alpha e^{-i\psi} & \cos\alpha \\
+\end{bmatrix}
+\begin{bmatrix} h_1 \\ h_2 \end{bmatrix}
+\end{equation}
+
+which we can simplify to
+
+\begin{equation}
+\begin{bmatrix} h_1^\ast & h_2^\ast \end{bmatrix}
+\begin{bmatrix}
+\frac{\cos^2\alpha}{2\sigma_a^2} + \frac{\sin^2\alpha}{2\sigma_b^2}                     & \sin\alpha\cos\alpha e^{i\psi}\left(\frac{1}{2\sigma_a^2}-\frac{1}{2\sigma_b^2}\right) \\
+\sin\alpha\cos\alpha e^{-i\psi}\left(\frac{1}{2\sigma_a^2}-\frac{1}{2\sigma_b^2}\right) & \frac{\sin^2\alpha}{2\sigma_a^2} + \frac{\cos^2\alpha}{2\sigma_b^2}
+\end{bmatrix}
+\begin{bmatrix} h_1 \\ h_2 \end{bmatrix}
+\end{equation}
+
+We now have the inverse-covariance matrix for the signal in polarization channels $h_1$ and $h_2$. However, in general we will not know which frame is this special frame, so we'll have to marginalize over a rotation matrix between the $h_j$ we reconstruct and the $h_1$ and $h_2$ listed here. 
+
+\begin{comment}
 Furthermore, we can apply additional constraints on the polarization of the graviational wave signal. In particular, we can write the gaussian prior in a different basis. For example, we can write the prior for a linearly-polarized signal as
 
 \begin{eqnarray}
@@ -459,6 +529,7 @@ Z = \begin{bmatrix} a & b \\ b^\ast & c \end{bmatrix}
 fits this general form. Furthermore, as long as $\sigma_a,\sigma_b$ are non-zero finite numbers, this is a positive definite matrix. Therefore, we can determine matricies of this form to apply constraints between the separate polarizations. If we also want to apply a uniform in volume prior, we should distribute $\sigma_a$ according to that distribution, and require that $\sigma_b\ll\sigma_a$, most likely by several orders of magnitude.
 
 For a generalized search for elliptically polarized signals where $\alpha$ is not known, we should also marginalize over $\alpha$. Essentially, this constitutes a sum over gaussians, and we can evaluate the marginalization over $h_j$ analytically for each term separately.
+\end{comment}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsubsection{singular $A_{jk}$ and priors on $h_j$}
