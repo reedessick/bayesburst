@@ -111,6 +111,22 @@ def min_cos_dtheta(posterior, theta, phi, nside=None, nest=False):
 	return np.min(cos_dtheta(thetas, phis, t, p))
 
 ###
+def min_all_cos_dtheta(pix, nside, nest=False):
+	"""
+	computes the maximum angular separation between any two pixels within pix=[ipix,ipix,...]
+	"""
+	min_c = 1.0
+	thetas, phis = hp.pix2ang(nside, pix)
+	for i, (t1, p1) in enumerate(zip(thetas, phis)[:-1]):
+		t2 = thetas[i+1:] 
+		p2 = phis[i+1:]
+		c = np.amin(cos_dtheta(t1,p1,t2,p2))
+		if c < min_c:
+			min_c = c
+	return min_c
+
+
+###
 def num_modes(posterior, theta, phi, nside=None, nest=False):
 	"""
 	computes the number of modes in the area bounded by theta, phi
@@ -234,6 +250,15 @@ def mse(posterior1, posterior2):
 		sum (p1 - p2)**2
 	"""
 	return 1.0*np.sum( (posterior1-posterior2)**2 )/len(posterior1)
+
+###
+def peak_snr(posterior1, posterior2):
+	"""
+	computes the peak signal-to-noise ratio between the two posteriors
+		max(posterior1)/mse , max(posterior2)/mse
+	"""
+	_mse = mse(posterior1, posterior2)
+	return np.max(posterior1)/_mse, np.max(posterior2)/_mse
 
 ###
 def fidelity(posterior1, posterior2):
