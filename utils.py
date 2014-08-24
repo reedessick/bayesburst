@@ -4,6 +4,7 @@ usage = """ a general utilities module for sky localization. All distances are m
 
 import numpy as np
 from numpy import linalg
+import healpy as hp
 import pickle
 
 #=================================================
@@ -13,6 +14,131 @@ import pickle
 #=================================================
 deg2rad = np.pi/180
 rad2deg = 1.0/deg2rad
+
+#========================
+# multiprocessing
+#========================
+def flatten_and_send(conn, array, max_array_size=100):
+	"""
+	flattens and sends an array through a pipe
+	"""
+	array = array.flatten()
+	size = np.size(array)
+	i=0
+	while i*max_array_size < size:
+		conn.send( array[i*max_array_size:(i+1)*max_array_size] )
+		i += 1
+
+###
+def recv_and_reshape(conn, shape, max_array_size=100, dtype=float):
+	"""
+	receives a flattened array through conn and returns an array with shape defined by "shape"
+	"""
+	flat_array = np.empty(shape, dtype).flatten()
+	size = np.size(flat_array)
+	i=0
+	while i*max_array_size < size:
+		flat_array[i*max_array_size:(i+1)*max_array_size] = conn.recv()
+		i += 1
+	return flat_array.reshape(shape)
+
+#========================
+# pixelization
+#========================
+def set_theta_phi(nside, coord_sys="E", **kwargs):
+	""" defines that pixelization using Healpix decomposition in the desired coordinate system
+	E : Earth-fixed coordinates (theta, phi)
+	C : celestial coordinates (Ra, Dec)
+	G : galactic coordinates 
+
+	this function "lays the grid" in the correct coordinate system and then rotates the points into theta, phi in Earth-fixed coordinates, which should be used to compute antenna patterns. However, upon evaluation of the likelihood functional and rotation back into the desired frame, the likelihood will be evaluated exactly on the pixel centers defined by the Healpix decomposition.
+	"""
+	if kwargs.has_key("npix"):
+		npix = kwargs["npix"]
+	else:
+		npix = hp.nside2npix(nside)
+
+	if coord_sys == "E":
+		return hp.pix2ang(nside, np.arange(npix))
+
+	elif coord_sys == "C":
+		raise StandardError, "WRITE ME"
+
+	elif coord_sys == "G":
+		raise StandardError, "WRITE ME"
+
+	else:
+		raise ValueError, "coord_sys=%s not understood"%coord_sys
+
+###
+def check_theta_phi_psi(theta, phi, psi):
+	""" checks angular variables. Casts them to the correct shape and wraps them into the correct ranges
+        implemented in one place for convenience """
+        ### check theta's shape
+        if isinstance(theta, (int, float)):
+        	theta = np.array([theta])
+        elif not isinstance(theta, np.ndarray):
+		theta = np.array(theta)
+	if len(np.shape(theta)) != 1:
+		raise ValueError, "bad shape for theta"
+
+        ### check phi's shape
+        if isinstance(phi, (int, float)):
+        	phi = np.array([phi])
+        elif not isinstance(phi, np.ndarray):
+                phi = np.array(phi)
+        if len(np.shape(phi)) != 1:
+                raise ValueError, "bad shape for phi"
+
+        ### check psi's shape:
+        if isinstance(psi, (int,float)):
+                psi = np.array([psi])
+        elif not isinstance(psi, np.ndarray):
+                psi = np.array(psi)
+        if len(np.shape(psi)) != 1:
+                raise ValueError, "bad shape for psi"
+
+        ### check whether theta, phi, psi agree on their shape
+        len_theta = len(theta)
+        len_phi = len(phi)
+        len_psi = len(psi)
+        n_pix = max(len_theta, len_phi, len_psi)
+        if len_theta != n_pix:
+        	if len_theta == 1:
+                        theta = np.outer(theta, np.ones((n_pix,),float)).flatten()
+                else:
+                        raise ValueError, "inconsistent size between theta, phi, psi"
+        if len_phi != n_pix:
+                if len_phi == 1:
+                        phi = np.outer(phi, np.ones((n_pix,),float)).flatten()
+                else:
+                        raise ValueError, "inconsistent size between theta, phi, psi"
+        if len_psi != n_pix:
+                if len_psi == 1:
+                        psi = np.outer(psi, np.ones((n_pix,),float)).flatten()
+                else:
+                	raise ValueError, "inconsistent size between theta, phi, psi"
+
+        ### enforce bounds for theta, phi, psi
+        theta = theta%np.pi
+        phi = phi%(2*np.pi)
+        psi = psi%(2*np.pi)
+
+        return n_pix, theta, phi, psi
+
+
+#========================
+# arithmatic
+#========================
+def sum_logs(logs, base=np.exp(1)):
+	"""sums an array of logs accurately"""
+	if not isinstance(logs, np.ndarray):
+		logs = np.array(logs)
+
+	_max = np.max(logs)
+	ans = np.sum(base**(logs-_max))
+
+	return np.log(ans)*np.log(base) + _max
 
 #========================
 # I/O utilies
@@ -55,6 +181,8 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 
 	Antenna patterns are computed accoring to Eqn. B7 from Anderson, et all PhysRevD 63(04) 2003
 	"""
+	n_pix, theta, phi, psi = check_theta_phi_psi(theta, phi, psi)
+
 	cos_theta = np.cos(theta)
 	sin_theta = np.sin(theta)
 	cos_phi = np.cos(phi)
@@ -74,8 +202,10 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
         Y = (Yx, Yy, Yz)
 
 	### iterate over x,y,z to compute F+ and Fx
-	Fp = 0.0 # without freqs, these are scalars
-	Fx = 0.0
+	Fp = np.zeros((n_pix,),float)
+	Fx = np.zeros((n_pix,),float)
+#	Fp = 0.0 # without freqs, these are scalars
+#	Fx = 0.0
 	for i in xrange(3):
 		nx_i = nx[i]
 		ny_i = ny[i]
@@ -94,16 +224,22 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 		if dr != None:
 			dx, dy, dz = dr
 			dt = dx*sin_theta*cos_phi + dy*sin_theta*sin_phi + dz*cos_theta
-		phs = np.exp(-2j*np.pi*freqs*dt)
+		phs = np.exp(-2j*np.pi*np.outer(dt,freqs))
+#		phs = np.exp(-2j*np.pi*freqs*dt)
 
-		if isinstance(Fp, np.float): # this avoids weird indexing with outer and a single point
-			Fp *= phs
-			Fx *= phs
-		else:
-			Fp = np.outer(Fp, phs)
-			Fx = np.outer(Fx, phs)
+#		if isinstance(Fp, np.float): # this avoids weird indexing with outer and a single point
+#			Fp *= phs
+#			Fx *= phs
+#		else:
+#			Fp = np.outer(Fp, phs)
+#			Fx = np.outer(Fx, phs)
+		Fp = np.outer(Fp, np.ones(len(freqs)))*phs
+		Fx = np.outer(Fx, np.ones(len(freqs)))*phs
 
-	return Fp, Fx
+	if n_pix == 1:
+		return Fp[0], Fx[0]
+	else:
+		return Fp, Fx
 
 #=================================================
 #
@@ -155,6 +291,31 @@ class PSD(object):
 	def interpolate(self, freqs):
 #		return self.interp(freqs)
 		return np.interp(freqs, self.freqs, self.psd)
+
+	###
+	def normalization(self, fs, T):
+		""" returns the normalization for psd given an FFT defined by
+	fs : sampling frequency
+	T : duration
+	=> No. points = fs*T
+
+		this should be interpreted as a multiplicative factor for psd to compute the expected noise in that frequency bin
+		"""
+		return fs*T
+
+	###
+	def __repr__(self):
+		return self.__str__()
+
+	###
+	def __str__(self):
+		min_psd = np.min(self.psd)
+		d=int(np.log10(min_psd))-1
+		return """utils.PSD object
+	min{freqs}=%.5f
+	max{freqs}=%.5f
+	No. freqs =%d
+	min{psd}=%.5fe%d  at freqs=%.5f"""%(np.min(self.freqs), np.max(self.freqs), len(self.freqs), min_psd*10**(-d), d, self.freqs[min_psd==self.psd])
 
 #=================================================
 #
@@ -216,6 +377,19 @@ class Detector(object):
 		else:
 			return antenna_patterns(theta, phi, psi, self.nx, self.ny, freqs=freqs, dr=self.dr)
 
+	###
+	def __repr__(self):
+		return self.__str__()
+
+	###
+	def __str__(self):
+		return """utils.Detector object
+	name : %s
+	dr = %.5f , %.5f , %.5f 
+	nx = %.5f , %.5f , %.5f
+	ny = %.5f , %.5f , %.5f
+	PSD : %s"""%(self.name, self.dr[0], self.dr[1], self.dr[2], self.nx[0], self.nx[1], self.nx[2], self.ny[0], self.ny[1], self.ny[2], str(self.psd))
+
 #=================================================
 #
 #              network class
@@ -240,9 +414,15 @@ class Network(object):
 
 	###
 	def __str__(self):
-		s = "detector network containing:"
-		for detector in sorted(self.detectors.keys()):
-			s += "\n\t%s"%detector
+		s = """utils.Network object
+	min{freqs}=%.5f
+	max{freqs}=%.5f
+	No. freqs=%d
+	No. polarizations = %d
+	No. detectors = %d"""%(np.min(self.freqs), np.max(self.freqs), len(self.freqs), self.Np, len(self))
+
+		for name in self.detector_names_list():
+			s += "\n\n\t%s : %s"% (name, str(self.get_detectors(name)))
 		return s
 
 	###
@@ -332,93 +512,153 @@ class Network(object):
 			dtheta *= 180/np.pi
 		return dtheta
 
-	###
-	def F_det(self, det_name, theta, phi, psi=0.):
-		"""Calculates 2-D antenna pattern array (frequencies x polarizations) for a given detector"""
-		F_det = np.zeros((len(self.freqs), self.Np), 'complex')
-		for i_f in xrange(len(self.freqs)):
-			for i_pol in xrange(self.Np):
-				F_det[i_f,i_pol] = self.detectors[det_name].antenna_patterns(theta=theta, phi=phi, psi=psi, freqs=self.freqs)[i_pol][i_f]
-		return F_det
+
+
+
+
+############ we should use network.get_detector(name).antenna_pattern(theta, phi, psi, freqs=freqs) instead!
+
+#	###
+#	def F_det(self, det_name, theta, phi, psi=0.):
+#		"""Calculates 2-D antenna pattern array (frequencies x polarizations) for a given detector"""
+#		F_det = np.zeros((len(self.freqs), self.Np), 'complex')
+#		for i_f in xrange(len(self.freqs)):
+#			for i_pol in xrange(self.Np):
+#				F_det[i_f,i_pol] = self.detectors[det_name].antenna_patterns(theta=theta, phi=phi, psi=psi, freqs=self.freqs)[i_pol][i_f]
+#		return F_det
+############
 
 	###
 	def A(self, theta, phi, psi, no_psd=False):
 		"""computes the entire matrix"""
+		n_pix, theta, phi, psi = check_theta_phi_psi(theta, phi, psi)
+
 		if no_psd:
-			a=np.zeros((self.Np,self.Np))
+			a=np.zeros((n_pix, self.Np,self.Np))
 			for detector in self.detectors.values():
 				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #time shifts cancel within A so we supply no freqs
 				for i in xrange(self.Np):
-					a[i,i] += np.abs(F[i])**2
+					a[:,i,i] += np.abs(F[i])**2
 					for j in xrange(i+1,self.Np):
 						_ = np.conjugate(F[i])*F[j]
-						a[i,j] += _
-						a[j,i] += np.conjugate(_)
+						a[:,i,j] += _
+						a[:,j,i] += np.conjugate(_)
 		else:  #if given a psd
-			a=np.zeros((len(self.freqs), self.Np, self.Np))  #initialize a 3-D array (frequencies x polarizations x polarizations)
+			a=np.zeros((n_pix, len(self.freqs), self.Np, self.Np))  #initialize a 3-D array (frequencies x polarizations x polarizations)
 			for detector in self.detectors.values():
 				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
 				_psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
 				for i in xrange(self.Np):
-					a[:,i,i] += np.abs(F[i])**2/_psd
+					a[:,:,i,i] += np.outer(np.abs(F[i])**2, _psd**-1)
 					for j in xrange(i+1,self.Np):
-						_ = np.conjugate(F[i])*F[j]/_psd
-						a[:,i,j] += _
-						a[:,j,i] += np.conjugate(_)
-		return a
+						_ = np.outer(np.conjugate(F[i])*F[j], _psd**-1)
+						a[:,:,i,j] += _
+						a[:,:,j,i] += np.conjugate(_)
+		if n_pix == 1:
+			return a[0]
+		else:
+			return a
 
 	###
 	def Aij(self, i, j, theta, phi, psi, no_psd=False):  #edit this for given psds (see above)
 		"""computes a single component of the matrix"""
-		aij = 0.0
+		n_pix, theta, phi, psi = check_theta_phi_psi(theta, phi, psi)
+
 		if no_psd:
+			aij = np.zeros((n_pix,), float)
 			for detector in self.detectors.values():
 				F = detector.antenna_patterns(theta, phi, psi, freqs=None) # time shifts cancel within A so we supply no freqs
 				aij += np.conjugate(F[i])*F[j]
 		else:
+			aij = np.zeros((n_pix,len(self.freqs)), float)
 			for detector in self.detectors.values():
                                 F = detector.antenna_patterns(theta, phi, psi, freqs=None)
 				_psd = detector.get_psd().interpolate(self.freqs)
-				aij += np.conjugate(F[i])*F[j]/_psd
-		return aij
+				aij += np.outer(np.conjugate(F[i])*F[j], _psd**-1)
+		if n_pix == 1:
+			return aij[0]
+		else:
+			return aij
 
 	###
 	def B(self, theta, phi, psi, no_psd=False):
 		"""computes the entire matrix"""
+		n_pix, theta, phi, psi = check_theta_phi_psi(theta, phi, psi)
+
 		sorted_detectors = self.detectors_list()
 		Nd = len(sorted_detectors)
 		if no_psd:
-			B = np.zeros((self.Np, Nd))
+			B = np.zeros((n_pix, self.Np, Nd))
 			for d_ind, detector in enumerate(sorted_detectors):
 				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)
 				for i in xrange(self.Np):
-					B[i,d_ind] = np.conjugate(F[i])
+					B[:,i,d_ind] = np.conjugate(F[i])
 		else:  #if given a psd
-			B = np.zeros((len(self.freqs), self.Np, Nd), 'complex') #initialize a 3-D array (freqs x polarizations x detectors)
+			B = np.zeros((n_pix, len(self.freqs), self.Np, Nd), 'complex') #initialize a 3-D array (freqs x polarizations x detectors)
 			for d_ind, detector in enumerate(sorted_detectors):
 				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)   #tuple (pols) of 1-D arrays (frequencies)
 				for i in xrange(self.Np):
-						B[:,i,d_ind] = np.conjugate(F[i])/detector.psd.interpolate(self.freqs)
-		return B
+						B[:,:,i,d_ind] = np.conjugate(F[i]) * np.outer(np.ones((n_pix,)), detector.psd.interpolate(self.freqs)**-1)
+		if n_pix == 1:
+			return B[0]
+		else:
+			return B
 
 	###
 	def Bni(self, name, i, theta, phi, psi, no_psd=False):  #edit this for given psds (see above)
 		"""computes a single component of the matrix"""
+		n_pix, theta, phi, psi = check_theta_phi_psi(theta, phi, psi)
+
 		if not self.contains_name(name):
 			raise KeyError, "detector=%s not contained in this network"%name
 		detector = self.detectors[name]
 		F = detector.antenna_patterns(theta, phi, psi, freqs=freqs)
 		if no_psd:
-			return F[i]
+			B = F[:,i]
 		else:
-			return F[i]/detector.get_psd().interpolate(self.freqs)
+			B = F[:,i]* np.outer(np.ones((n_pix,)), detector.get_psd().interpolate(self.freqs)**-1)
+
+		if n_pix == 1:
+			return B[0]
+		else:
+			return B
+
+
+	################################################################################
+	### things below here are a bit shakey or have not been written
+	################################################################################
+
+        ###
+        def rank(self, A, tol=1e-10):
+                """wrapper for numpy.linalg.matrix_rank that computes the rank of A. Rank is defined as the number of eigenvalues larger than tol"""
+                return linalg.matrix_rank(A, tol=tol)
+
+        ###
+        def eigvals(self, A):
+                """wrappter for numpy.linalg.eigvals that computes the eigenvalues of A"""
+                vals = linalg.eigvals(A)
+                if len(np.shape(vals)) == 1:
+                        vals.sort()
+                        return np.diag(vals[::-1]) # return in order of decreasing eigenvalue
+                else:
+                        v=[]
+                        for val in vals:
+                                val.sort()
+                                v.append( np.diag(val) )
+                        return np.array(v)
+
+        ###
+        def eig(self, A):
+                """wrappter for numpy.linalg.eig that computes the eigenvalues and eigenvectors of A"""
+                raise StandardError, "need to figure out how to best sort the eigenvalues and the associated eigenvectors"
+                return linalg.eig(A)
 
 	###
 	def A_dpf(self, theta, phi, A=None, no_psd=False):
 		"""computes A in the dominant polarization frame. If A is supplied, it converts A to the dominant polarization frame"""
 		if not A:
 			A = self.A(theta, phi, 0.0, no_psd=no_psd)
-		return np.diag(self.eigvals(A))
+		return self.eigvals(A)
 
 	###
 	def Aii_dpf(self, i, theta, phi, A=None, no_psd=False):
@@ -436,24 +676,6 @@ class Network(object):
 	def Bni(self, name, i, theta, phi, A_B=None, no_psd=False):
 		"""computes a single component of B in the dominant polarization frame. If A_B=(A,B) is supplied, we use it to define the dominant polarization frame"""
 		raise StandardError, "write me!"
-
-	###
-	def rank(self, A, tol=1e-10):
-		"""wrapper for numpy.linalg.matrix_rank that computes the rank of A. Rank is defined as the number of eigenvalues larger than tol"""
-		return linalg.matrix_rank(A, tol=tol)
-
-	###
-	def eigvals(self, A):
-		"""wrappter for numpy.linalg.eigvals that computes the eigenvalues of A"""
-		vals = linalg.eigvals(A)
-		vals.sort() # sort the eigenvalues
-		return np.diag(vals[::-1]) # return in order of decreasing eigenvalue
-	
-	###
-	def eig(self, A):
-		"""wrappter for numpy.linalg.eig that computes the eigenvalues and eigenvectors of A"""
-		raise StandardError, "need to figure out how to best sort the eigenvalues and the associated eigenvectors"
-		return linalg.eig(A)
 
 #=================================================
 #

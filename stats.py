@@ -111,6 +111,22 @@ def min_cos_dtheta(posterior, theta, phi, nside=None, nest=False):
 	return np.min(cos_dtheta(thetas, phis, t, p))
 
 ###
+def min_all_cos_dtheta(pix, nside, nest=False):
+	"""
+	computes the maximum angular separation between any two pixels within pix=[ipix,ipix,...]
+	"""
+	min_c = 1.0
+	thetas, phis = hp.pix2ang(nside, pix)
+	for i, (t1, p1) in enumerate(zip(thetas, phis)[:-1]):
+		t2 = thetas[i+1:] 
+		p2 = phis[i+1:]
+		c = np.amin(cos_dtheta(t1,p1,t2,p2))
+		if c < min_c:
+			min_c = c
+	return min_c
+
+
+###
 def num_modes(posterior, theta, phi, nside=None, nest=False):
 	"""
 	computes the number of modes in the area bounded by theta, phi
@@ -169,15 +185,19 @@ def __into_modes(nside, pix):
 	### establish an array representing the included pixels
 	npix = hp.nside2npix(nside)
 
-	truth = np.zeros((npix,),int)
-	truth[pix] = 1
+	truth = np.zeros((npix,),bool)
+	truth[pix] = True
+#	truth = np.zeros((npix,),int)
+#	truth[pix] = 1
 
 	pixnums = np.arange(npix) ### convenient array we establish once
 
 	modes = []
 	while truth.any():
-		ipix = pixnums[truth>0][0] ### take the first pixel
-		truth[ipix] = 0 ### remove it from the global set
+		ipix = pixnums[truth][0] ### take the first pixel
+		truth[ipix] = False ### remove it from the global set
+#		ipix = pixnums[truth>0][0] ### take the first pixel
+#		truth[ipix] = 0 ### remove it from the global set
 		mode = [ipix]
 		to_check = [ipix] ### add it to the list of things to check
 
@@ -190,7 +210,8 @@ def __into_modes(nside, pix):
 					pass
 				# try to find pixel in skymap
 				elif truth[neighbour]: ### pixel in the set and has not been visited before
-					truth[neighbour] = 0 ### remove neighbour from global set
+					truth[neighbour] = False ### remove neighbour from global set
+#					truth[neighbour] = 0 ### remove neighbour from global set
 					mode.append( neighbour ) ### add to this mode
 					to_check.append( neighbour ) ### add to list of things to check
 				else: ### pixel not in the set or has been visited before
@@ -234,6 +255,15 @@ def mse(posterior1, posterior2):
 		sum (p1 - p2)**2
 	"""
 	return 1.0*np.sum( (posterior1-posterior2)**2 )/len(posterior1)
+
+###
+def peak_snr(posterior1, posterior2):
+	"""
+	computes the peak signal-to-noise ratio between the two posteriors
+		max(posterior1)/mse , max(posterior2)/mse
+	"""
+	_mse = mse(posterior1, posterior2)**0.5
+	return np.max(posterior1)/_mse, np.max(posterior2)/_mse
 
 ###
 def fidelity(posterior1, posterior2):

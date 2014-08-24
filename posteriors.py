@@ -771,7 +771,6 @@ class Posterior(object):
 		else:
 			return ans, n_pol_eff
 
-
 	###
 	def log_posterior(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False):
 		"""
@@ -825,6 +824,10 @@ class Posterior(object):
 		return np.exp( self.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize) )
 
 	###
+	def posterior_mp(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False):
+		raise StandardError, "WRITE ME"
+
+	###
 	def log_bayes(self, log_posterior):
 		""" 
 		computes the log(bayes factor) using log_posterior 
@@ -833,20 +836,17 @@ class Posterior(object):
 		return utils.sum_logs(log_posterior)
 
 	###
+	def log_bayes_mp(self, log_posterior):
+		raise StandardError, "WRITE ME"
+
+	###
 	def bayes(self, log_posterior):
 		""" np.exp(self.log_bayes(log_posterior)) """
 		return np.exp( self.log_bayes(log_posterior) )
 
 	###
-	def model_select(self, log_posterior_elements, fmin, fmax):
-		"""
-		varies which frequencies are included to maximize the bayes factor
-		
-		right now, this is a trivial delegation
-		"""
-		flow = fmin
-		f_up = fmax
-		return f_low, f_up
+	def bayes_mp(self, log_posterior):
+		raise StandardError, "WRITE ME"
 
 	###
 	def plot(self, figname, posterior=None, title=None, unit=None, inj=None, est=None):
@@ -885,8 +885,7 @@ class Posterior(object):
                 ### save
                 fig.savefig(figname)
                 plt.close()
-		
-		
+	
 	###
 	def __call__(self):
 		"""

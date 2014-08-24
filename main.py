@@ -38,6 +38,7 @@ parser.add_option("-X", "--max-processors", default=1, type="int", help="the max
 parser.add_option("-T", "--num-runs", default=1, type="int", help="the number of injections to simulate")
 
 parser.add_option("-G", "--num-gaus", default=1, type="int", help="the number of Gaussian terms used to approximate the prior")
+parser.add_option("", "--ms-params", default=3, type="int", help="the effective number of (frequency bin) parameters to use when model selecting")
 
 #Currently the code sets thresh=0, meaning we reduce to 1 effective polarization.  Need to figure out normalizations/singular matrices to work with 2 or mixed polarizations.
 parser.add_option("", "--thresh", default=0.0, type="float", help="The thresholdld ratio between min and max eigenvalues of A for a given pixel.  If the ratio exceeds the threshold for a pixel, the number of effective polarizations is reduced by 1")
@@ -61,6 +62,7 @@ flow = opts.fmin
 fhigh = opts.fmax
 seg_len = opts.seg_len #in seconds
 samp_freq = opts.samp_freq  #in HZ
+ms_params = opts.ms_params
 
 
 df = 1./seg_len
@@ -211,8 +213,7 @@ for i_ang in xrange(n_runs):
 		
 	posterior = posteriors.Posterior(freqs=freqs, network=network, hprior=hprior, angprior=angprior, data=data, nside_exp=nside_exp, seg_len=seg_len)
 	g_array = posterior.build_log_gaussian_array(num_processes=num_processes, max_processors=max_processors, threshold=threshold)
-	post_built = posterior.build_posterior(g_array=g_array, f_low=freqs[0], f_up=freqs[-1])
-	
+	post_built = posterior.build_posterior(g_array=g_array, fmin=freqs[0], fmax=freqs[-1], ms_params=ms_params, max_processors=max_processors)
 	
 	if opts.verbose and opts.time:
 		print "\t\t", time.time()-to

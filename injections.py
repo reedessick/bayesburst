@@ -65,28 +65,40 @@ def project(F, h):
 	"""
 	project the wave-frame signal h onto the detectors using antenna patterns F
 		 F[time/freq][pol], h[time/freq][pol] 
+
+		np.shape(F) = (n_pol, n_freqs)
+		np.shape(h) = (n_freqs, n_pol)
 	"""
-	return sum(np.transpose(F*h)) # sum over pol
+	return np.sum(np.transpose(F)*h, axis=1) # sum over pol
 
 ###
 def inject(network, h, theta, phi, psi=0.0):
 	"""
 	generate signal vectors in each detector within network
 	this works exclusively in the freq domain
+
+	We require:
+		np.shape(h) = (n_freqs, n_pol)
+
+	which is compatible with all the functions defined in this module
 	"""
-	freq = network.freq
-	n_freq = len(freq)
-	detectors = netowrk.detectors_list()
+	freqs = network.freqs
+	n_freq = len(freqs)
+	detectors = network.detectors_list()
 	n_det = len(detectors)
-	signal = np.zeros((n_freq, n_det), complex=True)
+
+	signal = np.zeros((n_freq, n_det), complex)
+
 	for det_ind, detector in enumerate(detectors):
-		F = np.asarray( detector.antenna_patterns(theta, phi, psi, freqs=freq) )
+		F = np.asarray( detector.antenna_patterns(theta, phi, psi, freqs=freqs) )
 		signal[:, det_ind] = project( F, h )
+
 	return signal
 		
 		
-#=====================================================
-
+#=================================================
+# sampling distributions
+#=================================================
 def skypos_uni_vol(detectors, freqs, to, phio, fo, tau, hrss, alpha, snrcut, n_runs=1, num_pol=2):
 	"""
 	generate a sky position that is uniform in volume, subject to an SNR cutoff of snrcut
@@ -96,7 +108,9 @@ def skypos_uni_vol(detectors, freqs, to, phio, fo, tau, hrss, alpha, snrcut, n_r
 	
 	df_test = 0.1
 	freqs_test = np.arange(10., 2048., df_test)
+
 	test_network = utils.Network(detectors=detectors, freqs=freqs_test, Np = num_pol)
+
 	h_test = sinegaussian_f(f=freqs_test, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=alpha)  #2-D array (frequencies x polarizations)
 	h_test_conj = np.conj(h_test)
 	
