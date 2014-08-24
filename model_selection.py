@@ -2,8 +2,17 @@ usage = """ a module to contain various model selection routines """
 # R. Essick (ressick@mit.edu)
 # R. Lynch 
 
+import posteriors
+mp = posteriors.mp
 
-import Posteriors
+print """WARNING
+	need to implement model selection (via parallelization if desired)
+	develop several algorithms, with varying levels of complexity
+	include templated searches (a la ryan's heavyside templates), 
+		which may include computing and storing additional terms in posteriors.Posterior
+		==> d*B needs to be stored for convenient look-up
+"""
+
 
 #=================================================
 #
@@ -11,6 +20,8 @@ import Posteriors
 #
 #=================================================
 
+
+### THIS IS THE "sliding frequency window" ALGORITHM THAT RYAN DEVELOPED
 def variable_bandwidth(self, g_array, fmin, fmax, ms_params, max_processors=1):
 	"""
 	varies which frequencies are included to maximize the bayes factor

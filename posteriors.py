@@ -19,6 +19,9 @@ print """WARNING:
 		-> put a tolerance on the REAL vs IMAG components and raise error if violated
 		-> cast to reals when filling in array
 	
+	need to implement timers to track algorithmic optimization
+
+	implement mp parallelization for posterior_mp, log_bayes_mp, bayes_mp
 
 	We also need to implement effective numbers of polarizations. This can be done by zeroing certain elements of the arrays (like invP, A, etc).
 		if we zero those elements, we need to make copies of the arrays so we don't over-write them...
