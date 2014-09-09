@@ -21,7 +21,9 @@ print """WARNING:
 	
 	need to implement timers to track algorithmic optimization
 
-	implement mp parallelization for posterior_mp, log_bayes_mp, bayes_mp
+	WE CAN COMPUTE DETERMINANT TERMS AHEAD OF TIME-> DON'T NEED TO COMPUTE THIS FOR EVERY POINT IN THE SKY
+		write this into set_hPrior (detZ) and set_P (detinvP)
+		just reference in log_posterior_elements(_mp)	
 
 	We also need to implement effective numbers of polarizations. This can be done by zeroing certain elements of the arrays (like invP, A, etc).
 		if we zero those elements, we need to make copies of the arrays so we don't over-write them...
@@ -90,6 +92,10 @@ class Posterior(object):
 		self.B = None
 		self.P = None
 		self.invP = None
+
+	#=========================================
+	# set_* functions
+	#=========================================
 
 	###
 	def set_network(self, network):
@@ -180,6 +186,8 @@ class Posterior(object):
                         raise ValueError, "inconsistent n_ifo"
 
 		self.data = data
+		self.dataB = None
+		self.dataB_conj = None
 
 	###
 	def set_theta_phi(self, coord_sys="E", **kwargs):
@@ -195,6 +203,10 @@ class Posterior(object):
 		self.phi = self.angPrior.phi
 		self.coord_sys = self.angPrior.coord_sys
 
+#	###
+#	def set_theta_phi_mp(self, coord_sys="E", num_proc=1, max_proc=1, max_array_size=100, **kwargs):
+#		raise StandardError, "WRITE ME"
+
 	###
 	def set_A(self, psi=0.0):
 		"""
@@ -205,16 +217,75 @@ class Posterior(object):
 		if not self.network:
 			raise ValueError, "set_network() first"
 
-		if (self.theta != None) and (self.phi != None):
-			thetas = self.theta
-			phis = self.phi
-		else:
-			if not self.nside:
-				raise ValueError, "set_angPrior() first"
-			thetas, phis = hp.pix2ang(self.nside, np.arange(self.npix))
+		if (self.theta == None) or (self.phi == None):
+			raise ValueError, "set_theta_phi() first"
 
-                self.A = self.network.A(thetas, phis, psi, no_psd=False)
+                self.A = self.network.A(self.theta, self.phi, psi, no_psd=False)
 		self.invA = linalg.inv(self.A)
+
+	###
+	def __set_A_mp(self, theta, phi, psi, connection, max_array_size=100):
+		"""
+		a helper method for set_A_mp
+		"""
+		A = self.network.A(theta, phi, psi, no_psd=False)
+		invA = linalg.inv(A)
+		utils.flatten_and_send(connection, A, max_array_size=max_array_size)
+		utils.flatten_and_send(connection, invA, max_array_size=max_array_size)
+
+	###
+	def set_A_mp(self, psi=0.0, num_proc=1, max_proc=1, max_array_size=100):
+		"""
+		compute and store A, invA
+		A is computed through delegation to self.network
+		pixelization is defined by healpy and self.nside (through self.angPrior)
+		"""
+                if num_proc==1 or max_proc==1:
+                        self.set_A(psi=psi)
+
+                if not self.network:
+                        raise ValueError, "set_network() first"
+                if (self.theta == None) or (self.phi == None):
+                        raise ValueError, "set_theta_phi() first"
+
+
+                n_pix, theta, phi, psi = self.__check_theta_phi_psi(self.theta, self.phi, psi)
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+                self.A = np.empty((n_pix, self.n_freqs, self.n_pol, self.n_pol), float)
+		self.invA = np.empty_like(self.A)
+                for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                        	        ### fill in data
+                                	shape = np.shape(self.A[start:end])
+	                                self.A[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+					self.invA[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _theta = theta[start:end] ### pull out only those ranges of relevant arrays
+                        _phi = phi[start:end]
+			_psi = psi[start:end]
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.__set_A_mp, args=(_theta, _phi, _psi, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+
+                while len(proc):
+                        p, start, end, con1 = procs.pop()
+                        shape = np.shape(self.A[start:end])
+                        self.A[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+			self.invA[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
 
 	###
 	def set_B(self, psi=0.0):
@@ -226,18 +297,236 @@ class Posterior(object):
 		if not self.network:
 			raise ValueError, "set_network() first"
 
-                if (self.theta!=None) and (self.phi!=None):
-                        thetas = self.theta
-                        phis = self.phi
-                else:
-                        if not self.nside:
-                                raise ValueError, "set_angPrior() first"
-                        thetas, phis = hp.pix2ang(self.nside, np.arange(self.npix))
+                if (self.theta==None) or (self.phi==None):
+			raise ValueError, "set_theta_phi() first"
 
-		self.B = self.network.B(thetas, phis, psi, no_psd=False)
+		self.B = self.network.B(self.theta, self.phi, psi, no_psd=False)
 
 	###
-	def set_P(self, psi=0.0):
+	def __set_B_mp(self, theta, phi, psi, connection, max_array_size=100):
+                """
+                a helper method for set_B_mp
+                """
+                B = self.network.B(theta, phi, psi, no_psd=False)
+                utils.flatten_and_send(connection, B, max_array_size=max_array_size)
+
+        ###
+        def set_B_mp(self, psi=0.0, num_proc=1, max_proc=1, max_array_size=100):
+                """
+                compute and store B
+                B is computed through delegation to self.network
+                pixelization is defined by healpy and self.nside (through self.angPrior)
+                """
+                if num_proc==1 or max_proc==1:
+                        self.set_B(psi=psi)
+
+                if not self.network:
+                        raise ValueError, "set_network() first"
+                if (self.theta == None) or (self.phi == None):
+                        raise ValueError, "set_theta_phi() first"
+
+                n_pix, theta, phi, psi = self.__check_theta_phi_psi(self.theta, self.phi, psi)
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+                self.B = np.empty((n_pix, self.n_freqs, self.n_pol, self.n_ifo), complex)
+                for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+        	                        ### fill in data
+	                                shape = np.shape(self.B[start:end])
+                	                self.B[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _theta = theta[start:end] ### pull out only those ranges of relevant arrays
+                        _phi = phi[start:end]
+                        _psi = psi[start:end]
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.__set_B_mp, args=(_theta, _phi, _psi, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+
+                while len(proc):
+                        p, start, end, con1 = procs.pop()
+                        shape = np.shape(self.B[start:end])
+                        self.B[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+	###
+	def set_AB(self, psi=0.0):
+		""" computes and stores both A and B """
+		if not self.network:
+			raise ValueError, "set_network() first!"
+		if (self.theta==None) or (self.phi==None):
+			raise ValueError, "set_theta_phi() first"
+
+		self.A, self.B = self.network.AB(self.theta, self.phi, psi, no_psd=False)
+		self.invA = linalg.inv(self.A)
+
+        ###
+        def __set_AB_mp(self, theta, phi, psi, connection, max_array_size=100):
+                """
+                a helper method for set_AB_mp
+                """
+                A, B = self.network.AB(theta, phi, psi, no_psd=False)
+		utils.flatten_and_send(connection, A, max_array_size=max_array_size)
+		utils.flatten_and_send(connection, invA, max_array_size=max_array_size)
+                utils.flatten_and_send(connection, B, max_array_size=max_array_size)
+
+        ###
+        def set_AB_mp(self, psi=0.0, num_proc=1, max_proc=1, max_array_size=100):
+                """
+                compute and store A, invA, B
+                A,B are computed through delegation to self.network
+                pixelization is defined by healpy and self.nside (through self.angPrior)
+                """
+                if num_proc==1 or max_proc==1:
+                        self.set_AB(psi=psi)
+
+                if not self.network:
+                        raise ValueError, "set_network() first"
+                if (self.theta == None) or (self.phi == None):
+                        raise ValueError, "set_theta_phi() first"
+
+                n_pix, theta, phi, psi = self.__check_theta_phi_psi(self.theta, self.phi, psi)
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+		self.A = np.empty((n_pix, self.n_freqs, self.n_pol, self.n_pol), float)
+		self.invA = np.empty_like(A, float)
+                self.B = np.empty((n_pix, self.n_freqs, self.n_pol, self.n_ifo), complex)
+                for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                                        ### fill in data
+                                        shape = np.shape(self.A[start:end])
+					self.A[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+					self.invA[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
+                                        shape = np.shape(self.B[start:end])
+                                        self.B[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _theta = theta[start:end] ### pull out only those ranges of relevant arrays
+                        _phi = phi[start:end]
+                        _psi = psi[start:end]
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.__set_AB_mp, args=(_theta, _phi, _psi, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+
+                while len(proc):
+                        p, start, end, con1 = procs.pop()
+
+                        shape = np.shape(self.A[start:end])
+			self.A[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+			self.invA[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+		
+                        shape = np.shape(self.B[start:end])
+                        self.B[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+	###
+	def set_dataB(self):
+		"""
+		computes and stores data*B
+		B is required to be present through self.B
+		"""
+		if self.data==None:
+			raise ValueError, "set_data() first!"
+		if self.B==None:
+			raise ValueError, "set_B() first!"
+
+		n_freqs = self.n_freqs
+	        n_pol = self.n_pol
+        	n_ifo = self.n_ifo
+		n_pix = self.angPrior.npix
+
+		### this implementation is faster than your numpy array manipulations
+		self.dataB = np.zeros((n_pix, n_freqs, n_pol), complex) ### transformed data
+                for alpha in xrange(n_ifo):
+                	for j in xrange(n_pol):
+                        	self.dataB[:,:,j] += self.data[:,alpha] * self.B[:,:,j,alpha]
+
+		self.dataB_conj = np.conjugate(self.dataB)
+
+
+        def __set_dataB_mp(self, B, connection, max_array_size=100):
+                """
+                a helper method for set_dataB_mp
+                """
+		n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(B)
+		dataB = np.zeros((n_pix, n_freqs, n_pol), complex)
+		for alpha in xrange(n_ifo):
+			for j in xrange(n_pol):
+				dataB[:,:,j] += self.data[:,alpha] * B[:,:,j,alpha]
+
+		utils.flatten_and_send(connection, dataB, max_array_size=max_array_size)
+
+	###
+	def set_dataB_mp(self, num_proc=1, max_proc=1, max_array_size=100):
+                if num_proc==1 or max_proc==1:
+                        self.set_dataB()
+
+		if self.data==None:
+                        raise ValueError, "set_data() first!"
+                if self.B==None:
+                        raise ValueError, "set_B() first!"
+
+		n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(self.B)
+
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+                self.dataB = np.empty((n_pix, n_freqs, n_pol), complex)
+                for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                                        ### fill in data
+                                        shape = np.shape(self.dataB[start:end])
+                                        self.dataB[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        ### pull out only those ranges of relevant arrays
+                        _B = self.B[start:end]
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.__set_dataB_mp, args=(_B, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+
+                while len(proc):
+                        p, start, end, con1 = procs.pop()
+
+                        shape = np.shape(self.dataB[start:end])
+                        self.dataB[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+	###
+	def set_P(self):
 		"""
 		comptue and store P, invP
 		P is computed with knowledge of self.A and self.hPrior
@@ -251,18 +540,91 @@ class Posterior(object):
 		n_freqs = self.n_freqs
 		n_pol = self.n_pol
 		n_gaus = self.hPrior.n_gaus
-		P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)
-		invP = np.empty_like(P)
+		self.P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)
+		self.invP = np.empty_like(self.P, complex)
                 for g in xrange(n_gaus):
 			Z = np.empty_like(A, complex)
 			Z[:] = self.hPrior.incovariance[:,:,:,g]
 
-                        P[:,:,:,:,g] = (A + Z)
-			invP[:,:,:,:,g] = linalg.inv( P[:,:,:,:,g] ) ### this appears to be VERY memory intensive...
+                        self.P[:,:,:,:,g] = (A + Z)
+			self.invP[:,:,:,:,g] = linalg.inv( self.P[:,:,:,:,g] ) ### this appears to be VERY memory intensive...
 			                                             ### perhaps prohibitively so
 
-		self.P = P
-		self.invP = invP
+        ###
+        def __set_P_mp(self, A, connection, max_array_size=100):
+                """
+                a helper method for set_AB_mp
+                """
+
+		n_pix, n_freqs, n_pol, A = self.__check_A(A)
+		n_gaus = self.hPrior.n_gaus
+
+		P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex)
+		invP = np.empty_like(P, complex)
+		for g in xrange(n_gaus):
+			Z = np.empty_like(A, complex)
+			Z[:] = self.hPrior.incovariance[:,:,:,g]
+
+			P[:,:,:,:,g] = A+Z
+			invP[:,:,:,:,g] = linalg.inv( P[:,:,:,:,g] )
+		utils.flatten_and_send(connection, P, max_array_size=max_array_size)
+		utils.flatten_and_send(connection, invP, max_array_size=max_array_size)
+
+        ###
+        def set_P_mp(self, num_proc=1, max_proc=1, max_array_size=100):
+                """
+                compute and store A, invA, B
+                A,B are computed through delegation to self.network
+                pixelization is defined by healpy and self.nside (through self.angPrior)
+                """
+                if num_proc==1 or max_proc==1:
+                        self.set_P()
+
+                if self.A == None:
+			raise ValueError, "set_A() first"
+		A = self.A
+
+                n_pix, n_freqs, n_pol, A = self.__check_A(A)
+		n_gaus = self.hPrior.n_gaus
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+                self.P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)
+                self.invP = np.empty_like(P, complex)
+                for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                                        ### fill in data
+                                        shape = np.shape(self.P[start:end])
+                                        self.P[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+                                        self.invP[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _A = A[start:end] ### pull out only those ranges of relevant arrays
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.__set_P_mp, args=(_A, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+
+                while len(proc):
+                        p, start, end, con1 = procs.pop()
+
+                        shape = np.shape(self.P[start:end])
+                        self.P[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+                        self.invP[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+	#=========================================
+	# __check_* functions
+	#=========================================
 
 	###
 	def __check_theta_phi_psi(self, theta, phi, psi):
@@ -304,6 +666,21 @@ class Posterior(object):
 		return n_pix, n_freqs, n_pol, n_ifo, B
 
 	###
+	def __check_dataB(self, dataB, n_pix, n_pol_eff):
+		""" check data*B's shape """
+		if len(np.shape(dataB)) != 3:
+			raise ValueError, "bad shape for data*B"
+		n, n_freqs, n_pol = np.shape(dataB)
+		if n != n_pix:
+			raise ValueError, "inconsistent shape between theta, phi, psi and data*B"
+		if n_freqs != self.n_freqs:
+			raise ValueError, "inconsistent n_freqs"
+		if np.any(n_pol != n_pol_eff):
+			raise ValueError, "n_pol != n_pol_eff"
+
+		return n_pix, n_freqs, n_pol, dataB
+
+	###
 	def __check_P(self, P, n_pix, n_pol_eff):
 		""" checks P's shape """
 		if len(np.shape(P)) != 5:
@@ -323,6 +700,39 @@ class Posterior(object):
 		return n_pix, n_freqs, n_pol, n_gaus, P
 
 	###
+	def __check_log_posterior_elements(self, log_posterior_elements, n_pix):
+		""" checks log_posterior_element's shape """
+		if len(np.shape(log_posterior_elements)) != 3:
+			raise ValueError, "bad shape for log_posterior_elements"
+		n, n_gaus, n_freqs = np.shape(log_posterior_elements)
+		if n != n_pix:
+			raise ValueError, "inconsistent n_pix"
+		if n_gaus != self.hPrior.n_gaus:
+			raise ValueError, "inconsistent n_gaus"
+		if n_freqs != self.n_freqs:
+			raise ValueError, "inconsistent n_freqs"
+
+		return n_pix, n_gaus, n_freqs, log_posterior_elements
+
+	def __check_mle_strain(self, mle_strain, n_pix):
+		"""checks mle_strain's shape """
+		if len(np.shape(mle_strain)) != 3:
+			raise ValueError, "bad shape for mle_strain"
+		n, n_freqs, n_pol = np.shape(mle_strain)
+		if n != n_pix:
+			raise ValueError, "inconsistent n_pix"
+		if n_freqs != self.n_freqs:
+			raise ValueError, "inconsistent n_freqs"
+		if n_pol != self.n_pol:
+			raise ValueError, "inconsistent n_pol"
+
+		return n_pix, n_freqs, n_pol, mle_strain
+
+	#=========================================
+	# MAIN analysis functionality
+	#=========================================
+
+	###
 	def n_pol_eff(self, theta, phi):
 		"""
 		computes the effective number of polarizations given the network and theta, phis
@@ -333,7 +743,7 @@ class Posterior(object):
 		return self.n_pol*np.ones((n_pix,),int)
 
 	###		
-	def mle_strain(self, theta, phi, psi=0., n_pol_eff=None, invA_B=None):
+	def mle_strain(self, theta, phi, psi=0., n_pol_eff=None, invA_dataB=None, connection=None, max_array_size=100):
 		"""
 		calculates maximum likelihood estimate of strain at a given position.
 		
@@ -378,8 +788,8 @@ class Posterior(object):
 			n_pol_eff = np.max(n_pol_eff)
 
 		### check invA_B
-		if invA_B:
-			invA, B = invA_B
+		if invA_dataB:
+			invA, dataB = invA_dataB
 			if n_pix == 1:
 				if len(np.shape(invA)) == 3:
 					invA = np.array([invA])
@@ -391,30 +801,121 @@ class Posterior(object):
 					raise ValueError, "bad shape for B"
 
 			n_pix, n_freqs, n_pol, invA = self.__check_A(invA, n_pix, n_pol_eff)
-			n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(B, n_pix, n_pol_eff)
+			n_pix, n_freqs, n_pol, dataB = self.__check_dataB(dataB, n_pix, n_pol_eff)
 				
 		else:
 			invA = linalg.inv(self.network.A(thetas, phis, psi, no_psd=False)) ### may throw errors due to singular matrix
 			B = self.network.B(thetas, phis, psi, no_psd=False)
+			dataB = np.zeros((n_pix, n_freqs, n_pol), complex)
+                	for alpha in xrange(n_ifo):
+                        	for j in xrange(n_pol):
+                                	dataB[:,:,j] += self.data[:,alpha] * B[:,:,j,alpha]
 			n_freqs = self.n_freqs
 			n_ifo = self.n_ifo
 		
 					
 		### Calculate h_ML
-		mle_h = np.zeros((n_pix, n_freqs, n_pol_eff), 'complex')  #initialize h_ML as 3-D array (N, n_freqs, n_pol_eff)
-		for ipix in xrange(n_pix):
-			for j in xrange(n_pol_eff):
-				for k in xrange(n_pol_eff):
-					for beta in xrange(n_ifo):
-						mle_h[ipix,:,j] += invA[ipix,:,j,k] * B[ipix,:,k,beta] * self.data[:,beta]
-		
-		if n_pix == 1:
+		mle_h = np.zeros((n_pix, n_freqs, n_pol_eff), complex)
+		for j in xrange(n_pol_eff):
+			for k in xrange(n_pol_eff):
+				mle_h[:,:,j] += invA[:,:,j,k] * dataB[:,:,k]
+#		mle_h = np.zeros((n_pix, n_freqs, n_pol_eff), 'complex')  #initialize h_ML as 3-D array (N, n_freqs, n_pol_eff)
+#		for ipix in xrange(n_pix):
+#			for j in xrange(n_pol_eff):
+#				for k in xrange(n_pol_eff):
+#					for beta in xrange(n_ifo):
+#						mle_h[ipix,:,j] += invA[ipix,:,j,k] * B[ipix,:,k,beta] * self.data[:,beta]
+	
+		### can we do this faster through array broadcasting?
+#		mle_h = np.sum( invA * np.reshape( np.outer( np.sum(B*np.reshape(np.outer( self.data.flatten(), np.ones((n_pol,)) ), (n_freqs, n_pol, n_ifo)), axis=2), np.ones((n_pol,))), (n_pix, n_freqs, n_pol, n_pol)), axis=3)
+
+		if connection:
+			utils.flatten_and_send(connection, mle_h, max_array_size=max_array_size)
+		elif n_pix == 1:
 			return mle_h[0]
 		else:
 			return mle_h
 
+	###
+	def mle_strain_mp(self, theta, phi, psi, num_proc=1, max_proc=1, max_array_size=100, n_pol_eff=None, invA_dataB=None):
+		"""
+		multiprocessing equivalent of mle_strain
+		"""
+		if num_proc==1 or max_proc==1:
+                        return self.mle_strain(theta, phi, psi, n_pol_eff=n_pol_eff, invA_dataB=invA_dataB)
+
+		### check that we have data
+                if self.data==None:
+                        raise ValueError, "set_data() first"
+
+                ### check angular coords
+                n_pix, theta, phi, psi = self.__check_theta_phi_psi(theta, phi, psi)
+		if n_pix==1: ### parallelization will not help you here
+			return self.mle_strain(theta, phi, psi, n_pol_eff=n_pol_eff, invA_dataB=invA_dataB)
+
+                # effective number of polarizations
+                if (n_pol_eff == None):
+                        n_pol_eff = self.n_pol
+                else:
+                        n_pol_eff = np.max(n_pol_eff)
+
+                ### instantiate arrays
+		n_freas = self.n_freqs
+                mle_h = np.zeros((n_pix, n_freqs, n_pol_eff), complex)
+
+
+                ### define size of jobs
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+		if invA_dataB != None:
+			invA, dataB = invA_dataB
+
+                ### iterate through jobs
+                for i in xrange(n_proc):
+
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                	                ### fill in data
+                        	        shape = np.shape(mle_h[start:end])
+	                                mle_h[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _theta = theta[start:end] ### pull out only those ranges of relevant arrays
+                        _phi = phi[start:end]
+                        _psi = psi[start:end]
+			if invA_dataB != None:
+				_invA_dataB = (invA[start:end], dataB[start:end])
+			else:
+				_invA_dataB = None
+			if n_pol_eff != None:
+				_n_pol_eff = n_pol_eff[start:end]
+			else:
+				_n_pol_eff = None
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.log_posterior_elements, args=(_theta, _phi, _psi, _n_pol_eff, _invA_dataB, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+
+		while len(procs):
+			p, start, end, con1 = procs.pop()
+
+			shape = np.shape(mle_h[start:end])
+                        mle_h[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+
+		return mle_strain
+
 	### 	
-	def log_posterior_elements(self, theta, phi, psi=0.0, invP_B=None, A_invA=None, connection=None, max_array_size=100, diagnostic=False):
+	def log_posterior_elements(self, theta, phi, psi=0.0, invP_dataB=None, A_invA=None, connection=None, max_array_size=100, diagnostic=False):
 		"""
                 calculates natural logarithm of posterior for each pixel, gaussian term, and frequency
                 
@@ -485,8 +986,8 @@ class Posterior(object):
 		n_freqs = self.n_freqs
 
 		### check invP_B
-		if invP_B:
-			invP, B = invP_B
+		if invP_dataB:
+			invP, dataB, dataB_conj = invP_dataB
 			if n_pix == 1:
 				if len(np.shape(invP)) == 4:
                                         invP = np.array([invP])
@@ -498,7 +999,9 @@ class Posterior(object):
                                         raise ValueError, "bad shape for B"
 
 			n_pix, n_freqs, n_pol, n_gauss, invP = self.__check_P(invP, n_pix, self.n_pol)
-                	n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(B, n_pix, self.n_pol)
+#                	n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(B, n_pix, self.n_pol)
+			n_pix, n_freqs, n_pol, dataB = self.__check_dataB(dataB, n_pix, self.n_pol)
+			n_pix, n_freqs, n_pol, dataB_conj = self.__check_dataB(dataB_conj, n_pix, self.n_pol)
 		else:
 			A = self.network.A(theta, phi, psi, no_psd=False)
 			invP = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), float) ### (A+Z)^{-1}
@@ -507,6 +1010,11 @@ class Posterior(object):
         	                Z[:] = self.hPrior.incovariance[:,:,:,g]
         	                invP[:,:,:,:,g] = linalg.inv(A + Z)
                         B = self.network.B(theta, phi, psi, no_psd=False)
+			dataB = np.zeros((n_pix, n_freqs, n_pol), complex) ### transformed data
+                        for alpha in xrange(n_ifo):
+                                for j in xrange(n_pol):
+                                        dataB[:,:,j] += self.data[:,alpha] * B[:,:,j,alpha]
+                        dataB_conj = np.conjugate(dataB)
                         n_freqs = self.n_freqs
 			n_pol = self.n_pol
                         n_ifo = self.n_ifo
@@ -543,7 +1051,9 @@ class Posterior(object):
 				A = self.network.A(theta, phi, psi, no_psd=False)
 				invA = linalg.inv(A)
 
-			h_mle = self.mle_strain(theta, phi, psi, n_pol_eff=n_pol_eff, invA_B=(invA,B))
+			h_mle = self.mle_strain(theta, phi, psi, n_pol_eff=n_pol_eff, invA_dataB=(invA,dataB))
+			h_mle_conj = np.conjugate(h_mle)
+
 			means = self.hPrior.means  ### required to be zeros to compute "ans", but may be non-zero here...
                         means_conj = np.conj(means)
 
@@ -555,51 +1065,114 @@ class Posterior(object):
 		df = self.seglen**-1
 	
 		### iterate over all sky positions
-		for ipix, (t,p) in enumerate(zip(theta, phi)):
-			### compute ans. this formulation requires zero-mean gaussian prior decomposition
+#		for ipix, (t,p) in enumerate(zip(theta, phi)):
+#			x = dataB[ipix]
+#			x_conj = dataB_conj[ipix]
+#
+#			### compute ans. this formulation requires zero-mean gaussian prior decomposition
+#			for g in xrange(n_gaus):
+#				### sum over polarizations and compute ans
+#				for j in xrange(n_pol):
+#					for k in xrange(n_pol):
+#						ans[ipix,g,:] += x_conj[:,j] * invP[ipix,:,j,k,g] * x[:,k]
+#
+#				### include determinant
+#				Z = self.hPrior.incovariance[:,:,:,g]
+#				ans[ipix,g,:] += ( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
+#
+#			if diagnostic: ### break things up term-by-term for diagnostic purposes
+#				### compute mle estimate for strain (this may not be optimal for the likelihood calculation...)
+#				h = h_mle[ipix]	
+#				h_conj = np.conjugate(h)
+#					
+#				n_eff = n_pol_eff[ipix]
+#				for g in xrange(n_gaus): ### iterate over gaussian terms
+#	
+#					Z = self.hPrior.incovariance[:,:,:,g]
+#
+#					### iterate over polarizations
+#					for j in xrange(n_eff): 
+#						diff_conj = h_conj[:,j] - means_conj[:,j,g] ### calculate displacement from mean
+#	
+#						for k in xrange(n_eff):
+#							diff = h[:,k] - means[:,k,g] ### calculate displacement from mean
+#							
+#							mle[ipix,g,:] += h_conj[:,j] * A[ipix,:,j,k] * h[:,k] ### maximum likelihood estimate
+#							cts[ipix,g,:] -= diff_conj * Z[:,j,k] * diff ### complete the square
+#						
+#							for m in xrange(n_eff):
+#								for n in xrange(n_eff):
+#									cts[ipix,g,:] += diff_conj * Z[:,j,m] * invP[ipix,:,m,n,g] * Z[:,n,k] * diff ### complete the square
+#
+#					det[ipix,g,:] = ( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
+
+		### compute ans
+		for g in xrange(n_gaus):
+			for j in xrange(n_pol):
+				for k in xrange(n_pol):
+					ans[:,g,:] += dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]
+			Z = self.hPrior.incovariance[:,:,:,g]
+			ans[:,g,:] += ( np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
+
+		### diagnostic arrays
+		if diagnostic:
+			### mle
+			_mle = np.zeros((n_pix, n_freqs), float)
+			for j in xrange(n_pol):
+				for k in xrange(n_pol):
+					_mle += h_mle_conj[:,:,j] * A[:,:,j,k] * h_mle[:,:,k]
 			for g in xrange(n_gaus):
-				x = np.zeros((n_freqs, n_pol), complex) ### transformed data
-				for alpha in xrange(n_ifo):
-					for j in xrange(n_pol):
-						x[:,j] += self.data[:,alpha] * B[ipix,:,j,alpha]
-				x_conj = np.conjugate(x)
+				mle[:,g,:] = _mle
 
-				### sum over polarizations and compute ans
-				for j in xrange(n_pol):
-					for k in xrange(n_pol):
-						ans[ipix,g,:] += x_conj[:,j] * invP[ipix,:,j,k,g] * x[:,k]
-
-				### include determinant
+			### cts		
+			for g in xrange(n_gaus):
 				Z = self.hPrior.incovariance[:,:,:,g]
-#				ans[ipix,g,:] += 0.5*( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
-				ans[ipix,g,:] += ( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
-
-			if diagnostic: ### break things up term-by-term for diagnostic purposes
-				### compute mle estimate for strain (this may not be optimal for the likelihood calculation...)
-				h = h_mle[ipix]	
-				h_conj = np.conjugate(h)
-					
-				n_eff = n_pol_eff[ipix]
-				for g in xrange(n_gaus): ### iterate over gaussian terms
-	
-					Z = self.hPrior.incovariance[:,:,:,g]
-
-					### iterate over polarizations
-					for j in xrange(n_eff): 
-						diff_conj = h_conj[:,j] - means_conj[:,j,g] ### calculate displacement from mean
-	
-						for k in xrange(n_eff):
-							diff = h[:,k] - means[:,k,g] ### calculate displacement from mean
-							
-							mle[ipix,g,:] += h_conj[:,j] * A[ipix,:,j,k] * h[:,k] ### maximum likelihood estimate
-							cts[ipix,g,:] -= diff_conj * Z[:,j,k] * diff ### complete the square
+				for j in xrange(n_pol):
+					diff_conj = h_mle_conj[:,:,j] - means_conj[:,j,g]
+					for k in xrange(n_pol):
+						diff = h_mle[:,:,k] - means[:,k,g]
 						
-							for m in xrange(n_eff):
-								for n in xrange(n_eff):
-									cts[ipix,g,:] += diff_conj * Z[:,j,m] * invP[ipix,:,m,n,g] * Z[:,n,k] * diff ### complete the square
+						cts[:,g,:] -= diff_conj * Z[:,j,k] * diff
+						for m in xrange(n_pol):
+							for n in xrange(n_pol):
+								cts[:,g,:] += diff_conj * Z[:,j,m] * invP[:,:,m,n,g] * Z[:,n,k] * diff
 
-#					det[ipix,g,:] = 0.5*( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
-					det[ipix,g,:] = ( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
+			### det
+			for g in xrange(n_gaus):
+				Z = self.hPrior.incovariance[:,:,:,g]
+				det[:,g,:] = ( np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
+
+#		ones_pol_gaus = np.ones((n_pol,n_gaus),float)
+#		ones_gaus = np.ones((n_gaus,),float)
+
+#		### broadcast to do everything...
+#		ans = np.sum(np.sum( np.reshape(np.outer(dataB_conj, ones_pol_gaus), (n_pix, n_freqs, n_pol, n_pol, n_gaus)) * invP, axis=2) * np.reshape(np.outer(dataB, ones_gaus), (n_pix, n_freqs, n_pol, n_gaus)), axis=2)
+
+#		### iterate over gaussians
+#		for g in xrange(n_gaus):
+#			for j in xrange(n_pol): ### sum over polarizations
+#				for k in xrange(n_pol):
+#					ans[:,g,:] += dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]
+#			Z = self.hPrior.incovariance[:,:,:,g]
+#			ans[:,g,:] += (  np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
+#			ans[:,:,g] += (  np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
+			
+#		if diagnostic:
+#			raise ValueError, "THIS IS BROKEN RIGHT NOW"
+#			ones_npix = np.ones((n_pix,),float)
+#			ones_pol = np.ones((n_pol,),float)
+#
+#			diff = np.reshape(np.outer(h_mle, np.ones(n_gaus)), (n_pix, n_freqs, n_pol, n_gaus)) - np.reshape(np.outer(ones_npix, means), (n_pix, n_freqs, n_pol, n_gaus))
+#			diff_conj = np.conjugate(diff)
+#
+#			_mle = np.sum(np.sum(np.outer(h_mle_conj, ones_pol), (n_pix, n_freqs, n_pol, n_pol * A, axis=2) * h_mle, axis=2)
+#			for g in xrange(n_gaus):
+#				Z = self.hPrior.incovaraince[:,:,:,g]
+#				npix_Z = np.outer(ones_npix,Z)
+#				mle[:,g,:] += _mle
+#				cts[:,g,:] -= np.sum(np.sum(np.outer(diff_conj, ones_pol) *npix_Z, axis=2) * diff, axis=2)
+#				cts[:,g,:] += np.sum( np.sum( np.outer(np.sum(diff_conj * npix_Z, axis=2), ones_pol) * invP[:,:,:,:,g], axis=2) * np.sum(npix_Z * diff, axis=2), axis=2)
+#				det[:,g,:] = ( np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
 
 		if connection:
 			### send ans
@@ -625,7 +1198,7 @@ class Posterior(object):
 				return ans, n_pol_eff
 
 	###
-	def log_posterior_elements_mp(self, theta=None, phi=None, psi=0.0,  invP_B=None, A_invA=None, n_proc=1, max_proc=1, max_array_size=100, diagnostic=False):
+	def log_posterior_elements_mp(self, theta=None, phi=None, psi=0.0,  invP_dataB=None, A_invA=None, n_proc=1, max_proc=1, max_array_size=100, diagnostic=False):
 		"""
 		divides the sky into jobs and submits them through multiprocessing
 
@@ -642,17 +1215,11 @@ class Posterior(object):
 
 		n_pix, theta, phi, psi = self.__check_theta_phi_psi(theta, phi, psi)
 
-                if invP_B==None:
-                        A = self.network.A(theta, phi, psi, no_psd=False)
-                        invP = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), float) ### (A+Z)^{-1}
-                        for g in xrange(n_gaus):
-	                        Z = np.empty_like(A, complex)
-        	                Z[:] = self.hPrior.incovariance[:,:,:,g]
-                                invP[:,:,:,:,g] = linalg.inv(A + Z)
-                        B = self.network.B(theta, phi, psi, no_psd=False)
-#			invP_B = (invP, B)
-		else:
-			invP, B = invP_B
+		if n_proc==1 or max_proc==1 or n_pix==1:
+			return self.log_posterior_elements(theta, phi, psi=psi, invP_dataB=invP_dataB, A_invA=A_invA, diagnostic=True)
+
+		if invP_dataB != None:
+			invP, dataB, dataB_conj = invP_dataB
 
                 ### instantiate arrays
 		n_gaus = self.hPrior.n_gaus
@@ -666,11 +1233,7 @@ class Posterior(object):
                         cts = np.empty_like(ans, float) ### term from completing the square in the marginalization
                         det = np.empty_like(ans, float) ### term from determinant from marginalization
 
-			if A_invA==None:
-				A = self.network.A(theta, phi, psi, no_psd=False)
-                                invA = linalg.inv(A)
-#				A_invA = (A, invA)
-			else:
+			if A_invA!=None:
 				A, invA = A_invA
 
 		### define size of jobs
@@ -685,36 +1248,14 @@ class Posterior(object):
 				if len(procs) >= max_proc:
 					p, start, end, con1 = procs.pop()
 
-				### fill in data
-				shape = np.shape(ans[start:end])
-				ans[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-				n_pol_eff[start:end] = utils.recv_and_reshape(con1, np.shape(n_pol_eff[start:end]), max_array_size=max_array_size)
-				if diagnostic:
-					mle[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-					cts[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-					det[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-
-#				ind = 0
-#				while len(procs) >= max_proc:
-#					for ind, (p, _,_,_) in enumerate(procs):
-#						if not p.is_alive():
-#							print "bing"
-#							break
-#					else:
-#						continue
-#					p, start, end, con1 = procs.pop(ind)
-
-#				if diagnostic:
-#					_ans, _n_pol_eff, (_mle,_cts,_det) = con1.recv()
-#					ans[start:end,:,:] = _ans
-#					n_pol_eff[start:end] = _n_pol_eff
-#					mle[start:end,:,:] = _mle
-#					cts[start:end,:,:] = _cts
-#					det[start:end,:,:] = _det
-#				else:
-#					_ans, _n_pol_eff = con1.recv()
-#					ans[start:end,:,:] = _ans
-#					n_pol_eff[start:end] = _n_pol_eff
+					### fill in data
+					shape = np.shape(ans[start:end])
+					ans[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+					n_pol_eff[start:end] = utils.recv_and_reshape(con1, np.shape(n_pol_eff[start:end]), max_array_size=max_array_size, dtype=int)
+					if diagnostic:
+						mle[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+						cts[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+						det[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
 
 			### launch new process
                         start = i*npix_per_proc ### define ranges of pixels for this process
@@ -723,59 +1264,46 @@ class Posterior(object):
                         _theta = theta[start:end] ### pull out only those ranges of relevant arrays
                         _phi = phi[start:end]
 			_psi = psi[start:end]
-			_invP_B = (invP[start:end], B[start:end])
-			if diagnostic:
+			if invP_dataB!=None:
+				_invP_dataB = (invP[start:end], dataB[start:end], dataB_conj[start:end])
+			else:
+				_invP_dataB = None
+			if diagnostic and A_invA!=None:
 				_A_invA = (A[start:end], invA[start:end])
 			else:
 				_A_invA = None
 
 			### launch process
 			con1, con2 = mp.Pipe()
-			p = mp.Process(target=self.log_posterior_elements, args=(_theta, _phi, _psi, _invP_B, _A_invA, con2, max_array_size, diagnostic))
+			p = mp.Process(target=self.log_posterior_elements, args=(_theta, _phi, _psi, _invP_dataB, _A_invA, con2, max_array_size, diagnostic))
 			p.start()
-#			con2.close()
+			con2.close()
 			procs.append( (p, start, end, con1) )
 
 		### reap remaining processes
-		ind = 0
 		while len(procs):
 			p, start, end, con1 = procs.pop()
 			### fill in data
                         shape = np.shape(ans[start:end])
-                        ans[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-                        n_pol_eff[start:end] = utils.recv_and_reshape(con1, np.shape(n_pol_eff[start:end]), max_array_size=max_array_size)
+                        ans[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+                        n_pol_eff[start:end] = utils.recv_and_reshape(con1, np.shape(n_pol_eff[start:end]), max_array_size=max_array_size, dtype=int)
                         if diagnostic:
-                        	mle[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-                                cts[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-                                det[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size)
-
-			for ind, (p, _,_,_) in enumerate(procs):
-				if not p.is_alive():
-					print "bing"
-					break
-			else:
-				continue
-
-			p, start, end, con1 = procs.pop(ind)
-#			if diagnostic:
-#				_ans, _n_pol_eff, (_mle,_cts,_det) = con1.recv()
- #                               ans[start:end,:,:] = _ans
-#				n_pol_eff[start:end] = _n_pol_eff
- #                               mle[start:end,:,:] = _mle
-  #                              cts[start:end,:,:] = _cts
-   #                             det[start:end,:,:] = _det
-    #                    else:
-#				_ans, _n_pol_eff = con1.recv()
- #                               ans[start:end,:,:] = _ans
-#				n_pol_eff[start:end] = _n_pol_eff
+                        	mle[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+                                cts[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+                                det[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
 
 		if diagnostic:
 			return ans, n_pol_eff, (mle, cts, det)
 		else:
 			return ans, n_pol_eff
 
+
+	#=========================================
+	# manipulation functions
+	#=========================================
+
 	###
-	def log_posterior(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False):
+	def log_posterior(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, connection=None, max_array_size=100):
 		"""
 		computes log(posterior) using
 			log_posterior_elements : a large structure containing posterior values for each pixel, gaussian term, and frequency
@@ -790,13 +1318,15 @@ class Posterior(object):
 		returns log(posterior) : 1-D array 
 			np.shape(log_posterior) = (n_pix)
 		"""
-		
+		n_pix, thetas, phis, psis = self.__check_theta_phi_psi(thetas, phis, 0.0)
+		n_pix, n_gaus, n_freqs, log_posterior_elements = self.__check_log_posterior_elements(log_posterior_elements, n_pix)
+
 		### sum over frequencies
 		df = self.seglen**-1 ### frequency spacing
 		summed_log_posterior_elements = np.sum(log_posterior_elements[:,:,freq_truth], axis=2) * df
 
 		### sum over gaussians
-		log_posterior_weight = np.empty((len(summed_log_posterior_elements),),float)
+		log_posterior_weight = np.empty((n_pix,),float)
 		for ipix in xrange(len(summed_log_posterior_elements)):
 			log_posterior_weight[ipix] = utils.sum_logs(summed_log_posterior_elements[ipix]+np.log(self.hPrior.amplitudes)) ### add the gaussian amplitudes only after summing over frequencies
 
@@ -818,29 +1348,148 @@ class Posterior(object):
 		if normalize:
 			log_posterior_weight -= utils.sum_logs(log_posterior_weight)
 
+		if connection:
+			utils.flatten_and_send(connection, log_posterior_weight, max_array_size=max_array_size)
+		else:
+			return log_posterior_weight
+	
+	###
+	def log_posterior_mp(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, num_proc=1, max_proc=1, max_array_size=100):
+		if num_proc==1 or max_proc==1:
+			return log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
+		n_pix, theta, phi, psi = self.__check_theta_phi_psi(thetas, phis, 0.0)
+		npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+		procs = []
+
+		log_posterior_weight = np.empty((n_pix,),float)
+		for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                                ### fill in data
+                                shape = np.shape(log_posterior_weight[start:end])
+                                log_posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _theta = theta[start:end] ### pull out only those ranges of relevant arrays
+                        _phi = phi[start:end]
+                        _lpe = log_posterior_elements[start:end]
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.log_posterior, args=(_theta, _phi, _lpe, n_pol_eff, freq_truth, normalize, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+		while len(proc):
+			p, start, end, con1 = procs.pop()
+			shape = np.shape(log_posterior_weight[start:end])
+                        log_posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
 		return log_posterior_weight
-		
+
 
 	###
-	def posterior(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False):
+	def posterior(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, connection=None, max_array_size=100):
 		""" np.exp(self.log_posterior_weight) """
-		return np.exp( self.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize) )
+		if connection:
+			utils.flatten_and_send(connection, np.exp( self.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize) ), max_array_size=max_array_size)
+		else:
+			return np.exp( self.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize) )
 
 	###
-	def posterior_mp(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False):
-		raise StandardError, "WRITE ME"
+	def posterior_mp(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, num_proc=1, max_proc=1, max_array_size=100):
+		if num_proc==1 or max_proc==1:
+			return posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
+		n_pix, theta, phi, psi = self.__check_theta_phi_psi(thetas, phis, 0.0)
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+                posterior_weight = np.empty((n_pix,),float)
+                for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                                ### fill in data
+                                shape = np.shape(posterior_weight[start:end])
+                                posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _theta = theta[start:end] ### pull out only those ranges of relevant arrays
+                        _phi = phi[start:end]
+                        _pe = posterior_elements[start:end]
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.posterior, args=(_theta, _phi, _pe, n_pol_eff, freq_truth, normalize, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+                while len(proc):
+                        p, start, end, con1 = procs.pop()
+                        shape = np.shape(posterior_weight[start:end])
+                        posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
+                return posterior_weight
 
 	###
-	def log_bayes(self, log_posterior):
+	def log_bayes(self, log_posterior, connection=None, max_array_size=100):
 		""" 
 		computes the log(bayes factor) using log_posterior 
 		this is done through direct marginalization over all n_pix
 		"""
-		return utils.sum_logs(log_posterior)
+		if connection:
+			utils.flatten_and_send(connection, utils.sum_logs(log_posterior), max_array_size=max_array_size)
+		else:
+			return utils.sum_logs(log_posterior)
 
 	###
-	def log_bayes_mp(self, log_posterior):
-		raise StandardError, "WRITE ME"
+	def log_bayes_mp(self, log_posterior, num_proc=1, max_proc=1, max_array_size=100):
+		if num_proc==1 or max_proc==1:
+			return self.log_bayes(log_posterior)
+		n_pix = len(log_posterior)
+                npix_per_proc = np.ceil(1.0*n_pix/n_proc)
+                procs = []
+
+                log_bayes = np.empty((n_pix,),float)
+                for i in xrange(n_proc):
+                        if len(procs): ### if we already have some processes launched
+                                ### reap old processes
+                                if len(procs) >= max_proc:
+                                        p, start, end, con1 = procs.pop()
+
+                                ### fill in data
+                                shape = np.shape(log_posterior_weight[start:end])
+                                log_bayes[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
+                        ### launch new process
+                        start = i*npix_per_proc ### define ranges of pixels for this process
+                        end = start + npix_per_proc
+
+                        _lp = log_posterior[start:end]
+
+                        ### launch process
+                        con1, con2 = mp.Pipe()
+                        p = mp.Process(target=self.log_bayes, args=(_lp, con2, max_array_size))
+                        p.start()
+                        con2.close()
+                        procs.append( (p, start, end, con1) )
+                while len(proc):
+                        p, start, end, con1 = procs.pop()
+                        shape = np.shape(log_bayes[start:end])
+                        log_bayes[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
+
+                return log_bayes
 
 	###
 	def bayes(self, log_posterior):
@@ -848,8 +1497,10 @@ class Posterior(object):
 		return np.exp( self.log_bayes(log_posterior) )
 
 	###
-	def bayes_mp(self, log_posterior):
-		raise StandardError, "WRITE ME"
+	def bayes_mp(self, log_posterior, num_proc=1, max_proc=1, max_array_size=100):
+		if num_proc==1 or max_proc==1:
+			return self.bayes(log_posterior)
+		return np.exp( self.log_bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size) )
 
 	###
 	def plot(self, figname, posterior=None, title=None, unit=None, inj=None, est=None):
@@ -931,4 +1582,22 @@ class Posterior(object):
 	hPrior = %s
 
 	angPrior = %s"""%(str(self.seglen), self.network, self.hPrior, self.angPrior)
-		
+	
+#=================================================
+#
+# convenient packaging routines (used for model selection)
+#
+#=================================================
+def log_bayes_from_log_posterior_elements(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, connection=None):
+        """ computes the log_bays from log_posterior_elements using posterior class """
+
+
+
+        ### I DOUBT THIS WILL ACTUALLY WORK
+
+
+
+        if connection:
+                connection.send( posterior.log_bayes( posterior.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False) ) )
+        else:
+                return posterior.log_bayes( posterior.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False) )
