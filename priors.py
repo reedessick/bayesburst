@@ -5,6 +5,14 @@ This includes:
 	priors on angular position, such as the galactic plane
 """
 
+print """WARNING:
+	helpstrings are not necessarily accurate. UPDATE THESE
+
+	implement a few other priors on h?
+		Jeffrey's prior?
+		truncated pareto amplitudes
+"""
+
 #=================================================
 
 import utils
@@ -989,7 +997,8 @@ def pareto_amplitudes(a, variances, n_pol=1):
 
 
 	### invert and extract diagonal, multiply by normalization factor
-	C = np.diagonal(linalg.inv(M))
+#	C = np.diagonal(linalg.inv(M))
+	C = np.sum(linalg.inv(M), axis=0) ### sum over each row
 
 	### return coefficients that will produce a normalized 1-D prior
 	### we first multiply by the normalization factor to get correct scaling
