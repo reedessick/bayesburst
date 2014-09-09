@@ -4,6 +4,7 @@ usage = """ a module to contain various model selection routines """
 
 import posteriors
 mp = posteriors.mp
+np = posteriors.np
 
 print """WARNING
 	need to implement model selection (via parallelization if desired)
@@ -11,91 +12,159 @@ print """WARNING
 	include templated searches (a la ryan's heavyside templates), 
 		which may include computing and storing additional terms in posteriors.Posterior
 		==> d*B needs to be stored for convenient look-up
-"""
 
+	NEED TO IMPLEMENT CONDITION: if max_proc == 1: just compute directly and don't go through mp
+	mirror the implementation in posteriors.py? have a single algorithm and then *_mp algorithms
+		==> this will allow us to remove the need for posteriors.log_bayes_from_log_posterior_elements, which is awkward 
+"""
+#=================================================
+#
+# general utility functions
+#
+#=================================================
 
 #=================================================
 #
 # model selection algorithms
 #
 #=================================================
+def variable_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, max_proc=1, n_bins=1):
+	raise StandardError, "WRITE ME"
 
-
-### THIS IS THE "sliding frequency window" ALGORITHM THAT RYAN DEVELOPED
-def variable_bandwidth(self, g_array, fmin, fmax, ms_params, max_processors=1):
+def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, max_proc=1, n_bins=1):
 	"""
-	varies which frequencies are included to maximize the bayes factor
-           
-	right now, this is a trivial delegation
+	basic model selection by sliding a window of fixed width (n_bins) throughout the spectrum defined by freq_truth
+	returns a boolean array for the best model and that model's log_bayes
 	"""
-	#Initialize model selection windows             
-	win_bins = ms_params  #number of frequency bins to use as model selection window
+	if max_proc == 1:
+		return variable_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, n_bins=1)
 
-	bmin = np.where(self.freqs==fmin)[0][0]  #bin index of fmin
-	bmax = np.where(self.freqs==fmax)[0][0]  #bin index of fmax
 
-	array_length = bmax + 1 - bmin - win_bins  #span of frequencies over which to model select
+	n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
+	n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
 
-	ms_array = np.zeros((array_length, 3))  #2-D array (window position * (f_low, f_up, log bfactor))
-	ms_array[:,0] = self.freqs[bmin:(bmax-win_bins+1)]
-	ms_array[:,1] = self.freqs[(bmin+win_bins):(bmax+1)]
+	### define the sliding frequency ranges for each possible model
+	binNos = np.arange(n_freqs)[freq_truth]
 
-	#Set up parallelization
-	#Divide windows up among processes
-	processes = []  #holders for process identification
-	finished = 0  #number of finished events
+	n_models = np.sum(freq_truth)-n_bins
+	models = np.zeros((n_models,n_freqs), bool)
+	for modelNo in xrange(n_models):
+		models[modelNo][binNos[modelNo:modelNo+n_bins]] = True
 
-	#Launch processes, limiting the number of active processes to max_processors 
-	for iproc in xrange(array_length):
-		if len(processes) < max_processors:  #launch another process if there are empty processors
+	log_bayes = np.empty((n_models,), float)
 
-			fl=ms_array[iproc,0]
-			fh=ms_array[iproc,1]
-
-			con1, con2 = mp.Pipe()
-			args = (g_array, fl, fh, con2)
-
-			p = mp.Process(target=self.calculate_log_bfactor, args=args)
-			p.start()
-			con2.close()  # this way the process is the only thing that can write to con2
-			processes.append((p, iproc, con1))
-
-		else:
-			while len(processes) >=  max_processors:  #wait for processes to finish if processors are full
-				for ind, (p, _, _) in enumerate(processes):
-					if not p.is_alive():  #update ms_array with results of finished processes
-						p, ifill, con1 = processes.pop(ind)
-						ms_array[ifill,2] = con1.recv()
-						finished += 1
-						print "Finished %s out of %s model select processes"%(finished, array_length)
-
-			#Launch next process once a process has finished
-			fl=ms_array[iproc,0]
-			fh=ms_array[iproc,1]
-
-			con1, con2 = mp.Pipe()
-			args = (g_array, fl, fh, con2)
-
-			p = mp.Process(target=self.calculate_log_bfactor, args=args)
-			p.start()
-			con2.close()  # this way the process is the only thing that can write to con2
-			processes.append((p, iproc, con1))
-
-	#Wait for processes to all finish, update ms_array as they do finish                            
-	while len(processes):
-		for ind, (p, _, _) in enumerate(processes):
+	### launch and reap processes
+	procs = []
+	for iproc in xrange(n_models):
+		if len(procs):
+			while len(procs) >= max_proc: ### reap process
+				for ind, (p, _, _) in enumerate(procs):
+					if not p.is_alive():
+						p, modelNo, con1 = procs.pop(ind)
+						log_bayes[modelNo] = con1.recv()
+						break
+		### launch new process
+		con1, con2 = mp.Pipe()
+		p = mp.Process(target=posteriors.log_bayes_from_log_posterior_elements, args=(posterior, thetas, phis, log_posterior_elements, n_pol_eff, models[iproc], con2))
+		p.start()
+		con2.close()
+		procs.append( (p, iproc, con1) )
+	### reap remaining processes
+	while len(procs):
+		for ind, (p, _, _) in enumerate(procs):
 			if not p.is_alive():
-				p, ifill, con1 = processes.pop(ind)
-				ms_array[ifill,2] = con1.recv()
-				finished += 1
-				print "Finished %s out of %s model select processes"%(finished, array_length)
+				p, modelNo, con1 = procs.pop(ind)
+				log_bayes[modelNo] = con1.recv()
+				break
+	
+	### find best model
+	best_modelNo = np.argmax(log_bayes)
 
-	#Choose window with highest Bayes factor                
-	max_log_B = np.amax(ms_array[:,2])
-	imax = np.where(ms_array[:,2]==max_log_B)[0][0]
+	return models[best_modelNo], log_bayes[best_modelNo]
 
-	f_low = ms_array[imax,0]
-	f_up = ms_array[imax,1]
+###
+def log_bayes_cut(log_bayes_thr, posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth):
+	raise StandardError, "WRITE ME"
 
-	return f_low, f_up, max_log_B
+
+###
+def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, max_proc=1):
+	""" 
+	keeps only those frequencies with bayes factors larger than the specified threshold
+	returns freq_truth respresenting the model and the associated log_bayes
+	"""
+	if max_proc == 1:
+		return log_bayes_cut(log_bayes_thr, posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth)
+
+	n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
+
+        ### define the sliding frequency ranges for each possible model
+        binNos = np.arange(n_freqs)[freq_truth]
+
+        n_models = np.sum(freq_truth)
+        models = np.zeros((n_models,n_freqs), bool)
+        for modelNo in xrange(n_models):
+                models[modelNo][binNos[modelNo]] = True
+
+        log_bayes = np.empty((n_models,), float)
+
+        ### launch and reap processes
+        procs = []
+        for iproc in xrange(n_models):
+                if len(procs):
+                        while len(procs) >= max_proc: ### reap process
+                                for ind, (p, _, _) in enumerate(procs):
+                                        if not p.is_alive():
+                                                p, modelNo, con1 = procs.pop(ind)
+                                                log_bayes[modelNo] = con1.recv()
+                                                break
+                ### launch new process
+                con1, con2 = mp.Pipe()
+                p = mp.Process(target=posteriors.log_bayes_from_log_posterior_elements, args=(posterior, thetas, phis, log_posterior_elements, n_pol_eff, models[iproc], con2))
+                p.start()
+                con2.close()
+                procs.append( (p, iproc, con1) )
+
+        ### reap remaining processes
+        while len(procs):
+                for ind, (p, _, _) in enumerate(procs):
+                        if not p.is_alive():
+                                p, modelNo, con1 = procs.pop(ind)
+                                log_bayes[modelNo] = con1.recv()
+                                break
+
+        ### keep only those bayes factors above the threshold
+	keepers = log_bayes >= log_bayes_thr
+
+	model = np.zeros((n_freqs,), bool)
+	freq_truth[binNos[log_bayes >= log_bayes_thr]] = True
+
+        return model, posteriors.log_bayes_from_log_posterior_elements(posterior, thetas, phis, log_posterior_elements, n_pol_eff, model)
+
+
+
+
+
+
+
+
+
+
+"""
+other possible model selection algorithms
+        expanding frequency windows around a single peak
+        expanding frequency windows around multiple peaks
+        variable bin width based on rate-of-change of signal amplitude (and phase?)
+		use mle_strain weighted by the bayes factor at that pixel?
+"""
+
+
+
+
+
+
+
+
+
 
