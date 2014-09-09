@@ -588,11 +588,11 @@ class Network(object):
 		sorted_detectors = self.detectors_list()
 		Nd = len(sorted_detectors)
 		if no_psd:
-			B = np.zeros((n_pix, self.Np, Nd))
+			B = np.zeros((n_pix, len(self.freqs), self.Np, Nd))
 			for d_ind, detector in enumerate(sorted_detectors):
 				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)
 				for i in xrange(self.Np):
-					B[:,i,d_ind] = np.conjugate(F[i])
+					B[:,:,i,d_ind] = np.conjugate(F[i])
 		else:  #if given a psd
 			B = np.zeros((n_pix, len(self.freqs), self.Np, Nd), 'complex') #initialize a 3-D array (freqs x polarizations x detectors)
 			for d_ind, detector in enumerate(sorted_detectors):
@@ -612,7 +612,7 @@ class Network(object):
 		if not self.contains_name(name):
 			raise KeyError, "detector=%s not contained in this network"%name
 		detector = self.detectors[name]
-		F = detector.antenna_patterns(theta, phi, psi, freqs=freqs)
+		F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)
 		if no_psd:
 			B = F[:,i]
 		else:
@@ -622,6 +622,46 @@ class Network(object):
 			return B[0]
 		else:
 			return B
+
+
+	###
+	def AB(self, theta, phi, psi, no_psd=False):
+		""" computes the entire matrices and avoids redundant work """
+		
+                n_pix, theta, phi, psi = check_theta_phi_psi(theta, phi, psi)
+		sorted_detectors = self.detectors_list()
+		Nd = len(sorted_detectors)
+		n_freqs = len(self.freqs)
+
+                if no_psd:
+                        a=np.zeros((n_pix, self.Np, self.Np), float)
+			b=np.zeros((n_pix, n_freqs, self.Np, Nd), complex)
+                        for d_ind, detector in enumerate(sorted_detectors):
+                                F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs) #time shifts cancel within A so we supply no freqs
+                                for i in xrange(self.Np):
+                                        a[:,i,i] += np.abs(F[i])**2
+					b[:,:,i,d_ind] = np.conjugate(F[i])
+                                        for j in xrange(i+1,self.Np):
+                                                _ = np.conjugate(F[i])*F[j]
+                                                a[:,i,j] += _
+                                                a[:,j,i] += np.conjugate(_)
+                else:  #if given a psd
+                        a=np.zeros((n_pix, n_freqs, self.Np, self.Np), float)  #initialize a 3-D array (frequencies x polarizations x polarizations)
+			b=np.zeros((n_pix, n_freqs, self.Np, Nd), complex)
+                        for d_ind, detector in enumerate(sorted_detectors):
+                                F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
+                                _psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
+                                for i in xrange(self.Np):
+                                        a[:,:,i,i] += np.outer(np.abs(F[i])**2, _psd**-1)
+					b[:,:,i,det_ind] =  np.conjugate(F[i]) * np.outer(np.ones((n_pix,)), _psd**-1)
+                                        for j in xrange(i+1,self.Np):
+                                                _ = np.outer(np.conjugate(F[i])*F[j], _psd**-1)
+                                                a[:,:,i,j] += _
+                                                a[:,:,j,i] += np.conjugate(_)
+                if n_pix == 1:
+                        return a[0], b[0]
+                else:
+                        return a, b
 
 
 	################################################################################
@@ -675,6 +715,11 @@ class Network(object):
 	###
 	def Bni(self, name, i, theta, phi, A_B=None, no_psd=False):
 		"""computes a single component of B in the dominant polarization frame. If A_B=(A,B) is supplied, we use it to define the dominant polarization frame"""
+		raise StandardError, "write me!"
+
+	###
+	def AB_dpf(self, theta, phi, A_B=None, no_psd=False):
+		""" computes A and B in the dominant polarization frame """
 		raise StandardError, "write me!"
 
 #=================================================
