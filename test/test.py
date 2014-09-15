@@ -27,17 +27,38 @@ parser.add_option("", "--hPrior", default=False, action="store_true")
 parser.add_option("", "--angPrior", default=False, action="store_true")
 parser.add_option("", "--ap_angPrior", default=False, action="store_true")
 parser.add_option("", "--posterior", default=False, action="store_true")
+parser.add_option("", "--model-selection", default=False, action="store_true")
+
+parser.add_option("", "--num-proc", default=2, type="int")
+parser.add_option("", "--max-proc", default=2, type="int")
+parser.add_option("", "--max-array-size", default=100, type="int")
+
+parser.add_option("", "--pkl", default=False, action="store_true")
+parser.add_option("", "--check", default=False, action="store_true")
 
 parser.add_option("-o", "--output-dir", default="./", type="string")
 parser.add_option("-t", "--tag", default="", type="string")
 
 opts, args = parser.parse_args()
 
+if opts.tag:
+	opts.tag = "_"+opts.tag
+
+if opts.model_selection:
+	opts.posterior = True
+
 if opts.posterior:
 	opts.hPrior = opts.angPrior = True
 
 if not os.path.exists(opts.output_dir):
 	os.makedirs(opts.output_dir)
+
+num_proc = opts.num_proc
+max_proc = opts.max_proc
+max_array_size = opts.max_array_size
+
+eps = 1e-05 ### precision for "floating point errors"? Not sure where the errors are coming into AB_A and AB_invA relative to A, invA
+            ### important for comparing output from different methods
 
 #=================================================
 # set up
@@ -75,10 +96,6 @@ network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, N
 n_ifo = len(network.detectors)
 
 ### set up stuff for posterior
-
-n_proc = 5
-max_proc = 1
-max_array_size=100
 
 freq_truth = np.ones_like(freqs, bool)
 
@@ -192,6 +209,9 @@ if opts.posterior:
 	posterior_obj = posteriors.Posterior()
 	print "\t", time.time()-to
 
+	#=========================================
+	# setting basic data stored within the object from which we compute stats
+	#=========================================
 	print "set_network"
 	to=time.time()
 	posterior_obj.set_network(network)
@@ -222,6 +242,9 @@ if opts.posterior:
 	posterior_obj = posteriors.Posterior(network=network, hPrior=hprior_obj, angPrior=angprior_obj, seglen=seglen, data=data)
 	print "\t", time.time()-to
 
+	#=========================================
+	# setting computed data stored within the object from which we compute stats
+	#=========================================
 	print "posterior.set_theta_phi()"
 	to=time.time()
 	posterior_obj.set_theta_phi()
@@ -230,30 +253,146 @@ if opts.posterior:
 	print "posterior.set_A"	
 	to=time.time()
 	posterior_obj.set_A()
+	A = posterior_obj.A
+	invA = posterior_obj.invA
 	print "\t", time.time()-to
+
+	print "posterior.set_A_mp"
+	to=time.time()
+	posterior_obj.set_A_mp(num_proc=num_proc, max_proc=max_proc)
+	A_mp = posterior_obj.A
+	invA_mp = posterior_obj.invA
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(A!=A_mp):
+			raise StandardError, "A!=A_mp"
+		else:
+			print "\tA==A_mp"
+		if np.any(invA!=invA_mp):
+			raise StandardError, "invA!=invA_mp"
+		else:
+			print "\tinvA==invA_mp"
 
 	print "posterior.set_B"
 	to=time.time()
 	posterior_obj.set_B()
+	B = posterior_obj.B
 	print "\t", time.time()-to
+
+	print "posterior.set_B_mp"
+	to=time.time()
+	posterior_obj.set_B_mp(num_proc=num_proc, max_proc=max_proc)
+	B_mp = posterior_obj.B
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(B!=B_mp):
+			raise StandardError, "B!=B_mp"
+		else:
+			print "\tB==B_mp"
+
+	print "posterior.set_AB"
+	to=time.time()
+	posterior_obj.set_AB()
+	AB_A = posterior_obj.A
+	AB_invA = posterior_obj.invA
+	AB_B = posterior_obj.B
+	print "\t", time.time()-to
+
+	print "posterior.set_AB_mp"
+	to=time.time()
+	posterior_obj.set_AB_mp(num_proc=num_proc, max_proc=max_proc)
+	AB_A_mp = posterior_obj.A
+	AB_invA_mp = posterior_obj.invA
+	AB_B_mp = posterior_obj.B
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(AB_A!=AB_A_mp):
+			raise StandardError, "AB_A!=AB_A_mp"
+		else:
+			print "\tAB_A==AB_A_mp"
+		if np.any(AB_invA!=AB_invA_mp):
+			raise StandardError, "AB_invA!=AB_invA_mp"
+		else:
+			print "\tAB_invA==AB_invA_mp"
+		if np.any(AB_B!=AB_B_mp):
+			raise StandardError, "AB_B!=AB_B_mp"
+		else:
+			print "\tAB_B==AB_B_mp"
+	
+		if np.any(np.abs(AB_A-A) > eps*np.abs(AB_A+A)):
+			raise StandardError, "AB_A!=A"
+		elif np.any(AB_A!=A):
+			print "AB_A~A"
+		else:
+			print "\tAB_A==A"
+		if np.any(np.abs(AB_invA-invA) > eps*np.abs(AB_invA+invA)):
+			raise StandardError, "AB_invA!=invA"
+		elif np.any(AB_invA!=invA):
+			print "AB_invA~invA"
+		else:
+			print "\tAB_invA==invA"
+		if np.any(AB_B!=B):
+			raise StandardError, "AB_B!=B"
+		else:
+			print "\tAB_B==B"
 
 	print "posterior.set_P"
 	to=time.time()
 	posterior_obj.set_P()
+	P, invP = posterior_obj.P, posterior_obj.invP
 	print "\t", time.time()-to
+
+	print "posterior.set_P_mp"
+	to=time.time()
+	posterior_obj.set_P_mp(num_proc=num_proc, max_proc=max_proc)
+	P_mp, invP_mp = posterior_obj.P, posterior_obj.invP
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(P!=P_mp):
+			raise StandardError, "P!=P_mp"
+		else:
+			print "P==P_mp"
+		if np.any(invP!=invP_mp):
+			raise StandardError, "invP!=invP_mp"
+		else:
+			print "invP==invP_mp"
 
 	print "posterior.set_dataB"
 	to=time.time()
 	posterior_obj.set_dataB()
+	dataB = posterior_obj.dataB
 	print "\t", time.time()-to
 
-#	print "pickling posterior into ", posterior_pklname
-#	to=time.time()
-#	file_obj = open(posterior_pklname, "w")
-#	pickle.dump(posterior_obj, file_obj)
-#	file_obj.close()
-#	print "\t", time.time()-to
+	print "posterior.set_dataB_mp"
+	to=time.time()
+	posterior_obj.set_dataB_mp(num_proc=num_proc, max_proc=max_proc)
+	dataB_mp = posterior_obj.dataB
+	print "\t", time.time()-to
 
+	if opts.check:
+		if np.any(dataB!=dataB_mp): 
+			raise StandardError, "dataB!=dataB_mp"
+		else:
+			print "\tdataB==dataB_mp"
+
+	#================================================
+	# pickling to save
+	#================================================
+	if opts.pkl:
+		print "pickling posterior into ", posterior_pklname
+		to=time.time()
+		file_obj = open(posterior_pklname, "w")
+		pickle.dump(posterior_obj, file_obj)
+		file_obj.close()
+		print "\t", time.time()-to
+
+	#================================================
+	# analysis routines that do no store data within the object
+	#================================================
 	print "posterior.n_pol_eff()"
 	to=time.time()
 	posterior_obj.n_pol_eff(posterior_obj.theta, posterior_obj.phi)
@@ -264,73 +403,157 @@ if opts.posterior:
 	mle_strain = posterior_obj.mle_strain(posterior_obj.theta, posterior_obj.phi, psi=0.0, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
 	print "\t", time.time()-to
 
+	print "posterior.mle_strain_mp"
+	to=time.time()
+	mle_strain_mp = posterior_obj.mle_strain_mp(posterior_obj.theta, posterior_obj.phi, 0.0, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(mle_strain!=mle_strain_mp):
+			raise StandardError, "mle_strain!=mle_strain_mp"
+		else:
+			print "\tmle_strain==mle_strain_mp"
+
 	print "posterior.log_posterior_elements"
 	to=time.time()
 	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=False)
 	print "\t", time.time()-to
 
-#	print "posterior.log_posterior_elements_mp"
-#	to=time.time()
-#	mp_log_posterior_elements, mp_n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, n_proc=n_proc, max_proc=max_proc, max_array_size=max_array_size)
-#	print "\t", time.time()-to
+	print "posterior.log_posterior_elements_mp"
+	to=time.time()
+#	what_the =  posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+	mp_log_posterior_elements, mp_n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+	print "\t", time.time()-to
 
-#	if np.any(log_posterior_elements!=mp_log_posterior_elements):
-#		raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
-#	if np.any(n_pol_eff!=mp_n_pol_eff):
-#		raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
+	if opts.check:
+		if np.any(np.abs(log_posterior_elements-mp_log_posterior_elements) > eps*np.abs(log_posterior_elements+mp_log_posterior_elements)):
+			raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
+		else:
+			print "log_posterior_elements==mp_log_posterior_elements"
+		if np.any(n_pol_eff!=mp_n_pol_eff):
+			raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
+		else:
+			print "n_pol_eff==mp_n_pol_eff"
 
 	print "posterior.log_posterior_elements(diagnostic=True)"
 	to=time.time()
 	log_posterior_elements_diag, n_pol_eff_diag, (mle, cts, det) = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=True)
 	print "\t", time.time()-to
 
-	if np.any(log_posterior_elements_diag!=log_posterior_elements):
-		raise StandardError, "conflict between log_posterior_elements and log_posterior_elements_diag"
-	if np.any(n_pol_eff_diag!=n_pol_eff):
-		raise StandardError, "conflict between n_pol_eff and n_pol_eff_diag"
+	if opts.check:
+		if np.any(log_posterior_elements_diag!=log_posterior_elements):
+			raise StandardError, "conflict between log_posterior_elements and log_posterior_elements_diag"
+		else:
+			print "\tlog_posterior_elements_diag==log_posterior_elements"
+		if np.any(n_pol_eff_diag!=n_pol_eff):
+			raise StandardError, "conflict between n_pol_eff and n_pol_eff_diag"
+		else:
+			print "\tn_pol_eff_diag==n_pol_eff"
 
-#	print "posterior.log_posterior_elements_mp(diagnostic=True)"
-#	to=time.time()
-#	mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), n_proc=n_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
-#	print "\t", time.time()-to
+	print "posterior.log_posterior_elements_mp(diagnostic=True)"
+	to=time.time()
+	mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
+	print "\t", time.time()-to
 
-#	if np.any(log_posterior_elements!=mp_log_posterior_elements):
-#		raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
-#	if np.any(n_pol_eff!=mp_n_pol_eff):
-#		raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
-#	if np.any(mle!=mp_mle):
-#		raise StandardError, "conflict between mle and mp_mle"
-#	if np.any(cts!=mp_cts):
-#		raise StandardError, "conflict between cts and mp_cts"
-#	if np.any(det!=mp_det):
-#		raise StandardError, "conflict between det and mp_det"
+	if opts.check:
+		if np.any(log_posterior_elements!=mp_log_posterior_elements):
+			raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
+		if np.any(n_pol_eff!=mp_n_pol_eff):
+			raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
+		if np.any(mle!=mp_mle):
+			raise StandardError, "conflict between mle and mp_mle"
+		if np.any(cts!=mp_cts):
+			raise StandardError, "conflict between cts and mp_cts"
+		if np.any(det!=mp_det):
+			raise StandardError, "conflict between det and mp_det"
+
+
+		if np.any(log_posterior_elements!=mle+cts+det):
+			raise StandardError, "log_posterior_elements!=mle+cts+det"
+		else:
+			print "log_posterior_elements==mle+cts+det"
+
 
 	print "posterior.log_posterior"
 	to=time.time()
-	freq_true = np.ones((n_freqs,), bool)
 	log_posterior = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True)
 	print "\t", time.time()-to
+
+	print "posterior.log_posterior_mp"
+	to=time.time()
+	log_posterior_mp = posterior_obj.log_posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(log_posterior!=log_posterior_mp):
+			raise StandardError, "log_posterior!=log_posterior_mp"
 
 	print "posterior.posterior"
 	to=time.time()
 	posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True)
 	print "\t", time.time()-to
 
+	print "posterior.posterior_mp"
+	to=time.time()
+	posterior_mp = posterior_obj.posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(posterior!=posterior_mp):
+			raise StandardError, "posterior!=posterior_mp"
+
+		if np.any(posterior!=np.exp(log_posterior)):
+			raise StandardError, "posterior!=np.exp(log_posterior)"
+
 	print "posterior.log_bayes"
 	to=time.time()
 	log_bayes = posterior_obj.log_bayes(log_posterior)
 	print "\t", time.time()-to
+
+	print "posterior.log_bayes_mp"
+	to=time.time()
+	log_bayes_mp = posterior_obj.log_bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc)
+	print "\t", time.time()-to
+
+#	if opts.check:
+#		if np.any(np.abs(log_bayes-log_bayes_mp) > eps*np.abs(log_bayes+log_bayes_mp)):
+#			raise StandardError, "log_bayes!=log_bayes_mp"
+#		elif np.any(log_bayes!=log_bayes_mp):
+#			print "log_bayes~log_bayes_mp"
+#		else:
+#			print "log_bayes==log_bayes_mp"
 
 	print "posterior.bayes"
 	to=time.time()
 	bayes = posterior_obj.bayes(log_posterior)
 	print "\t", time.time()-to
 
-#	print "posterior.__call__"
-#	to=time.time()
-#	posterior = posterior_obj()
-#	print "\t", time.time()-to
+	print "posterior.bayes_mp"
+	to=time.time()
+	bayes_mp = posterior_obj.bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc)
+	print "\t", time.time()-to
 
+	if opts.check:
+		if np.any(bayes!=bayes_mp):
+			raise StandardError, "bayes!=bayes_mp"
+
+		if np.any(bayes!=np.exp(log_bayes)):
+			raise StandardError, "bayes!=np.exp(log_bayes)"
+
+	print "posterior.__call__"
+	to=time.time()
+	posterior_call = posterior_obj()
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(posterior_call!=posterior):
+			raise StandardError, "posterior_call!=posterior"
+		else:
+			print "\tposterior_call==posterior"
+
+	#=========================================
+	# plotting
+	#=========================================
 	print "posterior.plot"
 	to=time.time()
 	posterior_obj.plot(posterior_figname, posterior=posterior, title="posterior", unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
@@ -379,16 +602,35 @@ if opts.posterior:
 	print "writing posterior to file"
 	hp.write_map(posterior_filename, posterior)
 
+
+	#=========================================
+	# check sanity of results
+	#=========================================
 	print """WRITE TESTS FOR
-	model_select
+        the sanity of these results, not just the fact that they don't throw errors
+                compare F*mle_strain with data in each detector
+	
+	write and test a histogram of the posterior [p(h|theta,phi,data)] for the reconstructed signal weighted by the skymap [p(theta,phi|data)] at that point. Do this at:
+		each detector (broadcast through antenna patterns into data stream)
+		geocenter
+	look at coverage plots for:
+		sky localization
+		frequency moments
+		h_rss
+		else?
+        """
 
 
-	actually check the sanity of these results, not just the fact that they don't throw errors
-		compare F*mle_strain with data in each detector
-		compare mle, cts, det terms accross n_pix, n_freq, n_gaus
-		compare mle + cts + det with log_posterior_elements
-		look at posterior (plot)
+#=================================================
+if opts.model_selection:
 
-	test all *_mp algorithms against the single CPU equivalents
-	test diagnostic elements vs log_posterior_elements
+	print """WRITE TESTS FOR
+	model_selection
+		fixed_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, connection=False, max_array_size=100)
+		fixed_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, n_bins=1, max_proc=1)
+		variable_bandwidth((posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=1, max_n_bins=1, dn_bins=1, connection=False, max_array_size=100)
+		variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=1, max_n_bins=1, dn_bins=1, max_array_size=100, max_proc=1)
+		log_bayes_cut(log_bayes_thr, posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, connection=None, max_array_size=100)
+		log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, max_proc=1)
 	"""
+
