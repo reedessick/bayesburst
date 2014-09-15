@@ -221,11 +221,15 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 	### apply time-shits
 	if freqs != None:
 		freqs = np.array(freqs)
+		n_freqs = len(freqs)
 		if dr != None:
 			dx, dy, dz = dr
 			dt = dx*sin_theta*cos_phi + dy*sin_theta*sin_phi + dz*cos_theta
-		phs = np.exp(-2j*np.pi*np.outer(dt,freqs))
-#		phs = np.exp(-2j*np.pi*freqs*dt)
+			phs = 2*np.pi*np.outer(dt,freqs)
+			phs = np.cos(phs) - 1j*np.sin(phs)
+#			phs = np.exp(-2j*np.pi*np.outer(dt,freqs))
+		else:
+			phs = np.ones((n_pix,n_freqs),float)
 
 #		if isinstance(Fp, np.float): # this avoids weird indexing with outer and a single point
 #			Fp *= phs
@@ -233,8 +237,10 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 #		else:
 #			Fp = np.outer(Fp, phs)
 #			Fx = np.outer(Fx, phs)
-		Fp = np.outer(Fp, np.ones(len(freqs)))*phs
-		Fx = np.outer(Fx, np.ones(len(freqs)))*phs
+
+		ones_freqs = np.ones((n_freqs),float)
+		Fp = np.outer(Fp, ones_freqs) * phs
+		Fx = np.outer(Fx, ones_freqs) * phs
 
 	if n_pix == 1:
 		return Fp[0], Fx[0]
@@ -544,7 +550,7 @@ class Network(object):
 						a[:,i,j] += _
 						a[:,j,i] += np.conjugate(_)
 		else:  #if given a psd
-			a=np.zeros((n_pix, len(self.freqs), self.Np, self.Np))  #initialize a 3-D array (frequencies x polarizations x polarizations)
+			a=np.zeros((n_pix, len(self.freqs), self.Np, self.Np), float)  #initialize a 3-D array (frequencies x polarizations x polarizations)
 			for detector in self.detectors.values():
 				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
 				_psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
@@ -552,7 +558,9 @@ class Network(object):
 					a[:,:,i,i] += np.outer(np.abs(F[i])**2, _psd**-1)
 					for j in xrange(i+1,self.Np):
 						_ = np.outer(np.conjugate(F[i])*F[j], _psd**-1)
+#						_ = np.outer(np.abs(F[i]*F[j]), _psd**-1)
 						a[:,:,i,j] += _
+#						a[:,:,j,i] += _
 						a[:,:,j,i] += np.conjugate(_)
 		if n_pix == 1:
 			return a[0]
@@ -574,7 +582,8 @@ class Network(object):
 			for detector in self.detectors.values():
                                 F = detector.antenna_patterns(theta, phi, psi, freqs=None)
 				_psd = detector.get_psd().interpolate(self.freqs)
-				aij += np.outer(np.conjugate(F[i])*F[j], _psd**-1)
+#				aij += np.outer(np.conjugate(F[i])*F[j], _psd**-1)
+				aij += np.outer(np.abs(F[i]*F[j]), _psd**-1)
 		if n_pix == 1:
 			return aij[0]
 		else:
@@ -588,13 +597,13 @@ class Network(object):
 		sorted_detectors = self.detectors_list()
 		Nd = len(sorted_detectors)
 		if no_psd:
-			B = np.zeros((n_pix, len(self.freqs), self.Np, Nd))
+			B = np.zeros((n_pix, len(self.freqs), self.Np, Nd), complex)
 			for d_ind, detector in enumerate(sorted_detectors):
 				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)
 				for i in xrange(self.Np):
 					B[:,:,i,d_ind] = np.conjugate(F[i])
 		else:  #if given a psd
-			B = np.zeros((n_pix, len(self.freqs), self.Np, Nd), 'complex') #initialize a 3-D array (freqs x polarizations x detectors)
+			B = np.zeros((n_pix, len(self.freqs), self.Np, Nd), complex) #initialize a 3-D array (freqs x polarizations x detectors)
 			for d_ind, detector in enumerate(sorted_detectors):
 				F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs)   #tuple (pols) of 1-D arrays (frequencies)
 				for i in xrange(self.Np):
@@ -648,15 +657,20 @@ class Network(object):
                 else:  #if given a psd
                         a=np.zeros((n_pix, n_freqs, self.Np, self.Np), float)  #initialize a 3-D array (frequencies x polarizations x polarizations)
 			b=np.zeros((n_pix, n_freqs, self.Np, Nd), complex)
+			n_pix_ones = np.ones((n_pix,),float)
                         for d_ind, detector in enumerate(sorted_detectors):
                                 F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
-                                _psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
+#                                _psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
+                                _psd = np.outer(n_pix_ones, detector.psd.interpolate(self.freqs) ) #2-D array: (n_pix,n_freqs)
                                 for i in xrange(self.Np):
-                                        a[:,:,i,i] += np.outer(np.abs(F[i])**2, _psd**-1)
-					b[:,:,i,det_ind] =  np.conjugate(F[i]) * np.outer(np.ones((n_pix,)), _psd**-1)
+                                        a[:,:,i,i] += np.abs(F[i])**2 / _psd
+					b[:,:,i,d_ind] =  np.conjugate(F[i]) / _psd
                                         for j in xrange(i+1,self.Np):
-                                                _ = np.outer(np.conjugate(F[i])*F[j], _psd**-1)
+                                                _ = np.conjugate(F[i])*F[j] / _psd
+#                                                _ = np.abs(F[i]*F[j]) / _psd
+#                                                _ = np.real( np.conjugate(F[i])*F[j] / _psd ) ### should be a real number
                                                 a[:,:,i,j] += _
+#						a[:,:,j,i] += _
                                                 a[:,:,j,i] += np.conjugate(_)
                 if n_pix == 1:
                         return a[0], b[0]

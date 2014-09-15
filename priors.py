@@ -257,12 +257,9 @@ class hPrior(object):
 #		return max( np.exp(utils.sum_logs(p)), 0.0)
 
         ###
-        def plot(self, figname, xmin=1, xmax=10, npts=1001, ymin=None, ymax=None):
+        def plot(self, figname, xmin=1, xmax=10, npts=1001, ymin=None, ymax=None, grid=False):
                 """
                 generate a plot of the prior and save it to figname
-                if inj != None:
-                        (theta,phi) = inj
-                        plot marker at theta,phi
                 """
                 ### generate plot
                 fig_ind = 0
@@ -280,7 +277,8 @@ class hPrior(object):
 
 		ax.set_xlabel("$h_{rss}$")
 		ax.set_ylabel("$p(h)$")
-		ax.grid(True, which="both")
+		
+		ax.grid(grid, which="both")
 
 		ax.set_xlim(xmin=xmin, xmax=xmax)
 		if ymin:
@@ -506,7 +504,7 @@ class angPrior(object):
 			raise ValueError, "unknown prior_type=%s"%self.prior_type
 
 	###
-	def plot(self, figname, title=None, unit=None, inj=None, est=None):
+	def plot(self, figname, title=None, unit=None, inj=None, est=None, graticule=False):
 		"""
 		generate a plot of the prior and save it to figname
 		if inj != None:
@@ -517,7 +515,8 @@ class angPrior(object):
 		fig_ind = 0
 		fig = plt.figure(fig_ind)
 		hp.mollview(self.angprior(normalize=True)/hp.nside2pixarea(self.nside), title=title, unit=unit, flip="geo", fig=fig_ind)
-		hp.graticule()
+		if graticule:
+			hp.graticule()
 
 		### plot point if supplied
 		if inj:
