@@ -261,6 +261,7 @@ class PSD(object):
 	###
 	def __init__(self, freqs, psd, kind="linear"):
 		len_freqs = len(freqs)
+		self.n_freqs = len_freqs
 		if len(psd) != len_freqs:
 			raise ValueError, "freqs and ps must have the same length"
 		if not len_freqs:
@@ -384,6 +385,19 @@ class Detector(object):
 			return antenna_patterns(theta, phi, psi, self.nx, self.ny, freqs=freqs, dr=self.dr)
 
 	###
+	def snr(self, data, freqs=None):
+		""" 
+		returns the SNR for data using the PSD stored within the object 
+		if freqs==None: assumes data corresponds to self.psd.freqs
+		"""
+		if freqs==None:
+			freqs = self.get_psd().get_freqs()
+		if len(data) != len(freqs):
+			raise ValueError, "len(data) != len(freqs)"
+		
+		return ( 4*np.sum(np.abs(data)**2 / self.get_psd().interpolate(freqs)) )**0.5 ### return SNR
+
+	###
 	def __repr__(self):
 		return self.__str__()
 
@@ -499,6 +513,31 @@ class Network(object):
 		"""checks to see if name is associated with any detector in the network"""
 		return self.detectors.has_key(name)
 
+	###
+	def network_snr(self, data):
+		"""
+		computes network snr through delegation to self.snrs(data)
+		"""
+		return np.sum(self.snrs(data)**2)**0.5
+
+	###
+	def snrs(self, data):
+		"""
+		computes individual SNRs for each detector in the network
+		returns a list of individual SNRs ordered according to self.detectors_list()
+			delegates to Detector.snr()
+		"""
+		detectors_list = self.detectors_list()
+		n_ifo = len(detectors_list)
+		n_freqs = len(self.freqs)
+		if np.shape(data) != (n_freqs, n_ifo):
+			raise ValueError, "bad shape for data. expected (%d,%d). recieved "%(n_freqs, n_ifo) + np.shape(data)
+		snrs = np.empty((n_ifo,),float)
+		for ifo_ind, detector in enumerate(detectors_list):
+			snrs[ifo_ind] = detector.snr(data[:,ifo_ind], freqs=self.freqs)
+
+		return snrs
+		
 	###
 	def ang_res(self, f, degrees=False):
 		"""computes the minimum angular resolution achievable with this network for a signal at frequency "f" 
