@@ -17,6 +17,7 @@ print """WARNING
 		==> IMPLEMENT THIS (really just logic change for mp calls/model sets)
 
 	other possible model selection algorithms
+		variable resolution (change df for more parsimonious models)
 	        expanding frequency windows around a single peak
         	expanding frequency windows around multiple peaks
 	        variable bin width based on rate-of-change of signal amplitude (and phase?)
@@ -42,18 +43,18 @@ def log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_e
 #
 #=================================================
 ###
-def fixed_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, connection=False, max_array_size=100):
+def fixed_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, n_bins=1, connection=False, max_array_size=100):
 	"""
 	basic model selection by sliding a window of fixed width (n_bins) throughout the spectrum defined by freq_truth
         returns a boolean array for the best model and that model's log_bayes
 	"""
-        n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
-        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
+        n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
 
         ### define the sliding frequency ranges for each possible model
         binNos = np.arange(n_freqs)[freq_truth]
 
-        n_models = np.sum(freq_truth)-n_bins
+        n_models = np.sum(freq_truth)-n_bins+1
         if n_models <= 0:
                 raise ValueError, "n_models <= 0\n\teither supply more possible bins or lower n_bins"
 
@@ -82,13 +83,13 @@ def fixed_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_ef
 	if max_proc == 1:
 		return fixed_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, n_bins=1)
 
-	n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
-	n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
+	n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+	n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
 
 	### define the sliding frequency ranges for each possible model
 	binNos = np.arange(n_freqs)[freq_truth]
 
-	n_models = np.sum(freq_truth)-n_bins
+	n_models = np.sum(freq_truth)-n_bins+1
 	if n_models <= 0:
 		raise ValueError, "n_models <= 0\n\teither supply more possible bins or lower n_bins"
 
@@ -143,8 +144,8 @@ def variable_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_ef
 	if not isinstance(dn_bins, int):
 		raise TypeError, "dn_bins must be an \"int\""
 
-        n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
-        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
+        n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
 
         ### define the sliding frequency ranges for each possible model
         binNos = np.arange(n_freqs)[freq_truth]
@@ -152,19 +153,27 @@ def variable_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_ef
 	### build models
 	sum_freq_truth = np.sum(freq_truth)
 	models = []
-	for n_bins in np.arange(min_n_bins, max_n_bins, dn_bins, int):
-		n_models = sum_freq_truth-n_bins
+	for n_bins in np.arange(min_n_bins, max_n_bins+dn_bins, dn_bins, int):
+		n_models = sum_freq_truth-n_bins + 1
 		if n_models <= 0:
 			continue
 
-	        _models = np.zeros((n_models, n_freqs), bool)
         	for modelNo in xrange(n_models):
-                	_models[modelNo][binNos[modelNo:modelNo+n_bins]] = True
-		models.append( _models )
+			_model = np.zeros((n_freqs,),bool)
+			_model[binNos[modelNo:modelNo+n_bins]] = True
+			models.append( _model )
+
 	if not len(models):
 		raise ValueError, "len(models) <= 0\n\tnothing to do"
-	models = np.array(models, bool)
 
+	models = np.array(models)
+#	models = np.array(models, bool)
+
+#	log_bayes = []
+#	for modelNo, m in enumerate(models):
+#		print "\tmodelNo =", modelNo
+#		log_bayes.append( log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, m) )
+#		print "\t\tDone"
         log_bayes = np.array([log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, m) for m in models])
 
         ### find best model
@@ -177,7 +186,7 @@ def variable_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_ef
                 return models[best_modelNo], log_bayes[best_modelNo]
 
 ###
-def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=1, max_n_bins=1, dn_bins=1, max_array_size=100, max_proc=1):
+def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=1, max_n_bins=1, dn_bins=1, max_proc=1, max_array_size=100):
         """
         slides a frequency window with variable width throughout the spectrum defined by freq_truth
         returns a boolean array for the best model and that model's log_bayes
@@ -192,8 +201,8 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
         if not isinstance(dn_bins, int):
                 raise TypeError, "dn_bins must be an \"int\""
 
-        n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
-        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
+        n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
 
         ### define the sliding frequency ranges for each possible model
         binNos = np.arange(n_freqs)[freq_truth]
@@ -202,14 +211,15 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
         sum_freq_truth = np.sum(freq_truth)
         models = []
         for n_bins in np.arange(min_n_bins, max_n_bins, dn_bins, int):
-                n_models = sum_freq_truth-n_bins
+                n_models = sum_freq_truth-n_bins + 1
                 if n_models <= 0:
                         continue
 
-                _models = np.zeros((n_models, n_freqs), bool)
                 for modelNo in xrange(n_models):
-                        _models[modelNo][binNos[modelNo:modelNo+n_bins]] = True
-                models.append( _models )
+                        _model = np.zeros((n_freqs,),bool)
+                        _model[binNos[modelNo:modelNo+n_bins]] = True
+                        models.append( _model )
+
 	n_models = len(models)
         if not n_models:
                 raise ValueError, "len(models) <= 0\n\tnothing to do"
@@ -253,21 +263,22 @@ def log_bayes_cut(log_bayes_thr, posterior, thetas, phis, log_posterior_elements
         keeps only those frequencies with bayes factors larger than the specified threshold
         returns freq_truth respresenting the model and the associated log_bayes
 	"""
-        n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
-        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
+        n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
 
         ### define the sliding frequency ranges for each possible model
         binNos = np.arange(n_freqs)[freq_truth]
 
         n_models = np.sum(freq_truth)
-        models = np.zeros((n_models,n_freqs), bool)
+        models = np.zeros((n_models, n_freqs), bool)
         for modelNo in xrange(n_models):
                 models[modelNo][binNos[modelNo]] = True
 
         log_bayes = np.array([log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, m) for m in models])
 
 	### keep only those bayes factors above the threshold
-        model = np.zeros((n_freqs,), bool)[binNos[log_bayes >= log_bayes_thr]] = True
+        model = np.zeros((n_freqs,), bool)
+	model[binNos[log_bayes >= log_bayes_thr]] = True
 
 	if connection:
 		utils.flatten_and_send(connection, model, max_array_size=max_array_size)
@@ -285,8 +296,8 @@ def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_eleme
 	if max_proc == 1:
 		return log_bayes_cut(log_bayes_thr, posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth)
 
-	n_pix, thetas, phis, psis = posterior.__check_theta_phi_psi(thetas, phis, 0.0)
-        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.__check_log_posterior_elements(log_posterior_elements, n_pix)
+	n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
 
         ### define the sliding frequency ranges for each possible model
         binNos = np.arange(n_freqs)[freq_truth]
