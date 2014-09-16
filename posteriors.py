@@ -250,7 +250,7 @@ class Posterior(object):
                 if (self.theta == None) or (self.phi == None):
                         raise ValueError, "set_theta_phi() first"
 
-                n_pix, theta, phi, psi = self.__check_theta_phi_psi(self.theta, self.phi, psi)
+                n_pix, theta, phi, psi = self.check_theta_phi_psi(self.theta, self.phi, psi)
                 npix_per_proc = np.ceil(1.0*n_pix/num_proc)
                 procs = []
 
@@ -326,7 +326,7 @@ class Posterior(object):
                 if (self.theta == None) or (self.phi == None):
                         raise ValueError, "set_theta_phi() first"
 
-                n_pix, theta, phi, psi = self.__check_theta_phi_psi(self.theta, self.phi, psi)
+                n_pix, theta, phi, psi = self.check_theta_phi_psi(self.theta, self.phi, psi)
                 npix_per_proc = np.ceil(1.0*n_pix/num_proc)
                 procs = []
 
@@ -398,7 +398,7 @@ class Posterior(object):
                 if (self.theta == None) or (self.phi == None):
                         raise ValueError, "set_theta_phi() first"
 
-                n_pix, theta, phi, psi = self.__check_theta_phi_psi(self.theta, self.phi, psi)
+                n_pix, theta, phi, psi = self.check_theta_phi_psi(self.theta, self.phi, psi)
                 npix_per_proc = np.ceil(1.0*n_pix/num_proc)
                 procs = []
 
@@ -473,7 +473,7 @@ class Posterior(object):
                 """
                 a helper method for set_dataB_mp
                 """
-		n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(B, n_pix, self.n_pol)
+		n_pix, n_freqs, n_pol, n_ifo, B = self.check_B(B, n_pix, self.n_pol)
 		dataB = np.zeros((n_pix, n_freqs, n_pol), complex)
 		for alpha in xrange(n_ifo):
 			for j in xrange(n_pol):
@@ -491,7 +491,7 @@ class Posterior(object):
                 if self.B==None:
                         raise ValueError, "set_B() first!"
 
-		n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(self.B, self.n_pix, self.n_pol)
+		n_pix, n_freqs, n_pol, n_ifo, B = self.check_B(self.B, self.n_pix, self.n_pol)
 
                 npix_per_proc = np.ceil(1.0*n_pix/num_proc)
                 procs = []
@@ -536,7 +536,7 @@ class Posterior(object):
 		"""
 		if self.A == None:
 			raise ValueError, "set_A() first"
-		n_pix, n_freqs, n_pol, A = self.__check_A(self.A, self.n_pix, self.n_pol)
+		n_pix, n_freqs, n_pol, A = self.check_A(self.A, self.n_pix, self.n_pol)
 
 		n_gaus = self.hPrior.n_gaus
 		self.P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)
@@ -555,7 +555,7 @@ class Posterior(object):
                 a helper method for set_AB_mp
                 """
 
-		n_pix, n_freqs, n_pol, A = self.__check_A(A, n_pix, self.n_pol)
+		n_pix, n_freqs, n_pol, A = self.check_A(A, n_pix, self.n_pol)
 		n_gaus = self.hPrior.n_gaus
 
 		P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex)
@@ -581,7 +581,7 @@ class Posterior(object):
 
                 if self.A == None:
 			raise ValueError, "set_A() first"
-		n_pix, n_freqs, n_pol, A = self.__check_A(self.A, self.n_pix, self.n_pol)
+		n_pix, n_freqs, n_pol, A = self.check_A(self.A, self.n_pix, self.n_pol)
 
 		n_gaus = self.hPrior.n_gaus
                 npix_per_proc = np.ceil(1.0*n_pix/num_proc)
@@ -621,16 +621,16 @@ class Posterior(object):
                         self.invP[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
 
 	#=========================================
-	# __check_* functions
+	# check_* functions
 	#=========================================
 
 	###
-	def __check_theta_phi_psi(self, theta, phi, psi):
+	def check_theta_phi_psi(self, theta, phi, psi):
 		""" delegates to utils.check_theta_phi_psi() """
 		return utils.check_theta_phi_psi(theta, phi, psi)
 
 	###
-	def __check_A(self, A, n_pix, n_pol_eff):
+	def check_A(self, A, n_pix, n_pol_eff):
 		""" checks A's shape """
 		if len(np.shape(A)) != 4:
 			raise ValueError, "bad shape for A"
@@ -647,7 +647,7 @@ class Posterior(object):
 		return n_pix, n_freqs, n_pol, A
 
 	###
-	def __check_B(self, B, n_pix, n_pol_eff):
+	def check_B(self, B, n_pix, n_pol_eff):
 		""" check's B's shape """
 		if len(np.shape(B)) != 4:
 			raise ValueError, "bad shape for B"
@@ -664,7 +664,7 @@ class Posterior(object):
 		return n_pix, n_freqs, n_pol, n_ifo, B
 
 	###
-	def __check_dataB(self, dataB, n_pix, n_pol_eff):
+	def check_dataB(self, dataB, n_pix, n_pol_eff):
 		""" check data*B's shape """
 		if len(np.shape(dataB)) != 3:
 			raise ValueError, "bad shape for data*B"
@@ -679,7 +679,7 @@ class Posterior(object):
 		return n_pix, n_freqs, n_pol, dataB
 
 	###
-	def __check_P(self, P, n_pix, n_pol_eff):
+	def check_P(self, P, n_pix, n_pol_eff):
 		""" checks P's shape """
 		if len(np.shape(P)) != 5:
 			raise ValueError, "bad shape for P"
@@ -698,7 +698,7 @@ class Posterior(object):
 		return n_pix, n_freqs, n_pol, n_gaus, P
 
 	###
-	def __check_log_posterior_elements(self, log_posterior_elements, n_pix):
+	def check_log_posterior_elements(self, log_posterior_elements, n_pix):
 		""" checks log_posterior_element's shape """
 		if len(np.shape(log_posterior_elements)) != 3:
 			raise ValueError, "bad shape for log_posterior_elements"
@@ -712,7 +712,7 @@ class Posterior(object):
 
 		return n_pix, n_gaus, n_freqs, log_posterior_elements
 
-	def __check_mle_strain(self, mle_strain, n_pix):
+	def check_mle_strain(self, mle_strain, n_pix):
 		"""checks mle_strain's shape """
 		if len(np.shape(mle_strain)) != 3:
 			raise ValueError, "bad shape for mle_strain"
@@ -737,7 +737,7 @@ class Posterior(object):
 		
 		right now, this is a trivial delegation
 		"""
-		n_pix, theta, phi, psi = self.__check_theta_phi_psi(theta, phi, 0.0)
+		n_pix, theta, phi, psi = self.check_theta_phi_psi(theta, phi, 0.0)
 		return self.n_pol*np.ones((n_pix,),int)
 
 	###		
@@ -777,7 +777,7 @@ class Posterior(object):
 			raise ValueError, "set_data() first"
 	
 		### check angular coords
-		n_pix, theta, phi, psi = self.__check_theta_phi_psi(theta, phi, psi)
+		n_pix, theta, phi, psi = self.check_theta_phi_psi(theta, phi, psi)
 
 		# effective number of polarizations
 		if (n_pol_eff == None):
@@ -798,8 +798,8 @@ class Posterior(object):
 				else:
 					raise ValueError, "bad shape for B"
 
-			n_pix, n_freqs, n_pol, invA = self.__check_A(invA, n_pix, n_pol_eff)
-			n_pix, n_freqs, n_pol, dataB = self.__check_dataB(dataB, n_pix, n_pol_eff)
+			n_pix, n_freqs, n_pol, invA = self.check_A(invA, n_pix, n_pol_eff)
+			n_pix, n_freqs, n_pol, dataB = self.check_dataB(dataB, n_pix, n_pol_eff)
 				
 		else:
 			n_freqs = self.n_freqs
@@ -847,7 +847,7 @@ class Posterior(object):
                         raise ValueError, "set_data() first"
 
                 ### check angular coords
-                n_pix, theta, phi, psi = self.__check_theta_phi_psi(theta, phi, psi)
+                n_pix, theta, phi, psi = self.check_theta_phi_psi(theta, phi, psi)
 		if n_pix==1: ### parallelization will not help you here
 			return self.mle_strain(theta, phi, psi, n_pol_eff=n_pol_eff, invA_dataB=invA_dataB)
 
@@ -970,7 +970,7 @@ class Posterior(object):
                         raise ValueError, "set_data() first"
 
 		### check angular coordinates
-		n_pix, theta, phi, psi = self.__check_theta_phi_psi(theta, phi, psi)
+		n_pix, theta, phi, psi = self.check_theta_phi_psi(theta, phi, psi)
 
 		### pull out number of gaussian terms
                 n_gaus = self.hPrior.n_gaus
@@ -991,10 +991,10 @@ class Posterior(object):
                                 else:
                                         raise ValueError, "bad shape for B"
 
-			n_pix, n_freqs, n_pol, n_gauss, invP = self.__check_P(invP, n_pix, self.n_pol)
-#                	n_pix, n_freqs, n_pol, n_ifo, B = self.__check_B(B, n_pix, self.n_pol)
-			n_pix, n_freqs, n_pol, dataB = self.__check_dataB(dataB, n_pix, self.n_pol)
-			n_pix, n_freqs, n_pol, dataB_conj = self.__check_dataB(dataB_conj, n_pix, self.n_pol)
+			n_pix, n_freqs, n_pol, n_gauss, invP = self.check_P(invP, n_pix, self.n_pol)
+#                	n_pix, n_freqs, n_pol, n_ifo, B = self.check_B(B, n_pix, self.n_pol)
+			n_pix, n_freqs, n_pol, dataB = self.check_dataB(dataB, n_pix, self.n_pol)
+			n_pix, n_freqs, n_pol, dataB_conj = self.check_dataB(dataB_conj, n_pix, self.n_pol)
 		else:
 			A = self.network.A(theta, phi, psi, no_psd=False)
 			invP = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), float) ### (A+Z)^{-1}
@@ -1038,8 +1038,8 @@ class Posterior(object):
 					else:
 						raise ValueError, "bad shape for invA"
 
-				n_pix, n_freqs, n_pol, A = self.__check_A(A, n_pix, self.n_pol)
-				n_pix, n_freqs, n_pol, invA = self.__check_A(invA, n_pix, self.n_pol)
+				n_pix, n_freqs, n_pol, A = self.check_A(A, n_pix, self.n_pol)
+				n_pix, n_freqs, n_pol, invA = self.check_A(invA, n_pix, self.n_pol)
 			else:
 				A = self.network.A(theta, phi, psi, no_psd=False)
 				invA = linalg.inv(A)
@@ -1206,7 +1206,7 @@ class Posterior(object):
 			theta, phi = hp.pix2ang(self.nside, np.arange(self.n_pix))
 			invP_B = A_invA = None ### we ignore these because we have no reference for positions?
 
-		n_pix, theta, phi, psi = self.__check_theta_phi_psi(theta, phi, psi)
+		n_pix, theta, phi, psi = self.check_theta_phi_psi(theta, phi, psi)
 
 		if num_proc==1 or n_pix==1:
 			return self.log_posterior_elements(theta, phi, psi=psi, invP_dataB=invP_dataB, A_invA=A_invA, diagnostic=diagnostic)
@@ -1311,8 +1311,8 @@ class Posterior(object):
 		returns log(posterior) : 1-D array 
 			np.shape(log_posterior) = (n_pix)
 		"""
-		n_pix, thetas, phis, psis = self.__check_theta_phi_psi(thetas, phis, 0.0)
-		n_pix, n_gaus, n_freqs, log_posterior_elements = self.__check_log_posterior_elements(log_posterior_elements, n_pix)
+		n_pix, thetas, phis, psis = self.check_theta_phi_psi(thetas, phis, 0.0)
+		n_pix, n_gaus, n_freqs, log_posterior_elements = self.check_log_posterior_elements(log_posterior_elements, n_pix)
 
 		### sum over frequencies
 		df = self.seglen**-1 ### frequency spacing
@@ -1351,7 +1351,7 @@ class Posterior(object):
 		if num_proc==1:
 			return log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
 
-		n_pix, theta, phi, psi = self.__check_theta_phi_psi(thetas, phis, 0.0)
+		n_pix, theta, phi, psi = self.check_theta_phi_psi(thetas, phis, 0.0)
 		npix_per_proc = np.ceil(1.0*n_pix/num_proc)
 		procs = []
 
@@ -1404,7 +1404,7 @@ class Posterior(object):
 
 		return np.exp( self.log_posterior_mp(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size) )
 
-#		n_pix, theta, phi, psi = self.__check_theta_phi_psi(thetas, phis, 0.0)
+#		n_pix, theta, phi, psi = self.check_theta_phi_psi(thetas, phis, 0.0)
 #                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
 #                procs = []
 #
@@ -1503,7 +1503,7 @@ class Posterior(object):
 		return np.exp( self.log_bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size) )
 
 	###
-	def plot(self, figname, posterior=None, title=None, unit=None, inj=None, est=None, graticule=False):
+	def plot(self, figname, posterior=None, title=None, unit=None, inj=None, est=None, graticule=False, min=None, max=None):
                 """
                 generate a plot of the posterior and save it to figname
                 if inj != None:
@@ -1520,7 +1520,14 @@ class Posterior(object):
                 ### generate plot
                 fig_ind = 0
                 fig = plt.figure(fig_ind)
-                hp.mollview(posterior, title=title, unit=unit, flip="geo", fig=fig_ind)
+		if min!=None and max!=None:
+			hp.mollview(posterior, title=title, unit=unit, flip="geo", fig=fig_ind, min=min, max=max)
+		elif min!=None:
+			hp.mollview(posterior, title=title, unit=unit, flip="geo", fig=fig_ind, min=min)
+		elif max!=None:
+			hp.mollview(posterior, title=title, unit=unit, flip="geo", fig=fig_ind, max=max)
+		else:
+	                hp.mollview(posterior, title=title, unit=unit, flip="geo", fig=fig_ind)
 		if graticule:
 	                hp.graticule()
 
