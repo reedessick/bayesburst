@@ -121,7 +121,7 @@ phio=0.0
 fo=200
 tau=0.010
 #hrss=2e-22 #network SNR ~50
-hrss=4e-21 #network SNR ~10
+hrss=4e-23 #network SNR ~10
 
 h = injections.sinegaussian_f(freqs, to, phio, fo, tau, hrss, alpha=np.pi/2)
 
