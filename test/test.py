@@ -37,6 +37,7 @@ parser.add_option("", "--pkl", default=False, action="store_true")
 parser.add_option("", "--check", default=False, action="store_true")
 parser.add_option("", "--skip-mp", default=False, action="store_true")
 parser.add_option("", "--skip-plots", default=False, action="store_true")
+parser.add_option("", "--skip-diagnostic-plots", default=False, action="store_true")
 
 parser.add_option("-o", "--output-dir", default="./", type="string")
 parser.add_option("-t", "--tag", default="", type="string")
@@ -83,7 +84,7 @@ n_pol = 2
 #n_pol = 1
 
 n_freqs = 100
-freqs = np.linspace(100, 200, n_freqs)
+freqs = np.linspace(100, 300, n_freqs)
 df = freqs[1]-freqs[0]
 seglen = df**-1
 
@@ -102,11 +103,11 @@ n_ifo = len(network.detectors)
 freq_truth = np.ones_like(freqs, bool)
 
 ### set up stuff for model selection
-n_bins = 75
+n_bins = 25
 
-min_n_bins = 25
-max_n_bins = 100
-dn_bins = 5
+min_n_bins = 10
+max_n_bins = 50
+dn_bins = 1
 
 log_bayes_thr = 0
 
@@ -121,7 +122,8 @@ phio=0.0
 fo=200
 tau=0.010
 #hrss=2e-22 #network SNR ~50
-hrss=4e-23 #network SNR ~10
+hrss=6e-23 #network SNR~15
+#hrss=4e-23 #network SNR ~10
 
 h = injections.sinegaussian_f(freqs, to, phio, fo, tau, hrss, alpha=np.pi/2)
 
@@ -288,16 +290,18 @@ if opts.posterior:
 	print "posterior.set_A"	
 	to=time.time()
 	posterior_obj.set_A()
-	A = posterior_obj.A
-	invA = posterior_obj.invA
+	if opts.check:
+		A = posterior_obj.A
+		invA = posterior_obj.invA
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.set_A_mp"
 		to=time.time()
 		posterior_obj.set_A_mp(num_proc=num_proc, max_proc=max_proc)
-		A_mp = posterior_obj.A
-		invA_mp = posterior_obj.invA
+		if opts.check:
+			A_mp = posterior_obj.A
+			invA_mp = posterior_obj.invA
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -313,14 +317,16 @@ if opts.posterior:
 	print "posterior.set_B"
 	to=time.time()
 	posterior_obj.set_B()
-	B = posterior_obj.B
+	if opts.check:
+		B = posterior_obj.B
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.set_B_mp"
 		to=time.time()
 		posterior_obj.set_B_mp(num_proc=num_proc, max_proc=max_proc)
-		B_mp = posterior_obj.B
+		if opts.check:
+			B_mp = posterior_obj.B
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -332,18 +338,20 @@ if opts.posterior:
 	print "posterior.set_AB"
 	to=time.time()
 	posterior_obj.set_AB()
-	AB_A = posterior_obj.A
-	AB_invA = posterior_obj.invA
-	AB_B = posterior_obj.B
+	if opts.check:
+		AB_A = posterior_obj.A
+		AB_invA = posterior_obj.invA
+		AB_B = posterior_obj.B
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.set_AB_mp"
 		to=time.time()
 		posterior_obj.set_AB_mp(num_proc=num_proc, max_proc=max_proc)
-		AB_A_mp = posterior_obj.A
-		AB_invA_mp = posterior_obj.invA
-		AB_B_mp = posterior_obj.B
+		if opts.check:
+			AB_A_mp = posterior_obj.A
+			AB_invA_mp = posterior_obj.invA
+			AB_B_mp = posterior_obj.B
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -381,14 +389,18 @@ if opts.posterior:
 	print "posterior.set_P"
 	to=time.time()
 	posterior_obj.set_P()
-	P, invP = posterior_obj.P, posterior_obj.invP
+	if opts.check:
+		P = posterior_obj.P
+		invP = posterior_obj.invP
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.set_P_mp"
 		to=time.time()
 		posterior_obj.set_P_mp(num_proc=num_proc, max_proc=max_proc)
-		P_mp, invP_mp = posterior_obj.P, posterior_obj.invP
+		if opts.check:
+			P_mp = posterior_obj.P
+			invP_mp = posterior_obj.invP
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -404,14 +416,16 @@ if opts.posterior:
 	print "posterior.set_dataB"
 	to=time.time()
 	posterior_obj.set_dataB()
-	dataB = posterior_obj.dataB
+	if opts.check:
+		dataB = posterior_obj.dataB
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.set_dataB_mp"
 		to=time.time()
 		posterior_obj.set_dataB_mp(num_proc=num_proc, max_proc=max_proc)
-		dataB_mp = posterior_obj.dataB
+		if opts.check:
+			dataB_mp = posterior_obj.dataB
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -442,12 +456,16 @@ if opts.posterior:
 	print "posterior.mle_strain"
 	to=time.time()
 	mle_strain = posterior_obj.mle_strain(posterior_obj.theta, posterior_obj.phi, psi=0.0, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+	if not opts.check:
+		del mle_strain
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.mle_strain_mp"
 		to=time.time()
 		mle_strain_mp = posterior_obj.mle_strain_mp(posterior_obj.theta, posterior_obj.phi, 0.0, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+		if not opts.check:
+			del mle_strain_mp
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -465,6 +483,8 @@ if opts.posterior:
 		print "posterior.log_posterior_elements_mp"
 		to=time.time()
 		mp_log_posterior_elements, mp_n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		if not opts.check:
+			del mp_log_posterior_elements, mp_n_pol_eff
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -496,6 +516,8 @@ if opts.posterior:
 		print "posterior.log_posterior_elements_mp(diagnostic=True)"
 		to=time.time()
 		mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
+		if not opts.check:
+			del mp_log_posterior_elements, mp_n_pol_eff
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -526,6 +548,8 @@ if opts.posterior:
 		print "posterior.log_posterior_mp"
 		to=time.time()
 		log_posterior_mp = posterior_obj.log_posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del log_posterior_mp
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -541,6 +565,8 @@ if opts.posterior:
 		print "posterior.posterior_mp"
 		to=time.time()
 		posterior_mp = posterior_obj.posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del posterior_mp
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -555,10 +581,14 @@ if opts.posterior:
 	log_bayes = posterior_obj.log_bayes(log_posterior)
 	print "\t", time.time()-to
 
+	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(freq_truth), log_bayes)
+
 	if not opts.skip_mp:
 		print "posterior.log_bayes_mp"
 		to=time.time()
 		log_bayes_mp = posterior_obj.log_bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del log_bayes_mp
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -578,6 +608,8 @@ if opts.posterior:
 		print "posterior.bayes_mp"
 		to=time.time()
 		bayes_mp = posterior_obj.bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del bayes_mp
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -607,48 +639,48 @@ if opts.posterior:
 	if not opts.skip_plots:
 		print "posterior.plot"
 		to=time.time()
-		posterior_obj.plot(posterior_figname, posterior=posterior, title="posterior\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(log_bayes, snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
-		posterior_obj.plot(logposterior_figname, posterior=np.log10(posterior), title="log10( posterior )\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(log_bayes, snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None, min=np.max(np.log10(posterior))-log_dynamic_range)
+		posterior_obj.plot(posterior_figname, posterior=posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(freq_truth), log_bayes, snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
+		posterior_obj.plot(logposterior_figname, posterior=np.log10(posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(freq_truth), log_bayes, snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None) #, min=np.max(np.min(np.log10(posterior)), np.max(np.log10(posterior))-log_dynamic_range))
 		print "\t", time.time()-to
 
-		print "diagnostic plots"
-		### use log_poserterior_elements computed above
-		for g in xrange(n_gaus):
-			s = variances[g]**0.5
-			d = int(np.log10(s))-1
-			s = "%.3fe%d"%(s * 10**-d, d)
+		if not opts.skip_diagnostic_plots:
+			print "diagnostic plots"
+			### use log_poserterior_elements computed above
+			for g in xrange(n_gaus):
+				s = variances[g]**0.5
+				d = int(np.log10(s))-1
+				s = "%.3fe%d"%(s * 10**-d, d)
 
-			### mle
-			print "mle %s"%s
-			to=time.time()
-			_mle = np.sum(mle[:,g,:], axis=1) * df ### sum over freqs
-			posterior_obj.plot(diag_figname%("mle",g), posterior=np.exp(_mle), title="mle %s"%s, inj=(theta_inj, phi_inj), est=None)
-			posterior_obj.plot(logdiag_figname%("mle",g), posterior=_mle, title="log10( mle %s )"%s, inj=(theta_inj, phi_inj), est=None)
-			print "\t", time.time()-to
+				### mle
+				print "mle %s"%s
+				to=time.time()
+				_mle = np.sum(mle[:,g,:], axis=1) * df ### sum over freqs
+				posterior_obj.plot(diag_figname%("mle",g), posterior=np.exp(_mle), title="mle %s"%s, inj=(theta_inj, phi_inj), est=None)
+				posterior_obj.plot(logdiag_figname%("mle",g), posterior=_mle, title="log10( mle %s )"%s, inj=(theta_inj, phi_inj), est=None)
+				print "\t", time.time()-to
 
-			### cts
-			print "cts %s"%s
-			to=time.time()
-			_cts = np.sum(cts[:,g,:], axis=1) * df
-			posterior_obj.plot(diag_figname%("cts",g), posterior=np.exp(_cts), title="cts %s"%s, inj=(theta_inj, phi_inj), est=None)
-                	posterior_obj.plot(logdiag_figname%("cts",g), posterior=_cts, title="log10( cts %s )"%s, inj=(theta_inj, phi_inj), est=None)
-	                print "\t", time.time()-to
+				### cts
+				print "cts %s"%s
+				to=time.time()
+				_cts = np.sum(cts[:,g,:], axis=1) * df
+				posterior_obj.plot(diag_figname%("cts",g), posterior=np.exp(_cts), title="cts %s"%s, inj=(theta_inj, phi_inj), est=None)
+                		posterior_obj.plot(logdiag_figname%("cts",g), posterior=_cts, title="log10( cts %s )"%s, inj=(theta_inj, phi_inj), est=None)
+	                	print "\t", time.time()-to
 
-			### det
-			print "det %s"%s
-			to=time.time()
-			_det = np.sum(det[:,g,:], axis=1) * df
-			posterior_obj.plot(diag_figname%("det",g), posterior=np.exp(_det), title="det %s"%s, inj=(theta_inj, phi_inj), est=None)
-        	        posterior_obj.plot(logdiag_figname%("det",g), posterior=_det, title="log10( det %s )"%s, inj=(theta_inj, phi_inj), est=None)
-	                print "\t", time.time()-to
+				### det
+				print "det %s"%s
+				to=time.time()
+				_det = np.sum(det[:,g,:], axis=1) * df
+				posterior_obj.plot(diag_figname%("det",g), posterior=np.exp(_det), title="det %s"%s, inj=(theta_inj, phi_inj), est=None)
+        		        posterior_obj.plot(logdiag_figname%("det",g), posterior=_det, title="log10( det %s )"%s, inj=(theta_inj, phi_inj), est=None)
+	        	        print "\t", time.time()-to
 
-			### mle+cts+det
-			print "mle+cts+det %s"%s
-			to=time.time()
-			posterior_obj.plot(diag_figname%("mle*cts*det",g), posterior=np.exp(_mle+_cts+_det), title="mle*cts*det %s"%s, inj=(theta_inj, phi_inj), est=None)
-
-			posterior_obj.plot(logdiag_figname%("mle*cts*det",g), posterior=_mle+_cts+_det, title="log10( mle*cts*det )", inj=(theta_inj, phi_inj), est=None)
-	                print "\t", time.time()-to
+				### mle+cts+det
+				print "mle+cts+det %s"%s
+				to=time.time()
+				posterior_obj.plot(diag_figname%("mle*cts*det",g), posterior=np.exp(_mle+_cts+_det), title="mle*cts*det %s"%s, inj=(theta_inj, phi_inj), est=None)
+				posterior_obj.plot(logdiag_figname%("mle*cts*det",g), posterior=_mle+_cts+_det, title="log10( mle*cts*det )", inj=(theta_inj, phi_inj), est=None)
+		                print "\t", time.time()-to
 
 	#=========================================
 	# check sanity of results
@@ -675,16 +707,68 @@ if opts.model_selection:
 
 	import model_selection
 
+	### reset-this by hand here so we can processes the setup quickly and focus on only model_selection
+	opts.skip_mp = False
+
+        print "model_selection.log_bayes_cut"
+        to=time.time()
+        lbc_model, lbc_lb = model_selection.log_bayes_cut(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=True)
+        print "\t", time.time()-to
+
+        print "\tn_bins=%d, logBayes=%.3f"%(np.sum(lbc_model), lbc_lb)
+
+        if not opts.skip_mp:
+                print "model_selection.log_bayes_cut_mp"
+                lbc_model_mp, lbc_lb_mp = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, joint_log_bayes=True)
+                print "\t", time.time()-to
+
+        	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(lbc_model_mp), lbc_lb_mp)
+		
+		if not opts.check:
+			del lbc_model_mp, lbc_lb_mp
+
+                if opts.check:
+                        if np.any(lbc_model!=lbc_model_mp):
+                                raise StandardError, "lbc_model!=lbc_model_mp"
+                        else:
+                                print "\tlbc_model==lbc_model_mp"
+                        if lbc_lb!=lbc_lb_mp:
+                                raise StandardError, "lbc_model!=lbc_model_mp"
+                        else:
+                                print "\tlbc_model==lbc_model_mp"
+
+        print "lbc_posterior"
+        to=time.time()
+        lbc_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, normalize=True)
+        print "\t", time.time()-to
+
+        if not opts.skip_plots:
+                print "posterior.plot(log_bayes_cut)"
+                to=time.time()
+                posterior_obj.plot(lbc_posterior_figname, posterior=lbc_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model), lbc_lb,snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
+                posterior_obj.plot(lbc_logposterior_figname, posterior=np.log10(lbc_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model),lbc_lb,snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None)#, min=np.max(np.min(np.log10(lbc_posterior)), np.max(np.log10(lbc_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(lbc_posterior_filename, lbc_posterior)
+
 	print "model_selection.fixed_bandwidth"
 	to=time.time()
 	fb_model, fb_lb = model_selection.fixed_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, n_bins=n_bins)
 	print "\t", time.time()-to
 
+	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(fb_model), fb_lb)
+
 	if not opts.skip_mp:
 		print "model_selection.fixed_bandwidth_mp"
 		to=time.time()
-		fb_model_mp, fb_lb_mp = model_selection.fixed_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posteror_elements, n_pol_eff, freq_truth, n_bins=n_bins, max_proc=max_proc, max_array_size=max_array_size)
+		fb_model_mp, fb_lb_mp = model_selection.fixed_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posteror_elements, n_pol_eff, freq_truth, n_bins=n_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		print "\t", time.time()-to
+
+		print "\tn_bins=%d, logBayes=%.3f"%(np.sum(fb_model_mp), fb_lb_mp)
+
+		if not opts.check:
+			del fb_model_mp, fb_lb_mp
 
 		if opts.check:
 			if np.any(fb_model!=fb_model_mp):
@@ -704,8 +788,8 @@ if opts.model_selection:
         if not opts.skip_plots:
                 print "posterior.plot(fixed_bandwidth)"
                 to=time.time()
-                posterior_obj.plot(fb_posterior_figname, posterior=fb_posterior, title="posterior\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(fb_lb, snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
-                posterior_obj.plot(fb_logposterior_figname, posterior=np.log10(fb_posterior), title="log10( posterior )\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(fb_lb, snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None, min=np.max(np.log10(fb_posterior))-log_dynamic_range)
+                posterior_obj.plot(fb_posterior_figname, posterior=fb_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(fb_model),fb_lb, snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
+                posterior_obj.plot(fb_logposterior_figname, posterior=np.log10(fb_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(fb_model),fb_lb, snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None)#, min=np.max(np.min(np.log10(fb_posterior)), np.max(np.log10(fb_posterior))-log_dynamic_range))
                 print "\t", time.time()-to
 
         print "writing posterior to file"
@@ -716,12 +800,19 @@ if opts.model_selection:
 	vb_model, vb_lb = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins)
 	print "\t", time.time()-to
 
+	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(vb_model), vb_lb)
+
 	if not opts.skip_mp:
 		print "model_selection.variable_bandwidth_mp"
 		to=time.time()
-		vb_model_mp, vb_lb_mp = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, max_proc=max_proc, max_array_size=max_array_size)
+		vb_model_mp, vb_lb_mp = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		print "\t", time.time()-to
 
+		print "\tn_bins=%d, logBayes=%.3f"%(np.sum(vb_model_mp), vb_lb_mp)
+
+		if not opts.check:
+			del vb_model_mp, vb_lb_mp
+	
 		if opts.check:
 			if np.any(vb_model!=vb_model_mp):
 				raise StandardError, "vb_model!=vb_model_mp"
@@ -739,50 +830,17 @@ if opts.model_selection:
         if not opts.skip_plots:
                 print "posterior.plot(variable_bandwidth)"
                 to=time.time()
-                posterior_obj.plot(vb_posterior_figname, posterior=vb_posterior, title="posterior\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(vb_lb,snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
-                posterior_obj.plot(vb_logposterior_figname, posterior=np.log10(vb_posterior), title="log10( posterior )\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(vb_lb,snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None, min=np.max(np.log10(vb_posterior))-log_dynamic_range)
+                posterior_obj.plot(vb_posterior_figname, posterior=vb_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(vb_model),vb_lb,snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
+                posterior_obj.plot(vb_logposterior_figname, posterior=np.log10(vb_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(vb_model),vb_lb,snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
                 print "\t", time.time()-to
 
         print "writing posterior to file"
         hp.write_map(vb_posterior_filename, vb_posterior)
 
-	print "model_selection.log_bayes_cut"
-	to=time.time()
-	lbc_model, lbc_lb = model_selection.log_bayes_cut(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth)
-	print "\t", time.time()-to
-
-	if not opts.skip_mp:
-		print "model_selection.log_bayes_cut_mp"
-		lbc_model_mp, lbc_lb_mp = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, max_proc=max_proc)
-		print "\t", time.time()-to
-
-		if opts.check:
-			if np.any(lbc_model!=lbc_model_mp):
-				raise StandardError, "lbc_model!=lbc_model_mp"
-			else:
-				print "\tlbc_model==lbc_model_mp"
-			if lbc_lb!=lbc_lb_mp:
-				raise StandardError, "lbc_model!=lbc_model_mp"
-			else:
-				print "\tlbc_model==lbc_model_mp"
-
-	print "lbc_posterior"
-	to=time.time()
-        lbc_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, normalize=True)
-	print "\t", time.time()-to
-
-        if not opts.skip_plots:
-                print "posterior.plot(log_bayes_cut)"
-                to=time.time()
-                posterior_obj.plot(lbc_posterior_figname, posterior=lbc_posterior, title="posterior\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(lbc_lb,snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
-                posterior_obj.plot(lbc_logposterior_figname, posterior=np.log10(lbc_posterior), title="log10( posterior )\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(lbc_lb,snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None, min=np.max(np.log10(lbc_posterior))-log_dynamic_range)
-                print "\t", time.time()-to
-
-        print "writing posterior to file"
-        hp.write_map(lbc_posterior_filename, lbc_posterior)
-
 	print """WRITE TESTS FOR
 	remaining model_selection (to be written?)
+
+	plot diagnostic values using the models -> see how these break down
 	"""
 
 
