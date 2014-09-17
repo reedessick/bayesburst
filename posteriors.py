@@ -1349,7 +1349,7 @@ class Posterior(object):
 	###
 	def log_posterior_mp(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, num_proc=1, max_proc=1, max_array_size=100):
 		if num_proc==1:
-			return log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
+			return self.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
 
 		n_pix, theta, phi, psi = self.check_theta_phi_psi(thetas, phis, 0.0)
 		npix_per_proc = np.ceil(1.0*n_pix/num_proc)
@@ -1400,7 +1400,7 @@ class Posterior(object):
 	###
 	def posterior_mp(self, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, num_proc=1, max_proc=1, max_array_size=100):
 		if num_proc==1:
-			return posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
+			return self.posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
 
 		return np.exp( self.log_posterior_mp(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size) )
 
@@ -1549,7 +1549,7 @@ class Posterior(object):
                 plt.close()
 	
 	###
-	def __call__(self):
+	def __call__(self, normalize=True, num_proc=1, max_proc=1, max_array_size=100):
 		"""
 		calculate the posterior at all points in the sky defined by self.nside and healpy
 		we use all frequency bins
@@ -1561,22 +1561,22 @@ class Posterior(object):
 		phi = self.phi
 
 		if self.invP==None:
-			self.set_P(self.n_pix, self.n_pol)
+			self.set_P_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		if self.B==None:
-			self.set_B(self.n_pix, self.n_pol)
+			self.set_B_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		if self.dataB==None:
-			self.set_dataB(self.n_pix, self.n_pol)
+			self.set_dataB_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		invP_dataB = (self.invP, self.dataB, self.dataB_conj)
 
 #		if self.A==None:
 #			self.set_A(self.n_pix, self.n_pol)
 #		A_invA = (self.A, self.invA)
 
-		log_posterior_elements, n_pol_eff = self.log_posterior_elements(theta, phi, psi=0.0, invP_dataB=invP_dataB, A_invA=None, connection=None, diagnostic=False)
+		log_posterior_elements, n_pol_eff = self.log_posterior_elements_mp(theta, phi, psi=0.0, invP_dataB=invP_dataB, A_invA=None, diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 		freq_truth = np.ones((self.n_freqs,), bool)
 
-		return self.posterior(theta, phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True)
+		return self.posterior_mp(theta, phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 	###
 	def __repr__(self):
