@@ -107,7 +107,7 @@ def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_eleme
                 if len(procs):
                         if len(procs) >= max_proc: ### reap old processes
                                 p, i, con1 = procs.pop()
-                                model += utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
+                                model += utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size, dtype=bool)
 
                 ### launch new process
                 con1, con2 = mp.Pipe()
@@ -118,9 +118,10 @@ def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_eleme
 
         while len(procs):
                 p, i, con1 = procs.pop()
-                model += utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
+                model += utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size, dtype=bool)
 
-        model = model>0 ### ensure this is boolean
+#        model = model>0 ### ensure this is boolean
+	model = model.astype(bool)
 
 #        n_models = np.sum(freq_truth)
 #        models = np.zeros((n_models,n_freqs), bool)
@@ -219,7 +220,7 @@ def fixed_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_ef
 
 	model_sets = np.zeros((num_proc,n_freqs), bool)
 	for iproc in xrange(num_proc):
-		model_sets[iproc][binsNos[iproc:nBins+(iproc-num_proc)]] = True
+		model_sets[iproc][binNos[iproc:nBins+(iproc-num_proc)]] = True
 
 	log_bayes = np.empty((num_proc,),float)
 	models = np.empty((num_proc,n_freqs),bool)
@@ -230,7 +231,7 @@ def fixed_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_ef
 			if len(procs) >= max_proc: ### reap old process
 				p, i, con1 = procs.pop()
 				models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
-				log_bayes[i] = utils.recv()			
+				log_bayes[i] = con1.recv()			
 
 		### launch new process
                 con1, con2 = mp.Pipe()
@@ -242,43 +243,8 @@ def fixed_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_ef
         while len(procs):
                 p, i, con1 = procs.pop()
 		models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
-		log_bayes[i] = utils.recv()
+		log_bayes[i] = con1.recv()
 
-#	n_models = np.sum(freq_truth)-n_bins+1
-#	if n_models <= 0:
-#		raise ValueError, "n_models <= 0\n\teither supply more possible bins or lower n_bins"
-#
-#	models = np.zeros((n_models,n_freqs), bool)
-#	for modelNo in xrange(n_models):
-#		models[modelNo][binNos[modelNo:modelNo+n_bins]] = True
-#
-#	log_bayes = np.empty((n_models,), float)
-#
-#	### launch and reap processes
-#	procs = []
-#	for iproc in xrange(n_models):
-#		if len(procs):
-#			while len(procs) >= max_proc: ### reap process
-#				for ind, (p, _, _) in enumerate(procs):
-#					if not p.is_alive():
-#						p, modelNo, con1 = procs.pop(ind)
-#						log_bayes[modelNo] = con1.recv()
-#						break
-#		### launch new process
-#		con1, con2 = mp.Pipe()
-#		p = mp.Process(target=log_posterior_elements_to_log_bayes, args=(posterior, thetas, phis, log_posterior_elements, n_pol_eff, models[iproc], con2))
-#		p.start()
-#		con2.close()
-#		procs.append( (p, iproc, con1) )
-#
-#	### reap remaining processes
-#	while len(procs):
-#		for ind, (p, _, _) in enumerate(procs):
-#			if not p.is_alive():
-#				p, modelNo, con1 = procs.pop(ind)
-#				log_bayes[modelNo] = con1.recv()
-#				break
-	
 	### find best model
 	best_modelNo = np.argmax(log_bayes)
 
@@ -374,7 +340,7 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
 
         model_sets = np.zeros((num_proc,n_freqs), bool)
         for iproc in xrange(num_proc):
-                model_sets[iproc][binsNos[iproc:iproc-num_proc+1]] = True
+                model_sets[iproc][binNos[iproc:iproc-num_proc+1]] = True
 
         log_bayes = np.empty((num_proc,),float)
         models = np.empty((num_proc,n_freqs),bool)
@@ -385,7 +351,7 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
                         if len(procs) >= max_proc: ### reap old process
                                 p, i, con1 = procs.pop()
                                 models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
-                                log_bayes[i] = utils.recv()
+                                log_bayes[i] = con1.recv()
 
                 ### launch new process
                 con1, con2 = mp.Pipe()
@@ -397,7 +363,7 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
         while len(procs):
                 p, i, con1 = procs.pop()
                 models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
-                log_bayes[i] = utils.recv()
+                log_bayes[i] = con1.recv()
 
 #        ### build models
 #        sum_freq_truth = np.sum(freq_truth)

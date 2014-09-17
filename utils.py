@@ -34,7 +34,8 @@ def recv_and_reshape(conn, shape, max_array_size=100, dtype=float):
 	"""
 	receives a flattened array through conn and returns an array with shape defined by "shape"
 	"""
-	flat_array = np.empty(shape, dtype).flatten()
+#	flat_array = np.empty(shape, dtype).flatten()
+	flat_array = np.zero(shape, dtype).flatten()
 	size = np.size(flat_array)
 	i=0
 	while i*max_array_size < size:
