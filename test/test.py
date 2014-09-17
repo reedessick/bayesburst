@@ -762,7 +762,7 @@ if opts.model_selection:
 	if not opts.skip_mp:
 		print "model_selection.fixed_bandwidth_mp"
 		to=time.time()
-		fb_model_mp, fb_lb_mp = model_selection.fixed_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posteror_elements, n_pol_eff, freq_truth, n_bins=n_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		fb_model_mp, fb_lb_mp = model_selection.fixed_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, n_bins=n_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		print "\t", time.time()-to
 
 		print "\tn_bins=%d, logBayes=%.3f"%(np.sum(fb_model_mp), fb_lb_mp)
