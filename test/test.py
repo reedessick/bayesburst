@@ -37,6 +37,7 @@ parser.add_option("", "--pkl", default=False, action="store_true")
 parser.add_option("", "--check", default=False, action="store_true")
 parser.add_option("", "--skip-mp", default=False, action="store_true")
 parser.add_option("", "--skip-plots", default=False, action="store_true")
+parser.add_option("", "--skip-diagnostic", default=False, action="store_true")
 parser.add_option("", "--skip-diagnostic-plots", default=False, action="store_true")
 
 parser.add_option("-o", "--output-dir", default="./", type="string")
@@ -52,6 +53,8 @@ if opts.model_selection:
 
 if opts.posterior:
 	opts.hPrior = opts.angPrior = True
+
+opts.skip_diagnostic_plots = opts.skip_diagnostic + opts.skip_diagnostic_plots
 
 if not os.path.exists(opts.output_dir):
 	os.makedirs(opts.output_dir)
@@ -103,10 +106,10 @@ n_ifo = len(network.detectors)
 freq_truth = np.ones_like(freqs, bool)
 
 ### set up stuff for model selection
-n_bins = 25
+n_bins = 16
 
 min_n_bins = 10
-max_n_bins = 50
+max_n_bins = 18
 dn_bins = 1
 
 log_bayes_thr = 0
@@ -121,9 +124,13 @@ to=0.0
 phio=0.0
 fo=200
 tau=0.010
-#hrss=2e-22 #network SNR ~50
-hrss=6e-23 #network SNR~15
-#hrss=4e-23 #network SNR ~10
+q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
+#hrss=2e-22 #network SNR ~50 (screaming)
+#hrss=6e-23 #network SNR ~15 (loud)
+#hrss=5e-23 #network SNR ~ 12.5 (audible)
+hrss=4e-23 #network SNR ~10 (quiet)
+#hrss=2e-23 #network SNR ~5 (silent)
+
 
 h = injections.sinegaussian_f(freqs, to, phio, fo, tau, hrss, alpha=np.pi/2)
 
@@ -193,7 +200,7 @@ if opts.hPrior:
 	if not opts.skip_plots:
 		print "hPrior.plot"
 		to=time.time()
-		hprior_obj.plot(hfigname, xmin=xmin, xmax=xmax, npts=npts)#, ymin=1e0)
+		hprior_obj.plot(hfigname, grid=True, xmin=xmin, xmax=xmax, npts=npts)#, ymin=1e0)
 		print "\t", time.time()-to
 
 #=================================================
@@ -497,46 +504,47 @@ if opts.posterior:
 			else:
 				print "n_pol_eff==mp_n_pol_eff"
 
-	print "posterior.log_posterior_elements(diagnostic=True)"
-	to=time.time()
-	log_posterior_elements_diag, n_pol_eff_diag, (mle, cts, det) = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=True)
-	print "\t", time.time()-to
-
-	if opts.check:
-		if np.any(log_posterior_elements_diag!=log_posterior_elements):
-			raise StandardError, "conflict between log_posterior_elements and log_posterior_elements_diag"
-		else:
-			print "\tlog_posterior_elements_diag==log_posterior_elements"
-		if np.any(n_pol_eff_diag!=n_pol_eff):
-			raise StandardError, "conflict between n_pol_eff and n_pol_eff_diag"
-		else:
-			print "\tn_pol_eff_diag==n_pol_eff"
-
-	if not opts.skip_mp:
-		print "posterior.log_posterior_elements_mp(diagnostic=True)"
+	if not opts.skip_diagnostic:
+		print "posterior.log_posterior_elements(diagnostic=True)"
 		to=time.time()
-		mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
-		if not opts.check:
-			del mp_log_posterior_elements, mp_n_pol_eff
+		log_posterior_elements_diag, n_pol_eff_diag, (mle, cts, det) = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=True)
 		print "\t", time.time()-to
 
 		if opts.check:
-			if np.any(log_posterior_elements!=mp_log_posterior_elements):
-				raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
-			if np.any(n_pol_eff!=mp_n_pol_eff):
-				raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
-			if np.any(mle!=mp_mle):
-				raise StandardError, "conflict between mle and mp_mle"
-			if np.any(cts!=mp_cts):
-				raise StandardError, "conflict between cts and mp_cts"
-			if np.any(det!=mp_det):
-				raise StandardError, "conflict between det and mp_det"
+			if np.any(log_posterior_elements_diag!=log_posterior_elements):
+				raise StandardError, "conflict between log_posterior_elements and log_posterior_elements_diag"
+			else:
+				print "\tlog_posterior_elements_diag==log_posterior_elements"
+			if np.any(n_pol_eff_diag!=n_pol_eff):
+				raise StandardError, "conflict between n_pol_eff and n_pol_eff_diag"
+			else:
+				print "\tn_pol_eff_diag==n_pol_eff"
 
-	if opts.check:
-		if np.any(log_posterior_elements!=mle+cts+det):
-			raise StandardError, "log_posterior_elements!=mle+cts+det"
-		else:
-			print "log_posterior_elements==mle+cts+det"
+		if not opts.skip_mp:
+			print "posterior.log_posterior_elements_mp(diagnostic=True)"
+			to=time.time()
+			mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
+			if not opts.check:
+				del mp_log_posterior_elements, mp_n_pol_eff
+			print "\t", time.time()-to
+
+			if opts.check:
+				if np.any(log_posterior_elements!=mp_log_posterior_elements):
+					raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
+				if np.any(n_pol_eff!=mp_n_pol_eff):
+					raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
+				if np.any(mle!=mp_mle):
+					raise StandardError, "conflict between mle and mp_mle"
+				if np.any(cts!=mp_cts):
+					raise StandardError, "conflict between cts and mp_cts"
+				if np.any(det!=mp_det):
+					raise StandardError, "conflict between det and mp_det"
+
+		if opts.check:
+			if np.any(log_posterior_elements!=mle+cts+det):
+				raise StandardError, "log_posterior_elements!=mle+cts+det"
+			else:
+				print "log_posterior_elements==mle+cts+det"
 
 
 	print "posterior.log_posterior"
@@ -707,9 +715,6 @@ if opts.model_selection:
 
 	import model_selection
 
-	### reset-this by hand here so we can processes the setup quickly and focus on only model_selection
-	opts.skip_mp = False
-
         print "model_selection.log_bayes_cut"
         to=time.time()
         lbc_model, lbc_lb = model_selection.log_bayes_cut(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=True)
@@ -805,7 +810,7 @@ if opts.model_selection:
 	if not opts.skip_mp:
 		print "model_selection.variable_bandwidth_mp"
 		to=time.time()
-		vb_model_mp, vb_lb_mp = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		vb_model_mp, vb_lb_mp = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		print "\t", time.time()-to
 
 		print "\tn_bins=%d, logBayes=%.3f"%(np.sum(vb_model_mp), vb_lb_mp)
