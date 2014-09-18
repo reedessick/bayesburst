@@ -2,10 +2,10 @@ usage = """ a module to contain various model selection routines """
 # R. Essick (ressick@mit.edu)
 # R. Lynch 
 
-import posteriors
-mp = posteriors.mp
-np = posteriors.np
-utils = posteriors.utils
+import utils
+np = utils.np
+hp = utils.hp
+import multiprocessing as mp
 
 print """WARNING
 	include templated searches (a la ryan's heavyside templates), 
@@ -330,6 +330,8 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
 
         ### define the sliding frequency ranges for each possible model
         binNos = np.arange(n_freqs)[freq_truth]
+
+	nBins = np.sum(freq_truth) ### the number of bins available to the model
 
 	### check that biggest bin still fits in model_sets
         if max_n_bins > nBins-num_proc:
