@@ -35,7 +35,7 @@ def recv_and_reshape(conn, shape, max_array_size=100, dtype=float):
 	receives a flattened array through conn and returns an array with shape defined by "shape"
 	"""
 #	flat_array = np.empty(shape, dtype).flatten()
-	flat_array = np.zero(shape, dtype).flatten()
+	flat_array = np.zeros(shape, dtype).flatten()
 	size = np.size(flat_array)
 	i=0
 	while i*max_array_size < size:
@@ -131,13 +131,29 @@ def check_theta_phi_psi(theta, phi, psi):
 #========================
 # arithmatic
 #========================
-def sum_logs(logs, base=np.exp(1)):
-	"""sums an array of logs accurately"""
+def sum_logs(logs, base=np.exp(1), coeffs=None):
+	"""
+	sums an array of logs accurately
+	if logs has multiple dimensions, sums over the last dimension (axis=-1)
+	"""
 	if not isinstance(logs, np.ndarray):
 		logs = np.array(logs)
 
-	_max = np.max(logs)
-	ans = np.sum(base**(logs-_max))
+	logs_shape = np.shape(logs)
+
+	if coeffs==None:
+		coeffs = np.ones(logs_shape[-1],float)
+	elif len(coeffs) != logs_shape[-1]:
+		raise ValueError, "len(coeffs)=%d != np.shape(logs)[-1]=%d"%(len(coeffs), logs_shapes[axis])
+
+	_max = np.max(logs, axis=-1)
+	outer_max = np.reshape( np.outer( np.max(logs, axis=-1), np.ones(logs_shape[-1],float) ), logs_shape)
+
+#	print np.shape(coeffs)
+#	print np.shape(_max)
+#	print logs_shape
+
+	ans = np.sum(coeffs*base**(logs-outer_max), axis=-1)
 
 	return np.log(ans)*np.log(base) + _max
 
