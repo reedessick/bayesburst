@@ -541,13 +541,17 @@ class Posterior(object):
 		n_gaus = self.hPrior.n_gaus
 		self.P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)
 		self.invP = np.empty_like(self.P, complex)
+		self.detinvP = np.empty((n_pix, n_freqs, n_gaus), complex)
                 for g in xrange(n_gaus):
 			Z = np.empty_like(A, complex)
-			Z[:] = self.hPrior.incovariance[:,:,:,g]
+			Z[:] = self.hPrior.invcovariance[:,:,:,g]
 
-                        self.P[:,:,:,:,g] = (A + Z)
-			self.invP[:,:,:,:,g] = linalg.inv( self.P[:,:,:,:,g] ) ### this appears to be VERY memory intensive...
+			P = A+Z
+
+                        self.P[:,:,:,:,g] = P
+			self.invP[:,:,:,:,g] = linalg.inv( P ) ### this appears to be VERY memory intensive...
 			                                             ### perhaps prohibitively so
+			self.detinvP[:,:,g] = 1.0/linalg.det( P )
 
         ###
         def __set_P_mp(self, n_pix, A, connection, max_array_size=100):
@@ -560,14 +564,19 @@ class Posterior(object):
 
 		P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex)
 		invP = np.empty_like(P, complex)
+		detinvP = np.empty((n_pix, n_freqs, n_gaus), complex)
 		for g in xrange(n_gaus):
 			Z = np.empty_like(A, complex)
-			Z[:] = self.hPrior.incovariance[:,:,:,g]
+			Z[:] = self.hPrior.invcovariance[:,:,:,g]
 
-			P[:,:,:,:,g] = A+Z
-			invP[:,:,:,:,g] = linalg.inv( P[:,:,:,:,g] )
+			this_P = A+Z
+
+			P[:,:,:,:,g] = this_P
+			invP[:,:,:,:,g] = linalg.inv( this_P )
+			detinvP[:,:,g] = linalg.det( this_P )
 		utils.flatten_and_send(connection, P, max_array_size=max_array_size)
 		utils.flatten_and_send(connection, invP, max_array_size=max_array_size)
+		utils.flatten_and_send(connection, detinvP, max_array_size=max_array_size)
 
         ###
         def set_P_mp(self, num_proc=1, max_proc=1, max_array_size=100):
@@ -589,6 +598,7 @@ class Posterior(object):
 
                 self.P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)
                 self.invP = np.empty_like(self.P, complex)
+		self.detinvP = np.empty((n_pix, n_freqs, n_gaus), complex)
                 for i in xrange(num_proc):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
@@ -599,6 +609,8 @@ class Posterior(object):
                                         shape = np.shape(self.P[start:end])
                                         self.P[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
                                         self.invP[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+					shape = np.shape(self.detinvP[start:end])
+					self.detinvP[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
 
                         ### launch new process
                         start = i*npix_per_proc ### define ranges of pixels for this process
@@ -619,6 +631,8 @@ class Posterior(object):
                         shape = np.shape(self.P[start:end])
                         self.P[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
                         self.invP[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
+			shape = np.shape(self.detinvP[start:end])
+			self.detinvP[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
 
 	#=========================================
 	# check_* functions
@@ -1000,7 +1014,7 @@ class Posterior(object):
 			invP = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), float) ### (A+Z)^{-1}
 			for g in xrange(n_gaus):
 	                        Z = np.empty_like(A, complex)
-        	                Z[:] = self.hPrior.incovariance[:,:,:,g]
+        	                Z[:] = self.hPrior.invcovariance[:,:,:,g]
         	                invP[:,:,:,:,g] = linalg.inv(A + Z)
                         B = self.network.B(theta, phi, psi, no_psd=False)
 			dataB = np.zeros((n_pix, n_freqs, n_pol), complex) ### transformed data
@@ -1056,7 +1070,8 @@ class Posterior(object):
 	
 		### define frequency spacing (important for determinant terms)
 		df = self.seglen**-1
-	
+		npol_logdf = np.log(df)*n_pol
+
 		### iterate over all sky positions
 #		for ipix, (t,p) in enumerate(zip(theta, phi)):
 #			x = dataB[ipix]
@@ -1070,8 +1085,8 @@ class Posterior(object):
 #						ans[ipix,g,:] += x_conj[:,j] * invP[ipix,:,j,k,g] * x[:,k]
 #
 #				### include determinant
-#				Z = self.hPrior.incovariance[:,:,:,g]
-#				ans[ipix,g,:] += ( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
+#				detZ = self.hPrior.detinvcovariance[:,g]
+#				ans[ipix,g,:] += ( np.log( self.detinvP[ipix,:,g]) + np.log( detZ ) ) / df
 #
 #			if diagnostic: ### break things up term-by-term for diagnostic purposes
 #				### compute mle estimate for strain (this may not be optimal for the likelihood calculation...)
@@ -1081,7 +1096,7 @@ class Posterior(object):
 #				n_eff = n_pol_eff[ipix]
 #				for g in xrange(n_gaus): ### iterate over gaussian terms
 #	
-#					Z = self.hPrior.incovariance[:,:,:,g]
+#					Z = self.hPrior.invcovariance[:,:,:,g]
 #
 #					### iterate over polarizations
 #					for j in xrange(n_eff): 
@@ -1097,15 +1112,17 @@ class Posterior(object):
 #								for n in xrange(n_eff):
 #									cts[ipix,g,:] += diff_conj * Z[:,j,m] * invP[ipix,:,m,n,g] * Z[:,n,k] * diff ### complete the square
 #
-#					det[ipix,g,:] = ( np.log( linalg.det(invP[ipix,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
+#					detZ = self.hPrior.invcovariance[:,g]
+#					det[ipix,g,:] = ( np.log( self.detinvP[ipix,:,g] ) + np.log( detZ ) ) ) / df ### determinant
 
 		### compute ans
 		for g in xrange(n_gaus):
 			for j in xrange(n_pol):
 				for k in xrange(n_pol):
 					ans[:,g,:] += dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]
-			Z = self.hPrior.incovariance[:,:,:,g]
-			ans[:,g,:] += ( np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
+			detZ = self.hPrior.detinvcovariance[:,g]
+			ans[:,g,:] += ( np.log( self.detinvP[:,:,g]) + np.log( detZ ) ) / df
+#			ans[:,g,:] += ( np.log( self.detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
 
 		### diagnostic arrays
 		if diagnostic:
@@ -1119,7 +1136,7 @@ class Posterior(object):
 
 			### cts		
 			for g in xrange(n_gaus):
-				Z = self.hPrior.incovariance[:,:,:,g]
+				Z = self.hPrior.invcovariance[:,:,:,g]
 				for j in xrange(n_pol):
 					diff_conj = h_mle_conj[:,:,j] - means_conj[:,j,g]
 					for k in xrange(n_pol):
@@ -1132,40 +1149,13 @@ class Posterior(object):
 
 			### det
 			for g in xrange(n_gaus):
-				Z = self.hPrior.incovariance[:,:,:,g]
-				det[:,g,:] = ( np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
-
-#		ones_pol_gaus = np.ones((n_pol,n_gaus),float)
-#		ones_gaus = np.ones((n_gaus,),float)
-
-#		### broadcast to do everything...
-#		ans = np.sum(np.sum( np.reshape(np.outer(dataB_conj, ones_pol_gaus), (n_pix, n_freqs, n_pol, n_pol, n_gaus)) * invP, axis=2) * np.reshape(np.outer(dataB, ones_gaus), (n_pix, n_freqs, n_pol, n_gaus)), axis=2)
-
-#		### iterate over gaussians
-#		for g in xrange(n_gaus):
-#			for j in xrange(n_pol): ### sum over polarizations
-#				for k in xrange(n_pol):
-#					ans[:,g,:] += dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]
-#			Z = self.hPrior.incovariance[:,:,:,g]
-#			ans[:,g,:] += (  np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
-#			ans[:,:,g] += (  np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df
-			
-#		if diagnostic:
-#			raise ValueError, "THIS IS BROKEN RIGHT NOW"
-#			ones_npix = np.ones((n_pix,),float)
-#			ones_pol = np.ones((n_pol,),float)
-#
-#			diff = np.reshape(np.outer(h_mle, np.ones(n_gaus)), (n_pix, n_freqs, n_pol, n_gaus)) - np.reshape(np.outer(ones_npix, means), (n_pix, n_freqs, n_pol, n_gaus))
-#			diff_conj = np.conjugate(diff)
-#
-#			_mle = np.sum(np.sum(np.outer(h_mle_conj, ones_pol), (n_pix, n_freqs, n_pol, n_pol * A, axis=2) * h_mle, axis=2)
-#			for g in xrange(n_gaus):
-#				Z = self.hPrior.incovaraince[:,:,:,g]
-#				npix_Z = np.outer(ones_npix,Z)
-#				mle[:,g,:] += _mle
-#				cts[:,g,:] -= np.sum(np.sum(np.outer(diff_conj, ones_pol) *npix_Z, axis=2) * diff, axis=2)
-#				cts[:,g,:] += np.sum( np.sum( np.outer(np.sum(diff_conj * npix_Z, axis=2), ones_pol) * invP[:,:,:,:,g], axis=2) * np.sum(npix_Z * diff, axis=2), axis=2)
-#				det[:,g,:] = ( np.log( linalg.det(invP[:,:,:,:,g]/df) ) + np.log( linalg.det(Z*df) ) ) / df ### determinant
+				detZ = self.hPrior.detinvcovariance[:,g]
+				det[:,g,:] = ( np.log( self.detinvP[:,:,g]) + np.log( detZ ) ) / df ### determinant includes detZ because we need to normalize the individual frequencies
+				                                                                    ### see write-up for tentative rationalization
+				                                                                    ### practically, this is needed to prevent determinant-domination for all terms
+				                                                                    ###   without these controlling detZ terms, the determinant can diverge around singular points for A
+				                                                                    ###   in the limit of large numbers of frequency bins.
+#				det[:,g,:] = ( np.log( self.detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
 
 		if connection:
 			### send ans
@@ -1316,12 +1306,14 @@ class Posterior(object):
 
 		### sum over frequencies
 		df = self.seglen**-1 ### frequency spacing
-		summed_log_posterior_elements = np.sum(log_posterior_elements[:,:,freq_truth], axis=2) * df
+		summed_log_posterior_elements = np.sum(log_posterior_elements[:,:,freq_truth], axis=2) * df ### df is included because we're approximating an integral
 
 		### sum over gaussians
-		log_posterior_weight = np.empty((n_pix,),float)
-		for ipix in xrange(len(summed_log_posterior_elements)):
-			log_posterior_weight[ipix] = utils.sum_logs(summed_log_posterior_elements[ipix]+np.log(self.hPrior.amplitudes)) ### add the gaussian amplitudes only after summing over frequencies
+		log_posterior_weight = utils.sum_logs(summed_log_posterior_elements, coeffs=self.hPrior.amplitudes) ### amplitudes are the coefficients
+		                                                                                                    ### sum over gaussians is implicitly assumed within utils.sum_logs (axis=-1)
+		
+		### add normalization for prior using the model embodied by "freq_truth"
+		log_posterior_weight += self.hPrior.lognorm(freq_truth)
 
 		### add contribution of angular Prior
 		log_posterior_weight += np.log( self.angPrior(theta=thetas, phi=phis) )
