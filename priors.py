@@ -99,7 +99,7 @@ class hPrior(object):
 
 		self.n_freqs = n_freqs
 		self.freqs = freqs
-		                                                        
+		self.df = freqs[1]-freqs[0]                                                
 
 	###
 	def set_means(self, means, n_freqs=1, n_pol=2, n_gaus=1):
@@ -169,10 +169,13 @@ class hPrior(object):
 			self.n_gaus = n_gaus
 			self.n_pol = n_pol
 
-		### set up inverse-covariance
-		self.incovariance = np.zeros_like(covariance, dtype=complex)
+		### set up inverse-covariance and det_invcovariance
+		self.invcovariance = np.zeros_like(covariance, dtype=complex)
+		self.detinvcovariance = np.zeros((n_freqs, n_gaus), dtype=complex)
                 for n in xrange(n_gaus):
-                        self.incovariance[:,:,:,n] = linalg.inv(self.covariance[:,:,:,n])
+			invc = linalg.inv(self.covariance[:,:,:,n])
+                        self.invcovariance[:,:,:,n] = invc
+			self.detinvcovariance[:,n] = linalg.det(invc)
 			
 	###
 	def set_amplitudes(self, amplitudes, n_gaus=1):
@@ -193,13 +196,34 @@ class hPrior(object):
 			self.amplitudes = amplitudes
 			self.n_gaus = n_gaus
 
+	###
+	def lognorm(self, freq_truth):
+		"""
+		computes the proper normalization for this prior assuming a model (freq_truth)
+		return log(norm)
+
+		WARNING: this factor will act as an overall scale on the posterior (constant for all pixels) and is only important for the evidence
+			==> getting this wrong will produce the wrong evidence
+		"""
+		return np.log( np.sum( self.amplitudes ) ) ### assumes individual kernals are normalized.
+#		#                                               det|Z|                        df**n_pol            sum over freqs      use amplitudes
+#		return -utils.sum_logs(np.sum(np.log(self.detinvcovariance[freq_truth]) + self.n_pol*np.log(self.df), axis=0), coeffs=self.amplitudes)
+
+	###
+	def norm(self, freq_truth):
+		"""
+		computes the proper normalizatoin for this prior assuming a model (freq_truth)
+		"""
+		return np.exp(self.lognorm(freq_truth))
 
 	###
 	def __call__(self, h):
 		"""
 		evaluates the prior for the strain "h"
+			this call sums h into h_rss and uses the univariate decomposition
+			we expect this to hold for a marginalized distribution on the vector {h}
 
-		returns log(prior)
+		returns prior
 
                 We require:
 			*h is a 2-D array
@@ -233,12 +257,12 @@ class hPrior(object):
 			raise ValueError, "bad shape for h"
 
 		### compute prior evaluated for this strain
-#		p = 0.0
-		p = np.empty((self.n_gaus),float)
+		p = 0.0
+#		p = np.empty((self.n_gaus),float)
 		for n in xrange(self.n_gaus): ### sum over all gaussian terms
 			d = h - self.means[:,:,n] ### difference from mean values
 			dc = np.conj(d)
-			m = self.incovariance[:,:,:,n] ### covariance matricies
+			m = self.invcovariance[:,:,:,n] ### covariance matricies
 
 			### compute exponential term			
 			e = np.zeros_like(self.freqs, float)
@@ -247,13 +271,17 @@ class hPrior(object):
 					e -= np.real(dc[:,i] * m[:,i,j] * d[:,j]) ### we expect this to be a real number, so we cast it to reals
 
 			### normalization for this gaussian term
-			norm = np.mean( np.log( np.real(linalg.det(m)) ) ) - self.n_pol*np.log( np.pi ) 
+#			norm = np.mean( np.log( np.real(linalg.det(m)) ) ) - self.n_pol*np.log( np.pi )	### taking the mean here implies that our normalization convention is not consistent!!!
+#			norm = np.log( np.real(linalg.det(m)) ) - self.n_pol*np.log( np.pi ) ### this corresponds to our normalization conventions
+#			norm = np.zeros((self.n_freqs,),float)
 
 			### insert into prior array
-			p[n] = np.log(self.amplitudes[n]) + np.sum(e) + norm
-#			p += self.amplitudes[n] * np.exp( np.sum(e) )
+#			p[n] = np.log(self.amplitudes[n]) + np.sum(e) #+ np.sum(norm)
+			p += self.amplitudes[n] * np.exp( np.sum(e)*self.df )    ### NEW NORMALIZATION SCHEME CONSISTENT WITH CURRENT pareto_amps
+			                                                 ### RETURNS THE SAME RESULT INDEPENDENT OF THE NUMBER OF BINS!
 
-		return utils.sum_logs(p) ### return log(prior)
+		return p
+#		return utils.sum_logs(p) ### return log(prior)
 #		return max( np.exp(utils.sum_logs(p)), 0.0)
 
         ###
@@ -266,16 +294,19 @@ class hPrior(object):
                 fig = plt.figure(fig_ind)
 		ax = plt.subplot(1,1,1)
 
-		x = np.logspace(np.log10(xmin),np.log10(xmax),npts)
+		x = np.logspace(np.log10(xmin),np.log10(xmax),npts)/self.df
 
-		logp = np.array([self(X/(self.n_freqs*self.n_pol)**0.5) for X in x])
-		logp -= utils.sum_logs(logp)
-		p = np.exp(logp)
-#		p = np.array([self(X/(self.n_freqs*self.n_pol)**0.5) for X in x])
+#		logp = np.array([self(X/(self.n_freqs*self.n_pol)**0.5) for X in x])
+#		logp -= utils.sum_logs(logp)
+#
+#		p = np.exp(logp)
+		p = np.array([self(X/(self.n_freqs*self.n_pol)**0.5) for X in x])
 
 		ax.loglog(x, p )
+#		ax.plot(x, logp/np.log(10.0))
+#		ax.set_xscale('log')
 
-		ax.set_xlabel("$h_{rss}$")
+		ax.set_xlabel("$\log_{10}(h_{rss})$")
 		ax.set_ylabel("$p(h)$")
 		
 		ax.grid(grid, which="both")
@@ -592,14 +623,14 @@ def isotropic_to_constrained(covariances, alpha, psi, theta, r=1e-10):
 
 	and expect the inverse-covariance in this basis to be
 		         /  1/v       0   \ 
-		incov =  |                |
+		invcov =  |                |
 		         \   0    1/(r*v) /
 
 	where v is the isotropic covariance : cov[i,i] = v
 
 	In the h1,h2 basis, this means our inverse-covariance becomes
 		        /     cos(alpha)**2/v + sin(alpha)**2/(r*v)      sin(alpha)*cos(alpha)*e**(i*psi)*(1 - 1/r)/v  \ 
-		incov = |                                                                                              |
+		invcov = |                                                                                              |
                         \ sin(alpha)*cos(alpha)*e**(-i*psi)*(1 - 1/r)/v      sin(alpha)**2/v + cos(alpha)**2/(r*v)     /
 
 	we also apply the rotation matrix
@@ -607,9 +638,9 @@ def isotropic_to_constrained(covariances, alpha, psi, theta, r=1e-10):
 		R = |                         | = transpose(R)
 		    \ cos(theta)  -sin(theta) /
 
-	to rotate h_1,h_2 into some other frame, which results in the final incov matrix
+	to rotate h_1,h_2 into some other frame, which results in the final invcov matrix
 
-		rotated_incov = R * incov * R 
+		rotated_invcov = R * invcov * R 
 
 	returns constrained_covariances
 	"""
@@ -645,20 +676,20 @@ def isotropic_to_constrained(covariances, alpha, psi, theta, r=1e-10):
 			v = cov[1,1] ### pull out variance
 
 			### compute constrained inverse-covariance
-			constrained_incov = np.empty_like(cov)
+			constrained_invcov = np.empty_like(cov)
 			a = cosalpha**2/v + sinalpha**2/(r*v)
 			b = sinalpha*cosalpha*(cospsi + 1.0j*sinpsi)*(1-1.0/r)/v
 			c = sinalpha*cosalpha*(cospsi - 1.0j*sinpsi)*(1-1.0/r)/v
 			d = sinalpha**2/v + cosalpha**2/(r*v)
 
 			### apply rotation matrix
-			constrained_incov[0,0] = a*sintheta**2 + b*sintheta*costheta +c*sintheta*costheta + d*costheta**2
-			constrained_incov[0,1] = a*sintheta*costheta - b*sintheta**2 + c*costheta**2 - d*sintheta*costheta
-			constrained_incov[1,0] = a*sintheta*costheta + b*costheta**2 - c*sintheta**2 - d*sintheta*costheta
-			constrained_incov[1,1] = a*costheta**2 - b*sitheta*costheta - c*sintheta*costheta + d*sintheta**2
+			constrained_invcov[0,0] = a*sintheta**2 + b*sintheta*costheta +c*sintheta*costheta + d*costheta**2
+			constrained_invcov[0,1] = a*sintheta*costheta - b*sintheta**2 + c*costheta**2 - d*sintheta*costheta
+			constrained_invcov[1,0] = a*sintheta*costheta + b*costheta**2 - c*sintheta**2 - d*sintheta*costheta
+			constrained_invcov[1,1] = a*costheta**2 - b*sitheta*costheta - c*sintheta*costheta + d*sintheta**2
 
 			### fill in constrained_covariance
-			constrained_covariances[f,:,:,g] = linalg.inv(constrained_incov)
+			constrained_covariances[f,:,:,g] = linalg.inv(constrained_invcov)
 
 	return constrained_covariances
 
@@ -971,6 +1002,78 @@ def pareto_amplitudes(a, variances, n_pol=1):
         n_gaus = len(variances)
 
 
+	### hopefully this is the correct form
+	"""
+	we attempt to fit a univariate distribution (in h_rss) using a chi2 minimization
+
+	chi2 = int dx ( ( x**(-a) - sum C_n K_n ) / (x**-a) )**2
+
+	where K_n = (2*pi*v_n)**-0.5 * exp( - x**2 / 2*v_n )
+
+	=> int x**a Km = sum C_n int x**(2a) K_n K_m
+           v_m**(a/2) I(a) = sum C_n v_mn**((1+2a)/2) (v_m*v_n)**(-1) Y(a)    where I(a) and Y(a) are non-dimensional integrals
+                                                                              v_mn = v_m*v_m / (v_m + v_n)
+           The C_n are determined through straightforward linear algebra
+	"""
+
+	### Distribution for normalized univariate kernals:
+	### we may want to handle the smll numbers more carefully, because we start to run into problems with float precision (setting things to zero).
+	###   we can do something like utils.sum_logs where we subtract out the maximum value, and then do the manipulation, only to put in the maximum value at the end.
+	###   for right now, this appears to work well enough.
+
+	### build matrix from RHS
+        M = np.empty((n_gaus, n_gaus), float)
+        for m in xrange(n_gaus):
+                v_m = variances[m]
+                M[m,m] = 2**-(0.5+a) * v_m**(a-0.5)
+                for n in xrange(m+1, n_gaus):
+                        v_n = variances[n]
+                        M[n,m] = M[m,n] = (v_m+v_n)**-(0.5+a) * (v_m*v_n)**a
+
+        ### invert matrix from RHS
+        invM = linalg.inv(M)
+
+        ### compute coefficients
+        vec = variances**(0.5*a)
+        C_n = np.sum( linalg.inv(M)*(variances**(0.5*(1+a))), axis=1) ### take the inverse and matrix product
+
+        ### normalize coefficients?
+        C_n /= np.sum(C_n)
+
+        return C_n
+
+
+	'''
+	Decomposition for un-normalized univariate kernals
+
+	### build matrix from RHS
+	M = np.empty((n_gaus, n_gaus), float)
+	for m in xrange(n_gaus):
+		v_m = variances[m]
+		M[m,m] = (0.5*v_m)**(0.5+a)
+		for n in xrange(m+1, n_gaus):
+			v_n = variances[n]
+			v_mn = v_m*v_n / (v_m + v_n)
+			M[n,m] = M[m,n] = v_mn**(0.5+a)
+
+	### invert matrix from RHS
+	invM = linalg.inv(M)
+
+	### compute coefficients
+	vec = variances**(0.5*(1+a))
+	C_n = np.sum( linalg.inv(M)*(variances**(0.5*(1+a))), axis=1) ### take the inverse and matrix product
+
+	### normalize coefficients?
+	C_n /= np.max(C_n)
+
+	return C_n
+	'''
+
+	'''
+
+	OLD PROCEEDURE THAT IS BELIEVED TO BE FAULTY
+
+
 	"""
 	a -= 1 ### Not sure where this factor comes from...but it makes p(h) scale correctly...
 
@@ -1006,4 +1109,4 @@ def pareto_amplitudes(a, variances, n_pol=1):
 	### if gaussian kernels are L1 normalized, then we shouldn't include that normalization in the definition of our amplitudes
 	### this makes things simpler for functional integration. We normalize each kernel separately, so we don't have to worry about any of those factors post facto
 	return C / np.sum(C) # = C * (2*np.pi*variances)**-0.5 / np.sum( C * (2*np.pi*variances)**-0.5 * (2*np.pi*variances)**0.5 )
-
+	'''
