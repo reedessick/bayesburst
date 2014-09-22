@@ -274,7 +274,8 @@ class hPrior(object):
 					e -= np.real(dc[:,i] * m[:,i,j] * d[:,j]) ### we expect this to be a real number, so we cast it to reals
 
 			### insert into prior array
-			p += self.amplitudes[n] * np.exp( np.sum(e)*self.df )    
+			mean_variance = np.exp( np.mean( np.log( linalg.det(self.covariance[:,:,:,n]) )*(1.0/self.n_pol) ) )
+			p += self.amplitudes[n] * np.exp( np.sum(e)*self.df ) / (2*np.pi*mean_variance)**0.5
 
 		return p
 
@@ -917,6 +918,41 @@ def hpri_neg4(len_freqs, num_pol, Nbins):
         return amplitudes, means, covariance, num_gaus
 
 ###
+def malmquist_pareto(a, n_freqs, n_pol, variances, break_variance):
+	"""
+	computes a "malmquist" pareto distribution, which drives the prior to zero as x->0 with a single gaussian term with variance=break_variance
+	delegates to pareto_amps(variances) to obtain the decomposition into a series of gaussians
+	appends a single gaussian at the beginning (typically break_variance < variances)
+	"""
+	if not isinstance(variances, np.ndarray):
+                variances = np.array(variances)
+        if len(np.shape(variances)) != 1:
+                raise ValueError, "bad shape for variances"
+
+        n_gaus = len(variances)+1
+
+        ### compute amplitudes
+        amplitudes = pareto_amplitudes(a, variances, n_pol=n_pol)
+
+        ### compute covariance in correct array format
+        covariances = np.zeros((n_freqs,n_pol,n_pol,n_gaus),float)
+        for i in xrange(n_pol): ### input diagonal elements
+		covariances[:,i,i,0] = 2*break_variance
+	for n in xrange(1,n_gaus):
+		v = 2*variances[n-1]
+		for i in xrange(n_pol):
+	                covariances[:,i,i,n] = v
+
+        ### instantiate means in correct array format
+        means = np.zeros((n_freqs, n_pol, n_gaus), float)
+
+	### figure out the correct amplitude to cancel the rest of the terms as x->0
+	p_0 = np.sum(amplitudes*(2*np.pi*variances)**-0.5)
+	break_amp = -p_0 * (2*np.pi*break_variance)**0.5
+
+        return means, covariances, np.concatenate((np.array([break_amp]),amplitudes))
+
+###
 def pareto(a, n_freqs, n_pol, variances):
 	"""
 	computes the required input for a Prior object using the pareto distribution
@@ -937,10 +973,10 @@ def pareto(a, n_freqs, n_pol, variances):
 
 	### compute covariance in correct array format
 	covariances = np.zeros((n_freqs,n_pol,n_pol,n_gaus),float)
-	for i in xrange(n_pol):
-		covariances[:,i,i,:] = 1
 	for n in xrange(n_gaus):
-		covariances[:,:,:,n] *= 2*variances[n]
+		v = 2*variances[n]
+		for i in xrange(n_pol):
+			covariances[:,i,i,:] = v
 	
 	### instantiate means in correct array format
 	means = np.zeros((n_freqs, n_pol, n_gaus), float)
@@ -1001,7 +1037,9 @@ def pareto_amplitudes(a, variances, n_pol=1):
 
         ### compute coefficients
         vec = variances**(0.5*a)
-        C_n = np.sum( linalg.inv(M)*(variances**(0.5*(1+a))), axis=1) ### take the inverse and matrix product
+
+	### take the inverse and matrix product
+        C_n = np.sum( invM*vec, axis=1) ### take the inverse and matrix product
 
         ### normalize coefficients?
         C_n /= np.sum(C_n)
