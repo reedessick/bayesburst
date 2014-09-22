@@ -831,15 +831,6 @@ class Posterior(object):
 		for j in xrange(n_pol_eff):
 			for k in xrange(n_pol_eff):
 				mle_h[:,:,j] += invA[:,:,j,k] * dataB[:,:,k]
-#		mle_h = np.zeros((n_pix, n_freqs, n_pol_eff), 'complex')  #initialize h_ML as 3-D array (N, n_freqs, n_pol_eff)
-#		for ipix in xrange(n_pix):
-#			for j in xrange(n_pol_eff):
-#				for k in xrange(n_pol_eff):
-#					for beta in xrange(n_ifo):
-#						mle_h[ipix,:,j] += invA[ipix,:,j,k] * B[ipix,:,k,beta] * self.data[:,beta]
-	
-		### can we do this faster through array broadcasting?
-#		mle_h = np.sum( invA * np.reshape( np.outer( np.sum(B*np.reshape(np.outer( self.data.flatten(), np.ones((n_pol,)) ), (n_freqs, n_pol, n_ifo)), axis=2), np.ones((n_pol,))), (n_pix, n_freqs, n_pol, n_pol)), axis=3)
 
 		if connection:
 			utils.flatten_and_send(connection, mle_h, max_array_size=max_array_size)
@@ -1006,7 +997,6 @@ class Posterior(object):
                                         raise ValueError, "bad shape for B"
 
 			n_pix, n_freqs, n_pol, n_gauss, invP = self.check_P(invP, n_pix, self.n_pol)
-#                	n_pix, n_freqs, n_pol, n_ifo, B = self.check_B(B, n_pix, self.n_pol)
 			n_pix, n_freqs, n_pol, dataB = self.check_dataB(dataB, n_pix, self.n_pol)
 			n_pix, n_freqs, n_pol, dataB_conj = self.check_dataB(dataB_conj, n_pix, self.n_pol)
 		else:
@@ -1072,49 +1062,6 @@ class Posterior(object):
 		df = self.seglen**-1
 		npol_logdf = np.log(df)*n_pol
 
-		### iterate over all sky positions
-#		for ipix, (t,p) in enumerate(zip(theta, phi)):
-#			x = dataB[ipix]
-#			x_conj = dataB_conj[ipix]
-#
-#			### compute ans. this formulation requires zero-mean gaussian prior decomposition
-#			for g in xrange(n_gaus):
-#				### sum over polarizations and compute ans
-#				for j in xrange(n_pol):
-#					for k in xrange(n_pol):
-#						ans[ipix,g,:] += x_conj[:,j] * invP[ipix,:,j,k,g] * x[:,k]
-#
-#				### include determinant
-#				detZ = self.hPrior.detinvcovariance[:,g]
-#				ans[ipix,g,:] += ( np.log( self.detinvP[ipix,:,g]) + np.log( detZ ) ) / df
-#
-#			if diagnostic: ### break things up term-by-term for diagnostic purposes
-#				### compute mle estimate for strain (this may not be optimal for the likelihood calculation...)
-#				h = h_mle[ipix]	
-#				h_conj = np.conjugate(h)
-#					
-#				n_eff = n_pol_eff[ipix]
-#				for g in xrange(n_gaus): ### iterate over gaussian terms
-#	
-#					Z = self.hPrior.invcovariance[:,:,:,g]
-#
-#					### iterate over polarizations
-#					for j in xrange(n_eff): 
-#						diff_conj = h_conj[:,j] - means_conj[:,j,g] ### calculate displacement from mean
-#	
-#						for k in xrange(n_eff):
-#							diff = h[:,k] - means[:,k,g] ### calculate displacement from mean
-#							
-#							mle[ipix,g,:] += h_conj[:,j] * A[ipix,:,j,k] * h[:,k] ### maximum likelihood estimate
-#							cts[ipix,g,:] -= diff_conj * Z[:,j,k] * diff ### complete the square
-#						
-#							for m in xrange(n_eff):
-#								for n in xrange(n_eff):
-#									cts[ipix,g,:] += diff_conj * Z[:,j,m] * invP[ipix,:,m,n,g] * Z[:,n,k] * diff ### complete the square
-#
-#					detZ = self.hPrior.invcovariance[:,g]
-#					det[ipix,g,:] = ( np.log( self.detinvP[ipix,:,g] ) + np.log( detZ ) ) ) / df ### determinant
-
 		### compute ans
 		for g in xrange(n_gaus):
 			for j in xrange(n_pol):
@@ -1170,10 +1117,6 @@ class Posterior(object):
 				utils.flatten_and_send(connection, cts, max_array_size=max_array_size)
 				### send det
 				utils.flatten_and_send(connection, det, max_array_size=max_array_size)
-#			if diagnostic:
-#				connection.send((ans, n_pol_eff, (mle, cts, det)))
-#			else:
-#				connection.send((ans, n_pol_eff))
 		else:
 			if diagnostic:
 				return ans, n_pol_eff, (mle, cts, det)
@@ -1396,45 +1339,6 @@ class Posterior(object):
 
 		return np.exp( self.log_posterior_mp(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size) )
 
-#		n_pix, theta, phi, psi = self.check_theta_phi_psi(thetas, phis, 0.0)
-#                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
-#                procs = []
-#
-#                posterior_weight = np.empty((n_pix,),float)
-#                for i in xrange(num_proc):
-#                        if len(procs): ### if we already have some processes launched
-#                                ### reap old processes
-#                                if len(procs) >= max_proc:
-#                                        p, start, end, con1 = procs.pop()
-#
-#                                ### fill in data
-#                                shape = np.shape(posterior_weight[start:end])
-#                                posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
-#
-#                        ### launch new process
-#                        start = i*npix_per_proc ### define ranges of pixels for this process
-#                        end = start + npix_per_proc
-#
-#                        _theta = theta[start:end] ### pull out only those ranges of relevant arrays
-#                        _phi = phi[start:end]
-#                        _lpe = log_posterior_elements[start:end]
-#
-#                        ### launch process
-#                        con1, con2 = mp.Pipe()
-#                        p = mp.Process(target=self.posterior, args=(_theta, _phi, _lpe, n_pol_eff, freq_truth, False, con2, max_array_size))
-#                        p.start()
-#                        con2.close()
-#                        procs.append( (p, start, end, con1) )
-#                while len(procs):
-#                        p, start, end, con1 = procs.pop()
-#                        shape = np.shape(posterior_weight[start:end])
-#                        posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
-#
-#		if normalize:
-#			posterior_weight /= np.sum(posterior_weight)
-#
-#                return posterior_weight
-
 	###
 	def log_bayes(self, log_posterior, connection=None, max_array_size=100):
 		""" 
@@ -1443,7 +1347,6 @@ class Posterior(object):
 		"""
 		if connection:
 			connection.send( utils.sum_logs(log_posterior) )
-#			utils.flatten_and_send(connection, utils.sum_logs(log_posterior), max_array_size=max_array_size)
 		else:
 			return utils.sum_logs(log_posterior)
 
@@ -1560,10 +1463,6 @@ class Posterior(object):
 			self.set_dataB_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		invP_dataB = (self.invP, self.dataB, self.dataB_conj)
 
-#		if self.A==None:
-#			self.set_A(self.n_pix, self.n_pol)
-#		A_invA = (self.A, self.invA)
-
 		log_posterior_elements, n_pol_eff = self.log_posterior_elements_mp(theta, phi, psi=0.0, invP_dataB=invP_dataB, A_invA=None, diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 		freq_truth = np.ones((self.n_freqs,), bool)
@@ -1584,9 +1483,4 @@ class Posterior(object):
 	hPrior = %s
 
 	angPrior = %s"""%(str(self.seglen), self.network, self.hPrior, self.angPrior)
-
-
-	#=========================================
-	# static methods?
-	#=========================================
 

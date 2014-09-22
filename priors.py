@@ -231,6 +231,9 @@ class hPrior(object):
 			if h is a 1-D array, we check to see if the shape matches either n_freqs or n_pol. 
 				if it does, we broadcast it to the correct 2-D array
 			if h is a scalar, we broadcast it to the correct 2-D array
+
+		computes:
+			sum C[n] * np.exp( - np.conj(h-means) * incovariance * (h-means) )
 		"""
 
 		### make sure h has the expected shape
@@ -258,7 +261,6 @@ class hPrior(object):
 
 		### compute prior evaluated for this strain
 		p = 0.0
-#		p = np.empty((self.n_gaus),float)
 		for n in xrange(self.n_gaus): ### sum over all gaussian terms
 			d = h - self.means[:,:,n] ### difference from mean values
 			dc = np.conj(d)
@@ -270,19 +272,10 @@ class hPrior(object):
 				for j in xrange(self.n_pol):
 					e -= np.real(dc[:,i] * m[:,i,j] * d[:,j]) ### we expect this to be a real number, so we cast it to reals
 
-			### normalization for this gaussian term
-#			norm = np.mean( np.log( np.real(linalg.det(m)) ) ) - self.n_pol*np.log( np.pi )	### taking the mean here implies that our normalization convention is not consistent!!!
-#			norm = np.log( np.real(linalg.det(m)) ) - self.n_pol*np.log( np.pi ) ### this corresponds to our normalization conventions
-#			norm = np.zeros((self.n_freqs,),float)
-
 			### insert into prior array
-#			p[n] = np.log(self.amplitudes[n]) + np.sum(e) #+ np.sum(norm)
-			p += self.amplitudes[n] * np.exp( np.sum(e)*self.df )    ### NEW NORMALIZATION SCHEME CONSISTENT WITH CURRENT pareto_amps
-			                                                 ### RETURNS THE SAME RESULT INDEPENDENT OF THE NUMBER OF BINS!
+			p += self.amplitudes[n] * np.exp( np.sum(e)*self.df )    
 
 		return p
-#		return utils.sum_logs(p) ### return log(prior)
-#		return max( np.exp(utils.sum_logs(p)), 0.0)
 
         ###
         def plot(self, figname, xmin=1, xmax=10, npts=1001, ymin=None, ymax=None, grid=False):
@@ -296,15 +289,9 @@ class hPrior(object):
 
 		x = np.logspace(np.log10(xmin),np.log10(xmax),npts)/self.df
 
-#		logp = np.array([self(X/(self.n_freqs*self.n_pol)**0.5) for X in x])
-#		logp -= utils.sum_logs(logp)
-#
-#		p = np.exp(logp)
 		p = np.array([self(X/(self.n_freqs*self.n_pol)**0.5) for X in x])
 
 		ax.loglog(x, p )
-#		ax.plot(x, logp/np.log(10.0))
-#		ax.set_xscale('log')
 
 		ax.set_xlabel("$\log_{10}(h_{rss})$")
 		ax.set_ylabel("$p(h)$")
@@ -963,7 +950,7 @@ def pareto(a, n_freqs, n_pol, variances):
 def pareto_amplitudes(a, variances, n_pol=1):
 	"""
 	computes the amplitudes corresponding to the supplied variances to optimally reconstruct a pareto distribution with exponent "a"
-	p(x) = x**-a ~ \sum_n C_n * exp( -x**2/(2*variances[n]) )
+	p(x) = x**-a ~ \sum_n C_n * (2*pi*variances[n])**-0.5 * exp( -x**2/(2*variances[n]) )
 
 	We require:
 		*variances is a 1-D array
@@ -971,29 +958,21 @@ def pareto_amplitudes(a, variances, n_pol=1):
 
 	returns C_n as a 1-D array
 
-
 	amplitudes are defined (up to an arbitrary constant) through a chi2-minimization
 
 		chi2 = \int dx [ (f - fhat) / f ]**2
 	
 	where 
 		f = x**-a
-		fhat = \sum C[n] exp( -x**2/(2*variances[n]) )
+		fhat = \sum C[n] * (2*pi*variances[n])**-0.5 * exp( -x**2/(2*variances[n]) )
 
 	a minimization with respect to C_n yields
 
-		C[n] = np.inv(M)[n,n] * (2*np.pi*variances[n])**-0.5
+	int x**a Km = sum C_n int x**(2a) K_n K_m
+           v_m**(a/2) I(a) = sum C_n v_mn**((1+2a)/2) (v_m*v_n)**(-1) Y(a)    where I(a) and Y(a) are non-dimensional integrals
+                                                                              v_mn = v_m*v_m / (v_m + v_n)
+           The C_n are determined through straightforward linear algebra
 
-	where
-
-		M[m,n] = \int dx [ (2*np.pi*variances[m])**-0.5 * (2*np.pi*variances[n])**-0.5 * exp( -(x**2/2) * (variances[m]**-1 + variances[n]**-1) ) / f ]
-		       \propto (variances[m]*variances[n])**-0.5 * (variances[m]**-1 + variances[n]**-1)**(-0.5*(a+1))
-
-	where the proportionality constant is independent of m,n
-
-	we return a list of coefficients normalized so that
-
-		\int dx [ \sum C[n] * exp( -x**2/(2*variances[n]) ) ] = 1
 	"""
 	if not isinstance(variances, np.ndarray):
                 variances = np.array(variances)
@@ -1002,22 +981,8 @@ def pareto_amplitudes(a, variances, n_pol=1):
         n_gaus = len(variances)
 
 
-	### hopefully this is the correct form
-	"""
-	we attempt to fit a univariate distribution (in h_rss) using a chi2 minimization
-
-	chi2 = int dx ( ( x**(-a) - sum C_n K_n ) / (x**-a) )**2
-
-	where K_n = (2*pi*v_n)**-0.5 * exp( - x**2 / 2*v_n )
-
-	=> int x**a Km = sum C_n int x**(2a) K_n K_m
-           v_m**(a/2) I(a) = sum C_n v_mn**((1+2a)/2) (v_m*v_n)**(-1) Y(a)    where I(a) and Y(a) are non-dimensional integrals
-                                                                              v_mn = v_m*v_m / (v_m + v_n)
-           The C_n are determined through straightforward linear algebra
-	"""
-
 	### Distribution for normalized univariate kernals:
-	### we may want to handle the smll numbers more carefully, because we start to run into problems with float precision (setting things to zero).
+	### we may want to handle the small numbers more carefully, because we start to run into problems with float precision (setting things to zero).
 	###   we can do something like utils.sum_logs where we subtract out the maximum value, and then do the manipulation, only to put in the maximum value at the end.
 	###   for right now, this appears to work well enough.
 
@@ -1041,72 +1006,3 @@ def pareto_amplitudes(a, variances, n_pol=1):
         C_n /= np.sum(C_n)
 
         return C_n
-
-
-	'''
-	Decomposition for un-normalized univariate kernals
-
-	### build matrix from RHS
-	M = np.empty((n_gaus, n_gaus), float)
-	for m in xrange(n_gaus):
-		v_m = variances[m]
-		M[m,m] = (0.5*v_m)**(0.5+a)
-		for n in xrange(m+1, n_gaus):
-			v_n = variances[n]
-			v_mn = v_m*v_n / (v_m + v_n)
-			M[n,m] = M[m,n] = v_mn**(0.5+a)
-
-	### invert matrix from RHS
-	invM = linalg.inv(M)
-
-	### compute coefficients
-	vec = variances**(0.5*(1+a))
-	C_n = np.sum( linalg.inv(M)*(variances**(0.5*(1+a))), axis=1) ### take the inverse and matrix product
-
-	### normalize coefficients?
-	C_n /= np.max(C_n)
-
-	return C_n
-	'''
-
-	'''
-
-	OLD PROCEEDURE THAT IS BELIEVED TO BE FAULTY
-
-
-	"""
-	a -= 1 ### Not sure where this factor comes from...but it makes p(h) scale correctly...
-
-	### construct the matrix M
-	M = np.empty((n_gaus,n_gaus),float) ### matrix representing the inner product in our gaussian basis
-	for i in xrange(n_gaus):
-		vi = variances[i]
-		M[i,i] = 2**(-0.5*(a+1)) * vi**(0.5*(a-1))
-		for j in xrange(i+1,n_gaus):
-			vj = variances[j]
-			M[i,j] = M[j,i] = (vi*vj)**-0.5 * (vi**-1 + vj**-1)**(-0.5*(a+1))
-	"""
-#	a *= 2
-	M = np.empty((n_gaus, n_gaus), float)
-	for i in xrange(n_gaus):
-		vi = variances[i]
-		M[i,i] = 2**-(n_pol+0.5*a) * vi**-(n_pol-0.5*a)
-		for j in xrange(i+1,n_gaus):
-			vj = variances[j]
-			M[i,j] = M[j,i] = (vi+vj)**-(n_pol+0.5*a) * (vi*vj)**(0.5*a)
-
-
-
-
-	### invert and extract diagonal, multiply by normalization factor
-#	C = np.diagonal(linalg.inv(M))
-	C = np.sum(linalg.inv(M), axis=0) ### sum over each row
-
-	### return coefficients that will produce a normalized 1-D prior
-	### we first multiply by the normalization factor to get correct scaling
-#	return C * (2*np.pi*variances)**-0.5 / np.sum(C) # = C * (2*np.pi*variances)**-0.5 / np.sum( C * (2*np.pi*variances)**-0.5 * (2*np.pi*variances)**0.5 )
-
-	### if gaussian kernels are L1 normalized, then we shouldn't include that normalization in the definition of our amplitudes
-	### this makes things simpler for functional integration. We normalize each kernel separately, so we don't have to worry about any of those factors post facto
-	return C / np.sum(C) # = C * (2*np.pi*variances)**-0.5 / np.sum( C * (2*np.pi*variances)**-0.5 * (2*np.pi*variances)**0.5 )
-	'''
