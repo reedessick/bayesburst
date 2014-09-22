@@ -97,8 +97,8 @@ nside_exp = 5
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
 
 n_ifo = len(network.detectors)
 
@@ -107,11 +107,11 @@ n_ifo = len(network.detectors)
 freq_truth = np.ones_like(freqs, bool)
 
 ### set up stuff for model selection
-n_bins = 30
+n_bins = 23
 
 min_n_bins = 20
-max_n_bins = 40
-dn_bins = 2
+max_n_bins = 26
+dn_bins = 1
 
 log_bayes_thr = 0
 generous_log_bayes_thr = -1
@@ -128,8 +128,8 @@ fo=200
 tau=0.010
 q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
 #hrss=2e-22 #network SNR ~50 (screaming)
-hrss=1e-22 #network SNR ~25 (cacophonous)
-#hrss=6e-23 #network SNR ~15 (loud)
+#hrss=1e-22 #network SNR ~25 (cacophonous)
+hrss=6e-23 #network SNR ~15 (loud)
 #hrss=5e-23 #network SNR ~ 12.5 (audible)
 #hrss=4e-23 #network SNR ~10 (quiet)
 #hrss=2e-23 #network SNR ~5 (silent)
@@ -740,7 +740,7 @@ if opts.posterior:
 if opts.model_selection:
 
 	import model_selection
-	'''
+	
         print "model_selection.log_bayes_cut"
         to=time.time()
         lbc_model, lbc_lb = model_selection.log_bayes_cut(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=True)
@@ -867,7 +867,7 @@ if opts.model_selection:
 
         print "writing posterior to file"
         hp.write_map(vb_posterior_filename, vb_posterior)
-	'''
+	
 	print "model_selection.variable_bandwidth(model_selection.log_bayes_cut)"
 	to=time.time()
 	generous_lbc_model = model_selection.log_bayes_cut(generous_log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=False)

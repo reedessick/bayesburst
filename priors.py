@@ -898,26 +898,6 @@ def isotropic_to_linear(means, covariances, amplitudes, r=1e-10, n_alpha_marge=6
 # Methods to compute standard priors
 #
 #=================================================
-def hpri_neg4(len_freqs, num_pol, Nbins):
-        """
-        Build the hprior of p(h) \propto hhrss^(-4)
-        """
-        num_gaus = 4
-        start_var = -45
-        variances = np.power(np.logspace(start=(num_gaus/4.)*start_var,stop=(num_gaus/4.)*start_var + (num_gaus - 1.),num=num_gaus), 4./num_gaus)
-        amp_powers = variances**(-2.)
-
-        amplitudes = (8.872256/num_gaus)*amp_powers*np.ones(num_gaus)/2.22e67  #1-D array (Gaussians)
-        means = np.zeros((len_freqs, num_pol, num_gaus))  #3-D array (frequencies x polarizations x Gaussians)
-        covariance = np.zeros((len_freqs, num_pol, num_pol, num_gaus))  #4-D array (frequencies x polarizations x polarizations x Gaussians)
-        for n in xrange(num_gaus):
-                for i in xrange(num_pol):
-                        for j in xrange(num_pol):
-                                if i == j:
-                                        covariance[:,i,j,n] = variances[n]/Nbins  #non-zero on polarization diagonals
-        return amplitudes, means, covariance, num_gaus
-
-###
 def malmquist_pareto(a, n_freqs, n_pol, variances, break_variance):
 	"""
 	computes a "malmquist" pareto distribution, which drives the prior to zero as x->0 with a single gaussian term with variance=break_variance
@@ -947,8 +927,8 @@ def malmquist_pareto(a, n_freqs, n_pol, variances, break_variance):
         means = np.zeros((n_freqs, n_pol, n_gaus), float)
 
 	### figure out the correct amplitude to cancel the rest of the terms as x->0
-	p_0 = np.sum(amplitudes*(2*np.pi*variances)**-0.5)
-	break_amp = -p_0 * (2*np.pi*break_variance)**0.5
+	p_0 = np.sum(amplitudes*variances**-0.5) ### the value of all the prior terms at x=0
+	break_amp = p_0 * break_variance**0.5 ### the amplitude required for the malmquist term to cancel the rest of the prior at x=0
 
         return means, covariances, np.concatenate((np.array([break_amp]),amplitudes))
 
@@ -976,7 +956,7 @@ def pareto(a, n_freqs, n_pol, variances):
 	for n in xrange(n_gaus):
 		v = 2*variances[n]
 		for i in xrange(n_pol):
-			covariances[:,i,i,:] = v
+			covariances[:,i,i,n] = v
 	
 	### instantiate means in correct array format
 	means = np.zeros((n_freqs, n_pol, n_gaus), float)
