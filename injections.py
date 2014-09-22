@@ -10,7 +10,7 @@ import utils
 # waveforms
 #=================================================
 ###
-def gaussian_t(t, to, tau, hrss, alpha=np.pi/2):
+def gaussian_t(t, to=0, tau=1, alpha=np.pi/2, hrss=1):
 	"""
 	basic gaussian in time domain
 	"""
@@ -18,7 +18,7 @@ def gaussian_t(t, to, tau, hrss, alpha=np.pi/2):
 	return np.outer(np.exp(-((t-to)/tau)**2 ), ho)
 
 ###
-def gaussian_f(f, to, tau, hrss, alpha=np.pi/2):
+def gaussian_f(f, to=0, tau=1, alpha=np.pi/2, hrss=1):
 	"""
 	basic gaussian in freq domain
 	"""
@@ -26,7 +26,7 @@ def gaussian_f(f, to, tau, hrss, alpha=np.pi/2):
 	return np.outer(np.exp(-(f*np.pi*tau)**2)*np.exp(+2j*np.pi*f*to), ho)
 
 ###
-def sinegaussian_t(t, to, phio, fo, tau, hrss, alpha=np.pi/2):
+def sinegaussian_t(t, to=0, phio=0, fo=1, tau=1, alpha=np.pi/2, hrss=1):
 	"""
 	basic sinegaussian in the time domain
 	"""
@@ -37,7 +37,7 @@ def sinegaussian_t(t, to, phio, fo, tau, hrss, alpha=np.pi/2):
 	return np.outer(np.exp( -(t-to)**2/(2*tau**2) ) * np.array( [np.cos(phs), np.sin(phs)] ), ho)
 
 ###
-def sinegaussian_f(f, to, phio, fo, tau, hrss, alpha=np.pi/2):
+def sinegaussian_f(f, to=0, phio=0, fo=1, tau=1, alpha=np.pi/2, hrss=1):
 	"""
 	basic sinegaussian in the freq domain
 	"""
@@ -97,56 +97,67 @@ def inject(network, h, theta, phi, psi=0.0):
 		
 		
 #=================================================
-# sampling distributions
+# distributions
 #=================================================
-def skypos_uni_vol(detectors, freqs, to, phio, fo, tau, hrss, alpha, snrcut, n_runs=1, num_pol=2):
+def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_snr=5, num_inj=1, max_trials=1):
 	"""
-	generate a sky position that is uniform in volume, subject to an SNR cutoff of snrcut
+	generates waveforms using waveform_func and waveform_args
+		waveform_args is passed vi waveform_func(..., **waveform_args)
+
+        sky positions are randomly drawn (uniformly over the sky)
+        
+        injections are only kept if the proposed position and hrss value produce network_snr > min_snr
+        procedure is repeated until num_inj events are found.
+
+	return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
 	"""
-	angles = np.zeros((n_runs, 2.))
-	snrs = np.zeros(n_runs)
-	
-	df_test = 0.1
-	freqs_test = np.arange(10., 2048., df_test)
+	max_trials = max(num_inj, max_trials)
 
-	test_network = utils.Network(detectors=detectors, freqs=freqs_test, Np = num_pol)
+	freqs = network.freqs
+	n_ifo = len(network.detectors)
 
-	h_test = sinegaussian_f(f=freqs_test, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=alpha)  #2-D array (frequencies x polarizations)
-	h_test_conj = np.conj(h_test)
+	### place holders for injection parameters
+	theta_inj = np.empty((n_inj,),float)
+	phi_inj = np.empty((n_inj,),float)
+	psi_inj = np.empty((n_inj,),float)
+	hrss_inj = np.empty((n_inj,),float)
+	snrs_inj = np.zeros((n_inj,n_ifo),float)
 	
-	h = sinegaussian_f(f=freqs, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=alpha)  #2-D array (frequencies x polarizations)
+	inj_id = 0
+	max_trials = 1000
+	for trial in xrange(max_trials):
+		if inj_id >= num_inj: ### we have enough
+			break
+
+		### call random.rand only once each epoch
+		theta, phi, psi, hrss = np.random.rand(4)
+
+		### draw position and polarization angle
+		theta = np.arccos( theta ) ### uniform in cos(theta)
+		phi *= 2*np.pi ### uniform in phi
+		psi *= 2*np.pi ### uniform in psi (not inclination!)
 	
-	for i in xrange(n_runs):
-		snr = 0.
-		count = 0
-		while snr <= snrcut:
-			snr = 0.
-			
-			theta = np.arccos(np.random.uniform(low=-1., high=1.))
-			phi = np.random.uniform(low=0., high=2.*np.pi)			
-			
-			A = test_network.A(theta=theta, phi=phi, psi=0., no_psd=False)  #3-D array (frequencies x polarizations x polarizations)
-			
-			for m in xrange(num_pol):
-				for n in xrange(num_pol):
-					snr += (4.*df_test)*np.sum(h_test_conj[:,m]*A[:,m,n]*h_test[:,n])
-			snr = np.sqrt(snr)
-			
-			count+=1
-			if count >= 1000:
-				raise ValueError, "Couldn't find sky location that gives SNR %f with an hrss %e in 1000 iterations"%(snrcut, hrss)
+		### draw hrss
+		### cdf = 1 - (hrss/min_hrss)**(1-a)
+		hrss = min_hrss * (1 - hrss)**(1.0/(1-a))
+
+		### generate waveform with waveform_func
+		h = waveform_func(freqs, hrss=hrss, **waveform_args)
 		
-		print "Found SNR of event %u to be %f after %u iterations"%(i, np.real(snr), count)
-		angles[i,0] = theta
-		angles[i,1] = phi
-		snrs[i] = np.real(snr)
-		
-		hrss_calc = 0.
-		for m in xrange(num_pol):
-			hrss_calc += (2.*df_test)*np.sum(h_test_conj[:,m]*h_test[:,m])
-		print "given hrss = ", hrss
-		print "calculated hrss = ", np.real(np.sqrt(hrss_calc))
-		
-	return h, angles, snrs
-	
-	
+		### compute snr
+		snrs = network.snrs( inject(network, h, theta, phi, psi=psi) )
+
+		if np.sum(snrs**2)**0.5 >= min_snr:
+			### fill in paramters
+			theta_inj[inj_id] = theta
+			phi_inj[inj_id] = phi
+			psi_inj[inj_id] = psi
+			hrss_inj[inj_id] = hrss
+			snrs_inj[inj_id,:] = snrs
+
+			inj_id += 1 ### increment id
+	else:
+		raise StandardError, "could not find %d injections after %d trials"%(num_inj, max_trials)
+
+	return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
+
