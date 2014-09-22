@@ -433,6 +433,71 @@ p(h_j(f)) & \approx & \sum\limits_n C_n \mathrm{exp}\left(-Z_n \int\mathrm{d}f h
 We note that \emph{this is not equivalent to the product of independent priors on each frequency compenent}, because in this case the sum of the product is not the product of the sum. However, this can still be implemented in a straightforward way within our existing framework. If we want to look for wide-band signals, then perhaps we should modify $Z_n\rightarrow f^2 Z_n$, so there is a frequency dependent prior. The argument about the energy scaling with luminosity distance is then exact, regardless of the signal's bandwidth.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{pareto distributions as sums of gaussians}
+
+We have seen that gaussian priors on $h$ work well with our functional marginalization, and we therefore attempt to model a more general pareto distribution as a sum of gaussian terms. In short, we seek a form of $p(h(f))$ such that
+
+\begin{equation}
+p(h_j) = \sum\limits_{n} C_n N_n e^{-\frac{\int \mathrm{d}f\, h_j^\ast h_j}{2 \sigma_n^2} }
+\end{equation}
+
+Furthermore, we expect that 
+
+\begin{equation}\label{equation:h to hrss identity}
+\int \mathcal{D} h_j \mathcal{D} h_j^\ast p(h_j) \delta\left( h_{rss}- \sqrt{ \int \mathrm{d}f\, h_j^\ast h_j }\right) = p(h_{rss}) 
+\end{equation}
+
+If we assume a single gaussian term, we have the additional condition
+
+\begin{subequations}
+\begin{align}
+1 & = \int\mathcal{h_{rss}}p(h_{rss}) \\
+  & = \int\mathrm{d}h_{rss} \int\mathcal{D}h_j\mathcal{D}h_j^\ast p(h_j) \delta\left(h_{rss}-\sqrt{ \int \mathrm{d}f\, h_j^\ast h_j }\right) \\
+  & = \int\mathcal{D}h_j\mathcal{D}h_j^\ast p(h_j) \int\mathrm{d}h_{rss} \delta\left(h_{rss}-\sqrt{ \int \mathrm{d}f\, h_j^\ast h_j }\right) \\
+  & = \int\mathcal{D}h_j\mathcal{D}h_j^\ast p(h_j)
+\end{align}
+\end{subequations}
+
+which is essentially a statement about normalization. This means we expect our multi-variate gaussian priors on $h_j$ to be
+
+\begin{equation}
+p(h_j) = \sum\limits_{n} C_n \prod\limits_{f} \frac{\mathrm{det}Z_{jk}}{\pi} e^{- h_j^\ast Z_{jk} h_k }
+\end{equation}
+
+Furthermore, we can easily determine the $C_n$ by fitting a univariate distribution over $h_{rss}$ to the desired pareto distribution via a $\chi^2$ minimization.
+
+\begin{subequations}
+\begin{align}
+\chi^2 & = \int\mathrm{d}x\, \left( 1 - \frac{C_n (2\pi \sigma^2)^{-1/2} e^{-x^2/2\sigma^2}}{x^{-\alpha}}\right)^2 \\
+\Rightarrow \partial_{C_m} \chi^2 = 0 & = -2 \int\mathrm{d}x\, \left( 1 - \frac{C_n (2\pi \sigma_n^2)^{-1/2} e^{-x^2/2\sigma_n^2}}{x^{-\alpha}}\right) \frac{(2\pi \sigma_m^2)^{-1/2} e^{-x^2/2\sigma_m^2}}{x^{-\alpha}} \\
+\int\mathrm{d}x\, (2\pi \sigma_m^2)^{-1/2} e^{-x^2/2\sigma_m^2} x^\alpha & = \int\mathrm{d}x\,  C_n x^{2\alpha} (2\pi \sigma_n \sigma_m)^{-1} e^{-(x^2/2)(\sigma_n^{-2}+\sigma_m^{-2})} \\ 
+\sigma_m^\alpha & \propto C_n \left(\frac{\sigma_n^2\sigma_m^2}{\sigma_n^2+\sigma_m^2}\right)^{(1+2\alpha)/2} (\sigma_n \sigma_m)^{-1} 
+\end{align}
+\end{subequations}
+
+and the proprtionality constant in the final expression does not depend on either $n$ or $m$. Straightforward linear algebra yields a set of $C_n$ that optimally fit $x^{-\alpha}$ given a set of variances ($\sigma_n^2$). Therefore, we know how to write 
+
+\begin{equation}
+p(h_{rss}) = \sum\limits_n C_n (2\pi\sigma_n^2)^{-1/2} e^{-h_rss/2\sigma_n^2}
+\end{equation}
+
+and we know that we can marginalize away extra degrees of freedom from $p(h)$ so that Equation \ref{equation:h to hrss identity} holds. This means the for of $p(h)$ that encapsulates the pareto distribution for $h_{rss}$ must take the following form
+
+\begin{equation}
+p(h_j) = \sum_n C_n  \prod\limits_{f} \frac{\mathrm{det}Z_{jk}}{\pi} e^{- h_j^\ast Z_{jk} h_k } \left| \sigma_m^\alpha = C_n \left(\frac{\sigma_n^2\sigma_m^2}{\sigma_n^2+\sigma_m^2}\right)^{(1+2\alpha)/2} (\sigma_n \sigma_m)^{-1} \forall\, m \right.
+\end{equation}
+
+and the set $C_n$ derived from the univariate distribution over $h_{rss}$ is the correct set for the more general prior over $h_j$.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{malmquist-pareto distributions}
+
+A malmquist prior will take into account the fact that we are very unlikely to detect a single with exceptionally small $h_{rss}$, and therefore the prior should vanish at small $h_{rss}$. Our pareto distributions diverge as $h_{rss}\rightarrow0$, and this may require some thought.
+
+In practice, we truncate our approximation of the parato distribution at some finite variance, and this acts to control the diverging prior. However, we may be able to do better by including a malmquist-like term.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsubsection{constraints between polarizations}
 
 We can apply additional constraints on the polarization of the gravitational wave signal. We work this out in detail for 2 polarizations, but an analogous derivation should be possible for an arbitrary number of polarizations.
