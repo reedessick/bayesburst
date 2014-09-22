@@ -205,7 +205,7 @@ class hPrior(object):
 		WARNING: this factor will act as an overall scale on the posterior (constant for all pixels) and is only important for the evidence
 			==> getting this wrong will produce the wrong evidence
 		"""
-		return np.log( np.sum( self.amplitudes ) ) ### assumes individual kernals are normalized.
+		return np.log( self.norm(freq_truth) ) ### assumes individual kernals are normalized.
 #		#                                               det|Z|                        df**n_pol            sum over freqs      use amplitudes
 #		return -utils.sum_logs(np.sum(np.log(self.detinvcovariance[freq_truth]) + self.n_pol*np.log(self.df), axis=0), coeffs=self.amplitudes)
 
@@ -214,7 +214,8 @@ class hPrior(object):
 		"""
 		computes the proper normalizatoin for this prior assuming a model (freq_truth)
 		"""
-		return np.exp(self.lognorm(freq_truth))
+		return np.sum(self.amplitudes)
+#		return np.exp(self.lognorm(freq_truth))
 
 	###
 	def __call__(self, h):
