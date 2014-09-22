@@ -150,6 +150,9 @@ def sum_logs(logs, base=np.exp(1), coeffs=None):
 
 	ans = np.sum(coeffs*base**(logs-outer_max), axis=-1)
 
+	if np.any(ans < 0):
+		raise ValueError, "ans < 0 not allowed!"
+
 	return np.log(ans)*np.log(base) + _max
 
 #========================
