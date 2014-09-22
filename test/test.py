@@ -24,6 +24,7 @@ from optparse import OptionParser
 parser = OptionParser(usage=usage)
 
 parser.add_option("", "--hPrior", default=False, action="store_true")
+parser.add_option("", "--malmquist-hPrior", default=False, action="store_true")
 parser.add_option("", "--angPrior", default=False, action="store_true")
 parser.add_option("", "--ap_angPrior", default=False, action="store_true")
 parser.add_option("", "--posterior", default=False, action="store_true")
@@ -86,7 +87,7 @@ variances = np.logspace(np.log10(vmin), np.log10(vmax), n_gaus)
 n_pol = 2
 #n_pol = 1
 
-n_freqs = 100
+n_freqs = 101
 freqs = np.linspace(100, 300, n_freqs)
 df = freqs[1]-freqs[0]
 seglen = df**-1
@@ -96,8 +97,8 @@ nside_exp = 5
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+#network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
 
 n_ifo = len(network.detectors)
 
@@ -106,13 +107,14 @@ n_ifo = len(network.detectors)
 freq_truth = np.ones_like(freqs, bool)
 
 ### set up stuff for model selection
-n_bins = 16
+n_bins = 30
 
-min_n_bins = 10
-max_n_bins = 18
-dn_bins = 1
+min_n_bins = 20
+max_n_bins = 40
+dn_bins = 2
 
 log_bayes_thr = 0
+generous_log_bayes_thr = -1
 
 ### plotting options
 log_dynamic_range = 100
@@ -126,9 +128,10 @@ fo=200
 tau=0.010
 q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
 #hrss=2e-22 #network SNR ~50 (screaming)
+hrss=1e-22 #network SNR ~25 (cacophonous)
 #hrss=6e-23 #network SNR ~15 (loud)
 #hrss=5e-23 #network SNR ~ 12.5 (audible)
-hrss=4e-23 #network SNR ~10 (quiet)
+#hrss=4e-23 #network SNR ~10 (quiet)
 #hrss=2e-23 #network SNR ~5 (silent)
 
 
@@ -149,6 +152,7 @@ data = data_inj
 tag = "_%d-%d-%d%s"%(n_freqs, n_gaus, nside_exp, opts.tag)
 
 hfigname="%s/hprior%d%s.png"%(opts.output_dir, n_gaus_per_decade, tag)
+malmquist_hfigname="%s/malmquist_hprior%d%s.png"%(opts.output_dir, n_gaus_per_decade, tag)
 
 posterior_figname = "%s/posterior%s.png"%(opts.output_dir, tag)
 logposterior_figname="%s/log-posterior%s.png"%(opts.output_dir, tag)
@@ -159,6 +163,9 @@ fb_logposterior_figname="%s/log-posterior-fixed_bandwidth%s.png"%(opts.output_di
 vb_posterior_figname="%s/posterior-variable_bandwidth%s.png"%(opts.output_dir, tag)
 vb_logposterior_figname="%s/log-posterior-variable_bandwidth%s.png"%(opts.output_dir, tag)
 
+stacked_vb_posterior_figname="%s/posterior-stacked_variable_bandwidth%s.png"%(opts.output_dir, tag)
+stacked_vb_logposterior_figname="%s/log-posterior-stacked_variable_bandwidth%s.png"%(opts.output_dir, tag)
+
 lbc_posterior_figname="%s/posterior-log_bayes_cut%s.png"%(opts.output_dir, tag)
 lbc_logposterior_figname="%s/log-posterior-log_bayes_cut%s.png"%(opts.output_dir, tag)
 
@@ -167,6 +174,7 @@ posterior_filename = "%s/posterior%s.fits"%(opts.output_dir, tag)
 
 fb_posterior_filename = "%s/posterior-fixed_bandwidth%s.fits"%(opts.output_dir, tag)
 vb_posterior_filename = "%s/posterior-variable_bandwidth%s.fits"%(opts.output_dir, tag)
+stacked_vb_posterior_filename = "%s/posterior-stacked_variable_bandwidth%s.fits"%(opts.output_dir, tag)
 lbc_posterior_filename = "%s/posterior-log_bayes_cut%s.fits"%(opts.output_dir, tag)
 
 angfigname = "%s/angprior%s.png"%(opts.output_dir, tag)
@@ -197,11 +205,29 @@ if opts.hPrior:
 	hprior_obj = priors.hPrior(freqs, pareto_means, pareto_covariance, amplitudes=pareto_amps, n_gaus=n_gaus, n_pol=n_pol)
 	print "\t", time.time()-to
 
-	if not opts.skip_plots:
-		print "hPrior.plot"
+        if not opts.skip_plots:
+                print "hPrior.plot"
+                to=time.time()
+                hprior_obj.plot(hfigname, grid=True, xmin=xmin, xmax=xmax, npts=npts)#, ymin=1e0)
+                print "\t", time.time()-to
+
+	if opts.malmquist_hPrior:
+		print "malmquist_pareto"
 		to=time.time()
-		hprior_obj.plot(hfigname, grid=True, xmin=xmin, xmax=xmax, npts=npts)#, ymin=1e0)
+		malmquist_means, malmquist_covariance, malmquist_amps = priors.malmquist_pareto(a, n_freqs, n_pol, variances[1:], variances[0])
 		print "\t", time.time()-to
+
+		print "hPrior(malmquist)"
+		to=time.time()
+		hprior_obj = priors.hPrior(freqs, malmquist_means, malmquist_covariance, amplitudes=malmquist_amps, n_gaus=n_gaus, n_pol=n_pol)
+		print "\t", time.time()-to
+
+		if not opts.skip_plots:
+			print "hPrior.plot(malmquist)"
+			to=time.time()
+			hprior_obj.plot(malmquist_hfigname, grid=True, xmin=xmin, xmax=xmax, npts=npts)#, ymin=1e0)
+			print "\t", time.time()-to
+
 
 #=================================================
 if opts.angPrior:
@@ -714,7 +740,7 @@ if opts.posterior:
 if opts.model_selection:
 
 	import model_selection
-
+	'''
         print "model_selection.log_bayes_cut"
         to=time.time()
         lbc_model, lbc_lb = model_selection.log_bayes_cut(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=True)
@@ -841,6 +867,30 @@ if opts.model_selection:
 
         print "writing posterior to file"
         hp.write_map(vb_posterior_filename, vb_posterior)
+	'''
+	print "model_selection.variable_bandwidth(model_selection.log_bayes_cut)"
+	to=time.time()
+	generous_lbc_model = model_selection.log_bayes_cut(generous_log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=False)
+	stacked_vb_model, stacked_vb_lb = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins)
+	print "\t", time.time()-to
+
+	print "\tn_bins=%d->%d, logBayes=%.3f"%(np.sum(generous_lbc_model), np.sum(stacked_vb_model), stacked_vb_lb)
+
+	print "stacked_vb_posterior"
+	to=time.time()
+	stacked_vb_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, stacked_vb_model, normalize=True)
+	print "\t", time.time()-to
+
+        if not opts.skip_plots:
+                print "posterior.plot(variable_bandwidth(log_bayes_cut))"
+                to=time.time()
+                posterior_obj.plot(stacked_vb_posterior_figname, posterior=stacked_vb_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(stacked_vb_model),stacked_vb_lb,snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
+                posterior_obj.plot(stacked_vb_logposterior_figname, posterior=np.log10(stacked_vb_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(stacked_vb_model),stacked_vb_lb,snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(stacked_vb_posterior_filename, stacked_vb_posterior)
+
 
 	print """WRITE TESTS FOR
 	remaining model_selection (to be written?)
