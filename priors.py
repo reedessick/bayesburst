@@ -1002,7 +1002,7 @@ def pareto_amplitudes(a, variances, n_pol=1):
 
 	### REFERENCE THEORY.TEX FOR EXPLANATION FOR WHY THIS IS REASONABLE.
 	### ASSUMES WIDELY SPACED VARIANCES
-	C_n = variances**(-0.5*a) 
+	C_n = variances**(-0.5*(a-1)) 
 	C_n /= np.sum(C_n)
 
 	return C_n
