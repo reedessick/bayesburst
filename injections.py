@@ -99,7 +99,7 @@ def inject(network, h, theta, phi, psi=0.0):
 #=================================================
 # distributions
 #=================================================
-def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_snr=5, num_inj=1, max_trials=1):
+def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_snr=5, num_inj=1, max_trials=100, verbose=False):
 	"""
 	generates waveforms using waveform_func and waveform_args
 		waveform_args is passed vi waveform_func(..., **waveform_args)
@@ -111,8 +111,6 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 
 	return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
 	"""
-	max_trials = int(max(num_inj, max_trials))
-
 	freqs = network.freqs
 	n_ifo = len(network.detectors)
 
@@ -124,7 +122,9 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 	snrs_inj = np.zeros((num_inj,n_ifo),float)
 	
 	inj_id = 0
-	for trial in xrange(max_trials):
+	trial = 0
+	while trial < max_trials:
+		if verbose: print "trial : %d\tnum_inj : %d"%(trial, inj_id)
 		if inj_id >= num_inj: ### we have enough
 			break
 
@@ -155,8 +155,10 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 			snrs_inj[inj_id,:] = snrs
 
 			inj_id += 1 ### increment id
+
+		trial += 1
 	else:
-		raise StandardError, "could not find %d injections after %d trials"%(num_inj, max_trials)
+		raise StandardError, "could not find %d injections after %d trials"%(num_inj, trial)
 
 	return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
 
