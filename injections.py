@@ -111,20 +111,19 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 
 	return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
 	"""
-	max_trials = max(num_inj, max_trials)
+	max_trials = int(max(num_inj, max_trials))
 
 	freqs = network.freqs
 	n_ifo = len(network.detectors)
 
 	### place holders for injection parameters
-	theta_inj = np.empty((n_inj,),float)
-	phi_inj = np.empty((n_inj,),float)
-	psi_inj = np.empty((n_inj,),float)
-	hrss_inj = np.empty((n_inj,),float)
-	snrs_inj = np.zeros((n_inj,n_ifo),float)
+	theta_inj = np.empty((num_inj,),float)
+	phi_inj = np.empty((num_inj,),float)
+	psi_inj = np.empty((num_inj,),float)
+	hrss_inj = np.empty((num_inj,),float)
+	snrs_inj = np.zeros((num_inj,n_ifo),float)
 	
 	inj_id = 0
-	max_trials = 1000
 	for trial in xrange(max_trials):
 		if inj_id >= num_inj: ### we have enough
 			break
