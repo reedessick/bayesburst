@@ -135,7 +135,7 @@ hrss=6e-23 #network SNR ~15 (loud)
 #hrss=2e-23 #network SNR ~5 (silent)
 
 
-h = injections.sinegaussian_f(freqs, to, phio, fo, tau, hrss, alpha=np.pi/2)
+h = injections.sinegaussian_f(freqs, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=np.pi/2)
 
 theta_inj =   np.pi/4
 phi_inj   = 3*np.pi/2
