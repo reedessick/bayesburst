@@ -167,7 +167,7 @@ print "\t", time.time()-to
 import model_selection
 
 ### place holders for resulting data
-lbc_posteriors = np.empty((num_inj,npix),float)
+lbc_log_posteriors = np.empty((num_inj,npix),float)
 lbc_models = np.zeros((num_inj,n_freqs),bool)
 lbc_log_bayes = np.empty((num_inj,),float)
 
@@ -215,12 +215,17 @@ for inj_id in xrange(num_inj):
 
 	print "\tlog_posterior"
 	to=time.time()
-	lbc_posteriors[inj_id,:] = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_models[inj_id,:], normalize=True)
+	lbc_log_posteriors[inj_id,:] = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_models[inj_id,:], normalize=True)
 	print "\t\t", time.time()-to
 
 #=================================================
 # COMPUTE STATISTICS
 #=================================================
+import stats
+
+### plot posteriors with injected locations marked
+### compute searched areas, p_values, etc, etc
+### write a tool that will compute moments of frequency given a model (and log_posterior_elements?)
 
 print """WRITE:
 	coverage plots:
