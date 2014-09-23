@@ -237,6 +237,8 @@ class hPrior(object):
 			sum C[n] * np.exp( - np.conj(h-means) * incovariance * (h-means) )
 		"""
 
+		print "WARNING: normalizations for this prior are all messed up. Take these plots with a grain of salt."
+
 		### make sure h has the expected shape
 		if isinstance(h, (int, float)): ### h is a scalar
 			h = h * np.ones((self.n_freqs, self.n_pol), float)
@@ -998,6 +1000,14 @@ def pareto_amplitudes(a, variances, n_pol=1):
         n_gaus = len(variances)
 
 
+	### REFERENCE THEORY.TEX FOR EXPLANATION FOR WHY THIS IS REASONABLE.
+	### ASSUMES WIDELY SPACED VARIANCES
+	C_n = variances**(-0.5*a) 
+	C_n /= np.sum(C_n)
+
+	return C_n
+
+	'''
 	### Distribution for normalized univariate kernals:
 	### we may want to handle the small numbers more carefully, because we start to run into problems with float precision (setting things to zero).
 	###   we can do something like utils.sum_logs where we subtract out the maximum value, and then do the manipulation, only to put in the maximum value at the end.
@@ -1025,3 +1035,4 @@ def pareto_amplitudes(a, variances, n_pol=1):
         C_n /= np.sum(C_n)
 
         return C_n
+	'''
