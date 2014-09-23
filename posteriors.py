@@ -1429,15 +1429,19 @@ class Posterior(object):
                 ### plot point if supplied
                 if inj:
                         ax = fig.gca()
-                        marker = ax.projplot(inj, "wx", alpha=0.5)[0]
+                        marker = ax.projplot(inj, "wx")[0]
                         marker.set_markersize(10)
                         marker.set_markeredgewidth(2)
+			marker.set_alpha(0.5)
 
 		if est:
 			ax = fig.gca()
-			marker = ax.projplot(est, "wo", alpha=0.5)[0]
+			marker = ax.projplot(est, "wo")[0]
 			marker.set_markersize(10)
 			marker.set_markeredgewidth(2)
+			marker.set_markeredgecolor("w")
+			marker.set_markerfacecolor("none")
+			marker.set_alpha(0.5)
 
                 ### save
                 fig.savefig(figname)
