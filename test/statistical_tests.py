@@ -333,6 +333,7 @@ ax.set_xlabel("bayesian confidence level")
 ax.set_ylabel("probability density")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
+ax_1.plot([0,0],[1,1], 'k-') ### reference line for pp plots
 ax.set_xlim(xmin=0, xmax=1)
 ax1.set_xlim(xmin=0, xmax=1)
 fig.savefig(figname)
