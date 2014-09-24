@@ -132,7 +132,7 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 		theta, phi, psi, hrss = np.random.rand(4)
 
 		### draw position and polarization angle
-		theta = np.arccos( theta ) ### uniform in cos(theta)
+		theta = np.arccos( 2*theta-1 ) ### uniform in cos(theta)
 		phi *= 2*np.pi ### uniform in phi
 		psi *= 2*np.pi ### uniform in psi (not inclination!)
 	
