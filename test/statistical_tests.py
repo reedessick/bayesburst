@@ -71,7 +71,7 @@ n_pol = 2
 #n_pol = 1
 
 n_freqs = 101
-freqs = np.linspace(100, 300, n_freqs)
+freqs = np.linspace(150, 250, n_freqs)
 df = freqs[1]-freqs[0]
 seglen = df**-1
 
@@ -92,7 +92,7 @@ n_ifo = len(network.detectors)
 freq_truth = np.ones_like(freqs, bool)
 
 ### set up stuff for model selection
-log_bayes_thr = 10
+log_bayes_thr = 0
 
 ### plotting options
 log_dynamic_range = 100
@@ -102,14 +102,17 @@ log_dynamic_range = 100
 #=================================================
 import injections
 
+log=False
+
 to=0.0
 phio=0.0
 fo=200
-tau=0.010
+#tau=0.010
+tau=0.100
 q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
 
 min_snr = 10
-min_hrss = 5e-23
+min_hrss = 1e-23
 
 waveform_func = injections.sinegaussian_f
 waveform_args = {"to":to, "phio":phio, "fo":fo, "tau":tau, "alpha":np.pi/2}
@@ -122,10 +125,11 @@ print "\t", time.time()-to
 print "plotting hrss distribution"
 to=time.time()
 figname = "%s/hrss%s.png"%(opts.output_dir, opts.tag)
-fig, ax, ax1 = vis.dual_hist(hrss_inj, n_per_bin=10, n_samples=1001, log=True, label=None, color="b")
+fig, ax, ax1 = vis.dual_hist(hrss_inj, n_per_bin=10, n_samples=1001, log=log, label=None, color="b")
 ax.set_xlabel("$h_{rss}$")
 ax.set_ylabel("count")
-ax.set_yscale("log")
+if log:
+	ax.set_yscale("log")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
 fig.savefig(figname)
@@ -135,10 +139,11 @@ vis.plt.close(fig)
 print "plotting snr distribution"
 to=time.time()
 figname = "%s/snr%s.png"%(opts.output_dir, opts.tag)
-fig, ax, ax1 = vis.dual_hist(np.sum(snrs_inj**2,axis=1)**0.5, n_per_bin=10, n_samples=1001, log=True, label=None, color="b")
+fig, ax, ax1 = vis.dual_hist(np.sum(snrs_inj**2,axis=1)**0.5, n_per_bin=10, n_samples=1001, log=log, label=None, color="b")
 ax.set_xlabel("$\\rho_{network}$")
 ax.set_ylabel("count")
-ax.set_yscale("log")
+if log:
+	ax.set_yscale("log")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
 fig.savefig(figname)
@@ -198,9 +203,11 @@ import model_selection
 import stats
 
 ### place holders for resulting data
-lbc_log_posteriors = np.empty((num_inj,npix),float)
-lbc_models = np.zeros((num_inj,n_freqs),bool)
-lbc_log_bayes = np.empty((num_inj,),float)
+#lbc_log_posteriors = np.empty((num_inj,npix),float)
+#lbc_models = np.zeros((num_inj,n_freqs),bool)
+#lbc_log_bayes = np.empty((num_inj,),float)
+
+fitsnames = []
 
 p_value = np.empty((num_inj,),float)
 searched_area = np.empty((num_inj,),float)
@@ -239,33 +246,49 @@ for inj_id in xrange(num_inj):
 	posterior_obj.set_dataB()
 	print "\t\t", time.time()-to
 
-	print "\tlog_posterior_elements"
+	print "\tlog_posterior_elements_mp"
 	to=time.time()
-	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=False)
+	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
-	print "\tlog_bayes_cut"
+	print "\tlog_bayes_cut_mp"
 	to=time.time()
-	lbc_models[inj_id,:], lbc_log_bayes[inj_id] = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, joint_log_bayes=True)
+	lbc_model, lbc_lb = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=True)
 	print "\t\t", time.time()-to
+
+	print ""
+	print "\tlogB_thr=",log_bayes_thr
+	print "\tn_bins=",np.sum(lbc_model)
+	print "\tlogBayes=",lbc_lb
+	print "\thrss=",hrss
+	print "\tsnr=",snr_net
+	print ""
+
+#	lbc_models[inj_id,:] = lbc_model
+#	lbc_log_bayes[inj_id] = lbc_lb
 
 	print "\tlog_posterior"
 	to=time.time()
-	lbc_log_posteriors[inj_id,:] = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_models[inj_id,:], normalize=True)
+	lbc_log_posterior = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, normalize=True)
 	print "\t\t", time.time()-to
+
+#	lbc_log_posteriors[inj_id,:] = lbc_log_posterior
 
 	print "\tposterior by hand"
 	to=time.time()
-	posterior = np.exp(lbc_log_posteriors[inj_id,:]) ### find posterior
+	posterior = np.exp(lbc_log_posterior) ### find posterior
 	print "\t\t", time.time()-to
 	
 	#=================================================
 	# PLOT POSTERIOR
 	#=================================================
+	estang = stats.estang(posterior, nside=nside)
 	print "\tplotting posterior"
 	figname = "%s/inj=%d%s.png"%(opts.output_dir, inj_id, opts.tag)
+	logfigname = "%s/inj=%d-log%s.png"%(opts.output_dir, inj_id, opts.tag)
 	to=time.time()
-	posterior_obj.plot(figname, posterior=posterior/pixarea, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_models[inj_id,:]),lbc_log_bayes[inj_id],snr_net), unit="prob/deg$^2$", inj=(theta, phi), est=stats.estang(posterior, nside=nside))
+	posterior_obj.plot(figname, posterior=posterior/pixarea, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model),lbc_lb,snr_net), unit="prob/deg$^2$", inj=(theta, phi), est=estang)
+	posterior_obj.plot(logfigname, posterior=lbc_log_posterior-np.log(pixarea), title="log(posterior)\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model),lbc_lb,snr_net), unit="log(prob/deg$^2$)", inj=(theta,phi), est=estang)
 	print "\t\t", time.time()-to
 
 	#=================================================
@@ -276,6 +299,8 @@ for inj_id in xrange(num_inj):
 	to=time.time()
         hp.write_map(fits, posterior)
 	print "\t\t", time.time()-to
+
+	fitsnames.append(fits)
 
 	#=================================================
 	# COMPUTE STATISTICS
@@ -308,6 +333,8 @@ ax.set_xlabel("bayesian confidence level")
 ax.set_ylabel("probability density")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
+ax.set_xlim(xmin=0, xmax=1)
+ax1.set_xlim(xmin=0, xmax=1)
 fig.savefig(figname)
 print "\t", time.time()-to
 vis.plt.close(fig)
@@ -320,6 +347,8 @@ ax.set_xlabel("searched area [deg$^2$]")
 ax.set_ylabel("probability density")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
+ax.set_xlim(xmin=pixarea, xmax=4*180**2/np.pi)
+ax1.set_xlim(xmin=pixarea, xmax=4*180**2/np.pi)
 fig.savefig(figname)
 print "\t", time.time()-to
 vis.plt.close(fig)
@@ -332,6 +361,8 @@ ax.set_xlabel("$\cos(\delta\\theta)$")
 ax.set_ylabel("probability density")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
+ax.set_xlim(xmin=1, xmax=-1)
+ax1.set_xlim(xmin=1, xmax=-1)
 fig.savefig(figname)
 print "\t", time.time()-to
 vis.plt.close(fig)
@@ -343,4 +374,8 @@ print """WRITE:
 		moments of frequencies
 		moments of amplitudes
 	else?
+
+	RUN TESTS WITH OTHER MODEL SELECTION ALGORITHMS?
+		=> check pp-plots, etc for each algorithm
+		=> check localization performance for each algorithm
 """
