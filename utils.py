@@ -339,7 +339,7 @@ class PSD(object):
 	min{freqs}=%.5f
 	max{freqs}=%.5f
 	No. freqs =%d
-	min{psd}=%.5fe%d  at freqs=%.5f"""%(np.min(self.freqs), np.max(self.freqs), len(self.freqs), min_psd*10**(-d), d, self.freqs[min_psd==self.psd])
+	min{psd}=%.5fe%d  at freqs=%.5f"""%(np.min(self.freqs), np.max(self.freqs), len(self.freqs), min_psd*10**(-d), d, self.freqs[min_psd==self.psd][0])
 
 #=================================================
 #
