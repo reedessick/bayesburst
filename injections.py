@@ -124,7 +124,7 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 	inj_id = 0
 	trial = 0
 	while trial < max_trials:
-		if verbose: print "trial : %d\tnum_inj : %d"%(trial, inj_id)
+	
 		if inj_id >= num_inj: ### we have enough
 			break
 
@@ -147,6 +147,7 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 		snrs = network.snrs( inject(network, h, theta, phi, psi=psi) )
 
 		if np.sum(snrs**2)**0.5 >= min_snr:
+			if verbose: print "trial : %d\tnum_inj : %d"%(trial, inj_id)
 			### fill in paramters
 			theta_inj[inj_id] = theta
 			phi_inj[inj_id] = phi
