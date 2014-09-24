@@ -244,6 +244,7 @@ class Posterior(object):
 		"""
                 if num_proc==1:
                         self.set_A(psi=psi)
+			return
 
                 if not self.network:
                         raise ValueError, "set_network() first"
@@ -320,6 +321,7 @@ class Posterior(object):
                 """
                 if num_proc==1:
                         self.set_B(psi=psi)
+			return
 
                 if not self.network:
                         raise ValueError, "set_network() first"
@@ -392,6 +394,7 @@ class Posterior(object):
                 """
                 if num_proc==1:
                         self.set_AB(psi=psi)
+			return 
 
                 if not self.network:
                         raise ValueError, "set_network() first"
@@ -485,6 +488,7 @@ class Posterior(object):
 	def set_dataB_mp(self, num_proc=1, max_proc=1, max_array_size=100):
                 if num_proc==1:
                         self.set_dataB()
+			return
 
 		if self.data==None:
                         raise ValueError, "set_data() first!"
@@ -587,6 +591,7 @@ class Posterior(object):
                 """
                 if num_proc==1:
                         self.set_P()
+			return
 
                 if self.A == None:
 			raise ValueError, "set_A() first"
@@ -1432,7 +1437,7 @@ class Posterior(object):
                         marker = ax.projplot(inj, "wx")[0]
                         marker.set_markersize(10)
                         marker.set_markeredgewidth(2)
-			marker.set_alpha(0.5)
+#			marker.set_alpha(0.5)
 
 		if est:
 			ax = fig.gca()
@@ -1441,7 +1446,7 @@ class Posterior(object):
 			marker.set_markeredgewidth(2)
 			marker.set_markeredgecolor("w")
 			marker.set_markerfacecolor("none")
-			marker.set_alpha(0.5)
+#			marker.set_alpha(0.5)
 
                 ### save
                 fig.savefig(figname)
