@@ -33,6 +33,7 @@ print """WARNING:
 			write n_pol_eff so it figures out the effective number of polarizations at each point in the sky (using network.rank(A)?)
 			pass this into the other function that re-formats A, invA, B, P, invP as needed
 			compute a projection matrix (in n_pol-space) for each ipix, then use it on A, invA, B, P, invP, etc as needed
+
 """
 
 
@@ -252,7 +253,7 @@ class Posterior(object):
                         raise ValueError, "set_theta_phi() first"
 
                 n_pix, theta, phi, psi = self.check_theta_phi_psi(self.theta, self.phi, psi)
-                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+                npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
                 procs = []
 
                 self.A = np.empty((n_pix, self.n_freqs, self.n_pol, self.n_pol), float)
@@ -261,7 +262,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, start, end, con1 = procs.pop()
+                                        p, start, end, con1 = procs.pop(0)
 
                         	        ### fill in data
                                 	shape = np.shape(self.A[start:end])
@@ -284,7 +285,7 @@ class Posterior(object):
                         procs.append( (p, start, end, con1) )
 
                 while len(procs):
-                        p, start, end, con1 = procs.pop()
+                        p, start, end, con1 = procs.pop(0)
                         shape = np.shape(self.A[start:end])
                         self.A[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
 			self.invA[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
@@ -329,7 +330,7 @@ class Posterior(object):
                         raise ValueError, "set_theta_phi() first"
 
                 n_pix, theta, phi, psi = self.check_theta_phi_psi(self.theta, self.phi, psi)
-                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+                npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
                 procs = []
 
                 self.B = np.empty((n_pix, self.n_freqs, self.n_pol, self.n_ifo), complex)
@@ -337,7 +338,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, start, end, con1 = procs.pop()
+                                        p, start, end, con1 = procs.pop(0)
 
         	                        ### fill in data
 	                                shape = np.shape(self.B[start:end])
@@ -359,7 +360,7 @@ class Posterior(object):
                         procs.append( (p, start, end, con1) )
 
                 while len(procs):
-                        p, start, end, con1 = procs.pop()
+                        p, start, end, con1 = procs.pop(0)
                         shape = np.shape(self.B[start:end])
                         self.B[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
 
@@ -402,7 +403,7 @@ class Posterior(object):
                         raise ValueError, "set_theta_phi() first"
 
                 n_pix, theta, phi, psi = self.check_theta_phi_psi(self.theta, self.phi, psi)
-                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+                npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
                 procs = []
 
 		self.A = np.empty((n_pix, self.n_freqs, self.n_pol, self.n_pol), float)
@@ -412,7 +413,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, start, end, con1 = procs.pop()
+                                        p, start, end, con1 = procs.pop(0)
 
                                         ### fill in data
                                         shape = np.shape(self.A[start:end])
@@ -438,7 +439,7 @@ class Posterior(object):
                         procs.append( (p, start, end, con1) )
 
                 while len(procs):
-                        p, start, end, con1 = procs.pop()
+                        p, start, end, con1 = procs.pop(0)
 
                         shape = np.shape(self.A[start:end])
 			self.A[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
@@ -497,7 +498,7 @@ class Posterior(object):
 
 		n_pix, n_freqs, n_pol, n_ifo, B = self.check_B(self.B, self.n_pix, self.n_pol)
 
-                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+                npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
                 procs = []
 
                 self.dataB = np.empty((n_pix, n_freqs, n_pol), complex)
@@ -505,7 +506,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, start, end, con1 = procs.pop()
+                                        p, start, end, con1 = procs.pop(0)
 
                                         ### fill in data
                                         shape = np.shape(self.dataB[start:end])
@@ -526,7 +527,7 @@ class Posterior(object):
                         procs.append( (p, start, end, con1) )
 
                 while len(procs):
-                        p, start, end, con1 = procs.pop()
+                        p, start, end, con1 = procs.pop(0)
 
                         shape = np.shape(self.dataB[start:end])
                         self.dataB[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
@@ -598,7 +599,7 @@ class Posterior(object):
 		n_pix, n_freqs, n_pol, A = self.check_A(self.A, self.n_pix, self.n_pol)
 
 		n_gaus = self.hPrior.n_gaus
-                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+                npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
                 procs = []
 
                 self.P = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)
@@ -608,7 +609,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, start, end, con1 = procs.pop()
+                                        p, start, end, con1 = procs.pop(0)
 
                                         ### fill in data
                                         shape = np.shape(self.P[start:end])
@@ -631,7 +632,7 @@ class Posterior(object):
                         procs.append( (p, start, end, con1) )
 
                 while len(procs):
-                        p, start, end, con1 = procs.pop()
+                        p, start, end, con1 = procs.pop(0)
 
                         shape = np.shape(self.P[start:end])
                         self.P[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
@@ -715,6 +716,21 @@ class Posterior(object):
 			raise ValueError, "inconsistent n_gaus"
 
 		return n_pix, n_freqs, n_pol, n_gaus, P
+
+	###
+	def check_detP(self, detP, n_pix):
+		""" checks detP's shape """
+		if len(np.shape(detP)) != 3:
+			raise ValueError, "bad shape for detP"
+		n, n_freqs, n_gaus = np.shape(detP)
+		if n != n_pix:
+			raise ValueError, "inconsistent n_pix"
+		if n_freqs != self.n_freqs:
+			raise ValueError, "inconsistent n_freqs"
+		if n_gaus != self.hPrior.n_gaus:
+			raise ValueError, "inconsistent n_gaus"
+
+		return n_pix, n_freqs, n_gaus, detP
 
 	###
 	def check_log_posterior_elements(self, log_posterior_elements, n_pix):
@@ -858,7 +874,7 @@ class Posterior(object):
 
                 ### check angular coords
                 n_pix, theta, phi, psi = self.check_theta_phi_psi(theta, phi, psi)
-		if n_pix==1: ### parallelization will not help you here
+		if n_pix == 1: ### parallelization will not help you here
 			return self.mle_strain(theta, phi, psi, n_pol_eff=n_pol_eff, invA_dataB=invA_dataB)
 
                 # effective number of polarizations
@@ -872,7 +888,7 @@ class Posterior(object):
                 mle_h = np.zeros((n_pix, n_freqs, n_pol_eff), complex)
 
                 ### define size of jobs
-                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+                npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
                 procs = []
 
 		if invA_dataB != None:
@@ -884,7 +900,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, start, end, con1 = procs.pop()
+                                        p, start, end, con1 = procs.pop(0)
 
                 	                ### fill in data
                         	        shape = np.shape(mle_h[start:end])
@@ -910,7 +926,7 @@ class Posterior(object):
                         procs.append( (p, start, end, con1) )
 
 		while len(procs):
-			p, start, end, con1 = procs.pop()
+			p, start, end, con1 = procs.pop(0)
 
 			shape = np.shape(mle_h[start:end])
                         mle_h[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
@@ -990,27 +1006,38 @@ class Posterior(object):
 
 		### check invP_B
 		if invP_dataB:
-			invP, dataB, dataB_conj = invP_dataB
+			invP, detinvP, dataB, dataB_conj = invP_dataB
 			if n_pix == 1:
 				if len(np.shape(invP)) == 4:
                                         invP = np.array([invP])
                                 else:
                                         raise ValueError, "bad shape for invP"
-				if len(np.shape(B)) == 3:
-                                        invA = np.array([B])
-                                else:
-                                        raise ValueError, "bad shape for B"
+				if len(np.shape(detinvP)) == 2:
+					detinvP = np.array([detinvP])
+				else:
+					raise ValueError, "bad shape for detinvP"
+				if len(np.shape(dataB)) == 2:
+					dataB = np.array([dataB])
+				else:
+					raise ValueError, "bad shape for dataB"
+				if len(np.shape(dataB_conj)) == 2:
+					dataB_conj = np.array([dataB_conj])
+				else:
+					raise ValueError, "bad shape for dataB_conj"
 
-			n_pix, n_freqs, n_pol, n_gauss, invP = self.check_P(invP, n_pix, self.n_pol)
+			n_pix, n_freqs, n_pol, n_gaus, invP = self.check_P(invP, n_pix, self.n_pol)
+			n_pix, n_freqs, n_gaus, detinvP = self.check_detP(detinvP, n_pix)
 			n_pix, n_freqs, n_pol, dataB = self.check_dataB(dataB, n_pix, self.n_pol)
 			n_pix, n_freqs, n_pol, dataB_conj = self.check_dataB(dataB_conj, n_pix, self.n_pol)
 		else:
 			A = self.network.A(theta, phi, psi, no_psd=False)
-			invP = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), float) ### (A+Z)^{-1}
+			invP = np.empty((n_pix, n_freqs, n_pol, n_pol, n_gaus), complex) ### (A+Z)^{-1}
+			detinvP = np.empty((n_pix, n_freqs, n_gaus), complex)
 			for g in xrange(n_gaus):
 	                        Z = np.empty_like(A, complex)
         	                Z[:] = self.hPrior.invcovariance[:,:,:,g]
         	                invP[:,:,:,:,g] = linalg.inv(A + Z)
+				detinvP[:,:,g] = linalg.det( invP[:,:,:,:,g] )
                         B = self.network.B(theta, phi, psi, no_psd=False)
 			dataB = np.zeros((n_pix, n_freqs, n_pol), complex) ### transformed data
                         for alpha in xrange(n_ifo):
@@ -1073,8 +1100,8 @@ class Posterior(object):
 				for k in xrange(n_pol):
 					ans[:,g,:] += dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]
 			detZ = self.hPrior.detinvcovariance[:,g]
-			ans[:,g,:] += ( np.log( self.detinvP[:,:,g]) + np.log( detZ ) ) / df
-#			ans[:,g,:] += ( np.log( self.detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
+			ans[:,g,:] += ( np.log( detinvP[:,:,g]) + np.log( detZ ) ) / df
+#			ans[:,g,:] += ( np.log( detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
 
 		### diagnostic arrays
 		if diagnostic:
@@ -1102,12 +1129,12 @@ class Posterior(object):
 			### det
 			for g in xrange(n_gaus):
 				detZ = self.hPrior.detinvcovariance[:,g]
-				det[:,g,:] = ( np.log( self.detinvP[:,:,g]) + np.log( detZ ) ) / df ### determinant includes detZ because we need to normalize the individual frequencies
+				det[:,g,:] = ( np.log( detinvP[:,:,g]) + np.log( detZ ) ) / df ### determinant includes detZ because we need to normalize the individual frequencies
 				                                                                    ### see write-up for tentative rationalization
 				                                                                    ### practically, this is needed to prevent determinant-domination for all terms
 				                                                                    ###   without these controlling detZ terms, the determinant can diverge around singular points for A
 				                                                                    ###   in the limit of large numbers of frequency bins.
-#				det[:,g,:] = ( np.log( self.detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
+#				det[:,g,:] = ( np.log( detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
 
 		if connection:
 			### send ans
@@ -1146,11 +1173,11 @@ class Posterior(object):
 
 		n_pix, theta, phi, psi = self.check_theta_phi_psi(theta, phi, psi)
 
-		if num_proc==1 or n_pix==1:
+		if (num_proc == 1) or (n_pix == 1):
 			return self.log_posterior_elements(theta, phi, psi=psi, invP_dataB=invP_dataB, A_invA=A_invA, diagnostic=diagnostic)
 
 		if invP_dataB != None:
-			invP, dataB, dataB_conj = invP_dataB
+			invP, detinvP, dataB, dataB_conj = invP_dataB
 
                 ### instantiate arrays
 		n_gaus = self.hPrior.n_gaus
@@ -1168,7 +1195,7 @@ class Posterior(object):
 				A, invA = A_invA
 
 		### define size of jobs
-		npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+		npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
 		procs = []
 
 		### iterate through jobs
@@ -1177,7 +1204,7 @@ class Posterior(object):
 			if len(procs): ### if we already have some processes launched
 				### reap old processes
 				if len(procs) >= max_proc:
-					p, start, end, con1 = procs.pop()
+					p, start, end, con1 = procs.pop(0)
 
 					### fill in data
 					shape = np.shape(ans[start:end])
@@ -1196,7 +1223,7 @@ class Posterior(object):
                         _phi = phi[start:end]
 			_psi = psi[start:end]
 			if invP_dataB!=None:
-				_invP_dataB = (invP[start:end], dataB[start:end], dataB_conj[start:end])
+				_invP_dataB = (invP[start:end], detinvP[start:end], dataB[start:end], dataB_conj[start:end])
 			else:
 				_invP_dataB = None
 			if diagnostic and A_invA!=None:
@@ -1213,7 +1240,7 @@ class Posterior(object):
 
 		### reap remaining processes
 		while len(procs):
-			p, start, end, con1 = procs.pop()
+			p, start, end, con1 = procs.pop(0)
 			### fill in data
                         shape = np.shape(ans[start:end])
                         ans[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
@@ -1292,7 +1319,7 @@ class Posterior(object):
 			return self.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, normalize=normalize)
 
 		n_pix, theta, phi, psi = self.check_theta_phi_psi(thetas, phis, 0.0)
-		npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+		npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
 		procs = []
 
 		log_posterior_weight = np.empty((n_pix,),float)
@@ -1300,7 +1327,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, start, end, con1 = procs.pop()
+                                        p, start, end, con1 = procs.pop(0)
 
                         	        shape = np.shape(log_posterior_weight[start:end])
                                 	log_posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
@@ -1320,7 +1347,7 @@ class Posterior(object):
                         con2.close()
                         procs.append( (p, start, end, con1) )
 		while len(procs):
-			p, start, end, con1 = procs.pop()
+			p, start, end, con1 = procs.pop(0)
 			shape = np.shape(log_posterior_weight[start:end])
                         log_posterior_weight[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=float)
 
@@ -1361,7 +1388,7 @@ class Posterior(object):
 			return self.log_bayes(log_posterior)
 
 		n_pix = len(log_posterior)
-                npix_per_proc = np.ceil(1.0*n_pix/num_proc)
+                npix_per_proc = int(np.ceil(1.0*n_pix/num_proc))
                 procs = []
 
 		_log_bayes = np.empty((num_proc),float)
@@ -1369,7 +1396,7 @@ class Posterior(object):
                         if len(procs): ### if we already have some processes launched
                                 ### reap old processes
                                 if len(procs) >= max_proc:
-                                        p, iproc, start, end, con1 = procs.pop()
+                                        p, iproc, start, end, con1 = procs.pop(0)
 					_log_bayes[iproc] = con1.recv()
 
                         ### launch new process
@@ -1385,7 +1412,7 @@ class Posterior(object):
                         con2.close()
                         procs.append( (p, i, start, end, con1) )
                 while len(procs):
-                        p, iproc, start, end, con1 = procs.pop()
+                        p, iproc, start, end, con1 = procs.pop(0)
 			_log_bayes[iproc] = con1.recv()
 
                 return utils.sum_logs( _log_bayes )
