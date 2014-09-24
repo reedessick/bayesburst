@@ -120,43 +120,7 @@ def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_eleme
                 p, i, con1 = procs.pop()
                 model += utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size, dtype=bool)
 
-#        model = model>0 ### ensure this is boolean
 	model = model.astype(bool)
-
-#        n_models = np.sum(freq_truth)
-#        models = np.zeros((n_models,n_freqs), bool)
-#        for modelNo in xrange(n_models):
-#                models[modelNo][binNos[modelNo]] = True
-#
-#        log_bayes = np.empty((n_models,), float)
-#
-#        ### launch and reap processes
-#        procs = []
-#        for iproc in xrange(n_models):
-#                if len(procs):
-#                        while len(procs) >= max_proc: ### reap process
-#                                for ind, (p, _, _) in enumerate(procs):
-#                                        if not p.is_alive():
-#                                                p, modelNo, con1 = procs.pop(ind)
-#                                                log_bayes[modelNo] = con1.recv()
-#                                                break
-#                ### launch new process
-#                con1, con2 = mp.Pipe()
-#                p = mp.Process(target=log_posterior_elements_to_log_bayes, args=(posterior, thetas, phis, log_posterior_elements, n_pol_eff, models[iproc], con2))
-#                p.start()
-#                con2.close()
-#                procs.append( (p, iproc, con1) )
-#
-#        ### reap remaining processes
-#        while len(procs):
-#                for ind, (p, _, _) in enumerate(procs):
-#                        if not p.is_alive():
-#                                p, modelNo, con1 = procs.pop(ind)
-#                                log_bayes[modelNo] = con1.recv()
-#                                break
-#
-#        ### keep only those bayes factors above the threshold
-#       model = np.zeros((n_freqs,), bool)[binNos[log_bayes >= log_bayes_thr]] = True
 
         if joint_log_bayes:
                 return model, log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, model)
@@ -288,13 +252,7 @@ def variable_bandwidth(posterior, thetas, phis, log_posterior_elements, n_pol_ef
 		raise ValueError, "len(models) <= 0\n\tnothing to do"
 
 	models = np.array(models)
-#	models = np.array(models, bool)
 
-#	log_bayes = []
-#	for modelNo, m in enumerate(models):
-#		print "\tmodelNo =", modelNo
-#		log_bayes.append( log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, m) )
-#		print "\t\tDone"
         log_bayes = np.array([log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, m) for m in models])
 
         ### find best model
@@ -367,51 +325,6 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
                 models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
                 log_bayes[i] = con1.recv()
 
-#        ### build models
-#        sum_freq_truth = np.sum(freq_truth)
-#        models = []
-#        for n_bins in np.arange(min_n_bins, max_n_bins, dn_bins, int):
-#                n_models = sum_freq_truth-n_bins + 1
-#                if n_models <= 0:
-#                        continue
-#
-#                for modelNo in xrange(n_models):
-#                        _model = np.zeros((n_freqs,),bool)
-#                        _model[binNos[modelNo:modelNo+n_bins]] = True
-#                        models.append( _model )
-#
-#	n_models = len(models)
-#        if not n_models:
-#                raise ValueError, "len(models) <= 0\n\tnothing to do"
-#        models = np.array(models, bool)
-#
-#        log_bayes = np.empty((n_models,), float)
-#
-#        ### launch and reap processes
-#        procs = []
-#        for iproc in xrange(n_models):
-#                if len(procs):
-#                        while len(procs) >= max_proc: ### reap process
-#                                for ind, (p, _, _) in enumerate(procs):
-#                                        if not p.is_alive():
-#                                                p, modelNo, con1 = procs.pop(ind)
-#                                                log_bayes[modelNo] = con1.recv()
-#                                                break
-#                ### launch new process
-#                con1, con2 = mp.Pipe()
-#                p = mp.Process(target=log_posterior_elements_to_log_bayes, args=(posterior, thetas, phis, log_posterior_elements, n_pol_eff, models[iproc], con2))
-#                p.start()
-#                con2.close()
-#                procs.append( (p, iproc, con1) )
-#
-#        ### reap remaining processes
-#        while len(procs):
-#                for ind, (p, _, _) in enumerate(procs):
-#                        if not p.is_alive():
-#                                p, modelNo, con1 = procs.pop(ind)
-#                                log_bayes[modelNo] = con1.recv()
-#                                break
-#
         ### find best model
         best_modelNo = np.argmax(log_bayes)
 

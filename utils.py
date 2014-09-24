@@ -34,7 +34,6 @@ def recv_and_reshape(conn, shape, max_array_size=100, dtype=float):
 	"""
 	receives a flattened array through conn and returns an array with shape defined by "shape"
 	"""
-#	flat_array = np.empty(shape, dtype).flatten()
 	flat_array = np.zeros(shape, dtype).flatten()
 	size = np.size(flat_array)
 	i=0
@@ -149,11 +148,10 @@ def sum_logs(logs, base=np.exp(1), coeffs=None):
 	_max = np.max(logs, axis=-1)
 	outer_max = np.reshape( np.outer( np.max(logs, axis=-1), np.ones(logs_shape[-1],float) ), logs_shape)
 
-#	print np.shape(coeffs)
-#	print np.shape(_max)
-#	print logs_shape
-
 	ans = np.sum(coeffs*base**(logs-outer_max), axis=-1)
+
+	if np.any(ans < 0):
+		raise ValueError, "ans < 0 not allowed!"
 
 	return np.log(ans)*np.log(base) + _max
 
@@ -221,8 +219,7 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 	### iterate over x,y,z to compute F+ and Fx
 	Fp = np.zeros((n_pix,),float)
 	Fx = np.zeros((n_pix,),float)
-#	Fp = 0.0 # without freqs, these are scalars
-#	Fx = 0.0
+
 	for i in xrange(3):
 		nx_i = nx[i]
 		ny_i = ny[i]
@@ -244,16 +241,8 @@ def antenna_patterns(theta, phi, psi, nx, ny, freqs=None, dt=0.0, dr=None):
 			dt = dx*sin_theta*cos_phi + dy*sin_theta*sin_phi + dz*cos_theta
 			phs = 2*np.pi*np.outer(dt,freqs)
 			phs = np.cos(phs) - 1j*np.sin(phs)
-#			phs = np.exp(-2j*np.pi*np.outer(dt,freqs))
 		else:
 			phs = np.ones((n_pix,n_freqs),float)
-
-#		if isinstance(Fp, np.float): # this avoids weird indexing with outer and a single point
-#			Fp *= phs
-#			Fx *= phs
-#		else:
-#			Fp = np.outer(Fp, phs)
-#			Fx = np.outer(Fx, phs)
 
 		ones_freqs = np.ones((n_freqs),float)
 		Fp = np.outer(Fp, ones_freqs) * phs
@@ -286,10 +275,8 @@ class PSD(object):
 		elif len_freqs == 1:
 			freqs = np.array(2*list(freqs))
 			psd = np.array(2*list(psd))
-#		from scipy.interpolate import interp1d
 		self.freqs = freqs
 		self.psd = psd
-#		self.interp = interp1d(freqs, psd, kind=kind, copy=False)
 
 	###
 	def check(self):
@@ -313,7 +300,6 @@ class PSD(object):
 
 	###
 	def interpolate(self, freqs):
-#		return self.interp(freqs)
 		return np.interp(freqs, self.freqs, self.psd)
 
 	###
@@ -574,22 +560,6 @@ class Network(object):
 			dtheta *= 180/np.pi
 		return dtheta
 
-
-
-
-
-############ we should use network.get_detector(name).antenna_pattern(theta, phi, psi, freqs=freqs) instead!
-
-#	###
-#	def F_det(self, det_name, theta, phi, psi=0.):
-#		"""Calculates 2-D antenna pattern array (frequencies x polarizations) for a given detector"""
-#		F_det = np.zeros((len(self.freqs), self.Np), 'complex')
-#		for i_f in xrange(len(self.freqs)):
-#			for i_pol in xrange(self.Np):
-#				F_det[i_f,i_pol] = self.detectors[det_name].antenna_patterns(theta=theta, phi=phi, psi=psi, freqs=self.freqs)[i_pol][i_f]
-#		return F_det
-############
-
 	###
 	def A(self, theta, phi, psi, no_psd=False):
 		"""computes the entire matrix"""
@@ -716,7 +686,6 @@ class Network(object):
 			n_pix_ones = np.ones((n_pix,),float)
                         for d_ind, detector in enumerate(sorted_detectors):
                                 F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
-#                                _psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
                                 _psd = np.outer(n_pix_ones, detector.psd.interpolate(self.freqs) ) #2-D array: (n_pix,n_freqs)
                                 for i in xrange(self.Np):
                                         a[:,:,i,i] += np.abs(F[i])**2 / _psd

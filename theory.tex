@@ -433,6 +433,127 @@ p(h_j(f)) & \approx & \sum\limits_n C_n \mathrm{exp}\left(-Z_n \int\mathrm{d}f h
 We note that \emph{this is not equivalent to the product of independent priors on each frequency compenent}, because in this case the sum of the product is not the product of the sum. However, this can still be implemented in a straightforward way within our existing framework. If we want to look for wide-band signals, then perhaps we should modify $Z_n\rightarrow f^2 Z_n$, so there is a frequency dependent prior. The argument about the energy scaling with luminosity distance is then exact, regardless of the signal's bandwidth.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{pareto distributions as sums of gaussians}
+
+We have seen that gaussian priors on $h$ work well with our functional marginalization, and we therefore attempt to model a more general pareto distribution as a sum of gaussian terms. In short, we seek a form of $p(h(f))$ such that
+
+\begin{equation}
+p(h_j) = \sum\limits_{n} C_n N_n e^{-\frac{\int \mathrm{d}f\, h_j^\ast h_j}{2 \sigma_n^2} }
+\end{equation}
+
+Furthermore, we expect that 
+
+\begin{equation}
+\int \mathcal{D}h_j \mathcal{D}h_j^\ast p(h_j) = 1
+\end{equation}
+
+regardless of the number of frequency bins, gaussians, or polarizations in our model, implying that the proper normalization for each gaussian kernal should be
+
+\begin{equation}
+N_n = (2\pi\sigma_n^2)^{-n_f n_p} = \left(\frac{\mathrm{det}Z}{\pi}\right)^{n_f}
+\end{equation}
+
+and we require
+
+\begin{equation}
+\sum_n C_n = 1
+\end{equation}
+
+which comes with the nice sanity check that $C_{n+1}/C_n \leq n/n+1$ for convergence.
+
+Now, we assume this form for our prior on $h_j$, and compute the associated prior on $h_{rss}$, which we define through
+
+\begin{equation}\label{equation:h to hrss identity}
+\int \mathcal{D} h_j \mathcal{D} h_j^\ast p(h_j) \delta\left( h_{rss}- \sqrt{ \int \mathrm{d}f\, h_j^\ast h_j }\right) = p(h_{rss}) 
+\end{equation}
+
+We recognize this as an integration over the surface of a $2 n_f n_p$ dimensional sphere with radius $h_{rss}$, which allows us to perform the integral almost by inspection.
+
+\begin{subequations}
+\begin{align}
+p(h_{rss}) & = (2\pi\sigma_n^2)^{-n_f n_p} \int \mathcal{D} h_j \mathcal{D} h_j^\ast e^{-\frac{\int \mathrm{d}f\, h_j^\ast h_j}{2 \sigma_n^2} } \delta\left( h_{rss}- \sqrt{ \int \mathrm{d}f\, h_j^\ast h_j }\right) \\
+           & = (2\pi\sigma^2)^{-n_f n_p} e^{-\frac{h_{rss}^2}{2\sigma^2}} \frac{2 n_f n_p \pi^{n_f n_p}}{\Gamma(n_f n_p +1)} h_{rss}^{2n_f n_p -1} \\
+           & = \frac{\sqrt{2}}{\sigma} \frac{1}{\Gamma(n_f n_p)} \left(\frac{h_{rss}}{\sqrt{2}\sigma}\right)^{2n_f n_p -1} e^{-\frac{h_{rss}^2}{2\sigma^2}}
+\end{align}
+\end{subequations}
+
+and it is straightforward to verify that
+
+\begin{equation}
+\int\limits_{0}^\infty \mathrm{d} h_{rss}\, p(h_{rss}) = 1
+\end{equation}
+
+Our task it to model a pareto distribution over $h_{rss}$ through a sum of gaussian distributions over $h$. We do this through $\chi^2 \equiv \int \mathrm{d}h \left( 1 - \frac{C_n K_n}{(h/h_o)^{-\alpha}}\right)^2$ minimization, where 
+
+\begin{equation}
+K_n = \frac{\sqrt{2}}{\sigma_n} \frac{1}{\Gamma(n_f n_p)} \left(\frac{h_{rss}}{\sqrt{2}\sigma_n}\right)^{2n_f n_p -1} e^{-\frac{h_{rss}^2}{2\sigma_n^2}}
+\end{equation}
+
+which is the kernal that will result from marginalizing our gaussian distribution over $h$. 
+
+\begin{subequations}
+\begin{align}
+\partial_{C_m} \chi^2 & = 0 \forall\ m\\
+\Rightarrow \int \mathrm{d} h (h/h_o)^\alpha K_m & = C_n \int\mathrm{d}h (h/h_o)^{2\alpha} K_n K_m \\
+2 (\sqrt{2}\sigma_m)^\alpha \left[ \frac{1}{\Gamma{n_fn_p}} \int\mathrm{d} y y^{2n_fn_p + \alpha -1} e^{-y^2} \right] & = C_n 2 (\sqrt{2})^{2\alpha+1} \left(\frac{\sigma_{nm}^2}{\sigma_n\sigma_m}\right)^{2n_fn_p} \sigma^{2\alpha-1} \left[\left(\frac{1}{\Gamma(n_fn_p)}\right)^2 \int \mathrm{d} y y^{4n_fn_p + 2\alpha -2} e^{-y^2} \right]
+\end{align}
+\end{subequations}
+
+where
+
+\begin{equation}
+\sigma_{nm}^2 = \frac{\sigma_n^2 \sigma_m^2}{\sigma_n^2 + \sigma_m^2}
+\end{equation}
+
+We can neglect terms that are independent of both $n$ and $m$ because they will be common coefficients for all $C_n$. This leaves us with the expression
+
+\begin{subequations}
+\begin{align}
+\sigma_m^\alpha & = C_n \left(\frac{\sigma_{nm}^2}{\sigma_n\sigma_m}\right)^{2n_fn_p} \sigma^{2\alpha-1} \\
+                & = C_n \left(\frac{\sigma_n\sigma_m}{\sigma_n^2+\sigma_m^2}\right)^{2n_fn_p} \left(\frac{\sigma_n^2\sigma_m^2}{\sigma_n^2+\sigma_m^2}\right)^{2\alpha-1} \\
+                & = C_n M_{nm}
+\end{align}
+\end{subequations}
+
+and it appears that the optimal decomposition will depend on the product $n_f n_p$. This is undesirable, because it forces us to take a matrix inverse for each model we wish to consider. However, if we consider the limit where the variances are widely spaced ($\sigma_n \gg \sigma_{n+1} \forall\ n$), then we see that
+
+\begin{subequations}
+\begin{align}
+M_{n>>m} & \sim \left(\frac{\sigma_m}{\sigma_n}\right)^{2n_fn_p} \sigma_m^{2\alpha-1} \rightarrow 0 \\
+M_{nn}   & \sim 2^{-2n_fn_p-\alpha} \sigma_n^{2\alpha} \rightarrow \sigma_n^{2\alpha-1}
+\end{align}
+\end{subequations}
+
+and in this limit, the matrix is diagonal with eigenvalues that \emph{do not depend on $n_f n_p$}. This means we can compute them once and re-apply them for all models. In fact, this means that
+
+\begin{subequations}
+\begin{align}
+\sigma_m^\alpha & = C_n M_{nm} \\
+\sigma_m^\alpha \left(M^{-1}\right)_{nm} & = C_n \\
+\sigma_m \delta_{nm} \sigma_n^{-2\alpha+1} & \sim \\
+\sigma_n^{-\alpha+1} & \sim C_n
+\end{align}
+\end{subequations}
+
+which is particularly nice because it allows for a natural interpretation of the normalization constraint for the sum of $C_n$. If $\sigma_n = n\sigma_o$, then we have
+
+\begin{equation}
+\sum_n C_n = \sigma_o^{-\alpha+1} \sum_n n^{-\alpha+1}
+\end{equation}
+
+which will converge (and therefore be normalizable) iff $\alpha>2$, which is similar condition for the pareto distribution $p(h_{rss}) \propto h_{rss}^{-\alpha}$ that we model. If we include the normalization from the gaussians, we have $C_n\sigma_n^{-1}\sim\sigma_n^{-\alpha}$, which yields the condition from $p(h_{rss})$.
+
+We should note that there are some weak points of this approximation, but if those break down we can revert to the more computationally expensive exact solution for the optimal decomposition for each model separately. For instance, the kernals over $h_{rss}$ have maxima that depend on $n_fn_p$, and the entire distribution may shift back and forth as we change $n_fn_p$. If we do not cover a large enough range in $h_{rss}$, then we may run into trouble as the kernals shift. This may force us to separate searches based on $n_fn_p$ in order to limit the number of gaussians required. 
+
+We also note that the normalized kernals over $h_{rss}$ contain malmquist-like prefactors that drive the kernal to zero as $h_{rss}\rightarrow0$. This explains why the ``complete-the-square'' terms behave as observed in numerical simulations. There is a prefered $h_{rss}$, with supression both below and above that scale. This means that the contribution will pick a band of the triangulation ring defined by the level sets of the sensitivity matrix ($A$), rather than filling in from the ``top'' of the ring until some value.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{malmquist-pareto distributions}
+
+A malmquist prior will take into account the fact that we are very unlikely to detect a single with exceptionally small $h_{rss}$, and therefore the prior should vanish at small $h_{rss}$. We've seen that our gaussian distributions over $h_j$ natrually include such terms when marginalized to get $p(h_{rss})$, although for reasons unrelated to detectability. It is doubtful that we'll need to incorporate an additional malmquist-like term.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsubsection{constraints between polarizations}
 
 We can apply additional constraints on the polarization of the gravitational wave signal. We work this out in detail for 2 polarizations, but an analogous derivation should be possible for an arbitrary number of polarizations.
