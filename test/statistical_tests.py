@@ -76,7 +76,7 @@ df = freqs[1]-freqs[0]
 seglen = df**-1
 
 ### set up stuff for angprior
-nside_exp = 5
+nside_exp = 7
 nside = 2**nside_exp
 npix = hp.nside2npix(nside)
 pixarea = hp.nside2pixarea(nside, degrees=True)
@@ -251,14 +251,18 @@ for inj_id in xrange(num_inj):
 
 	print "\tlog_posterior_elements_mp"
 	to=time.time()
-	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
 	print "\tvariable_bandwidth_mp(log_bayes_cut_mp)"
 	to=time.time()
 #	model, lb = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=True)
+
 	lbc_model = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=False)
-	model, lb = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+	_max_n_bins = min(max_n_bins, np.sum(lbc_model))
+	model, lb = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, min_n_bins=min_n_bins, max_n_bins=_max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+
+#	model, lb = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
 	print ""

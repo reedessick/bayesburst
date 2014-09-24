@@ -509,13 +509,13 @@ if opts.posterior:
 
 	print "posterior.log_posterior_elements"
 	to=time.time()
-	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=False)
+	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=False)
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.log_posterior_elements_mp"
 		to=time.time()
-		mp_log_posterior_elements, mp_n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		mp_log_posterior_elements, mp_n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		if not opts.check:
 			del mp_log_posterior_elements, mp_n_pol_eff
 		print "\t", time.time()-to
@@ -533,7 +533,7 @@ if opts.posterior:
 	if not opts.skip_diagnostic:
 		print "posterior.log_posterior_elements(diagnostic=True)"
 		to=time.time()
-		log_posterior_elements_diag, n_pol_eff_diag, (mle, cts, det) = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=True)
+		log_posterior_elements_diag, n_pol_eff_diag, (mle, cts, det) = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=True)
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -549,7 +549,7 @@ if opts.posterior:
 		if not opts.skip_mp:
 			print "posterior.log_posterior_elements_mp(diagnostic=True)"
 			to=time.time()
-			mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
+			mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
 			if not opts.check:
 				del mp_log_posterior_elements, mp_n_pol_eff
 			print "\t", time.time()-to
