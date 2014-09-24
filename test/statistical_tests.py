@@ -70,8 +70,8 @@ variances = np.logspace(np.log10(vmin), np.log10(vmax), n_gaus)
 n_pol = 2
 #n_pol = 1
 
-n_freqs = 101
-freqs = np.linspace(150, 250, n_freqs)
+n_freqs = 51
+freqs = np.linspace(175, 225, n_freqs)
 df = freqs[1]-freqs[0]
 seglen = df**-1
 
@@ -92,7 +92,11 @@ n_ifo = len(network.detectors)
 freq_truth = np.ones_like(freqs, bool)
 
 ### set up stuff for model selection
-log_bayes_thr = 0
+log_bayes_thr = -1
+
+min_n_bins = 1
+max_n_bins = 20
+dn_bins = 1
 
 ### plotting options
 log_dynamic_range = 100
@@ -132,6 +136,8 @@ if log:
 	ax.set_yscale("log")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
+ax.set_xlim(xmin=min_hrss)
+ax1.set_xlim(xmin=min_hrss)
 fig.savefig(figname)
 print "\t", time.time()-to
 vis.plt.close(fig)
@@ -146,6 +152,8 @@ if log:
 	ax.set_yscale("log")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
+ax.set_xlim(xmin=min_snr)
+ax1.set_xlim(xmin=min_snr)
 fig.savefig(figname)
 print "\t", time.time()-to
 vis.plt.close(fig)
@@ -202,11 +210,6 @@ print "\t", time.time()-to
 import model_selection
 import stats
 
-### place holders for resulting data
-#lbc_log_posteriors = np.empty((num_inj,npix),float)
-#lbc_models = np.zeros((num_inj,n_freqs),bool)
-#lbc_log_bayes = np.empty((num_inj,),float)
-
 fitsnames = []
 
 p_value = np.empty((num_inj,),float)
@@ -251,32 +254,32 @@ for inj_id in xrange(num_inj):
 	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
-	print "\tlog_bayes_cut_mp"
+	print "\tvariable_bandwidth_mp(log_bayes_cut_mp)"
 	to=time.time()
-	lbc_model, lbc_lb = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=True)
+#	model, lb = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=True)
+	lbc_model = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=False)
+	model, lb = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
 	print ""
 	print "\tlogB_thr=",log_bayes_thr
-	print "\tn_bins=",np.sum(lbc_model)
-	print "\tlogBayes=",lbc_lb
+	print "\tn_lbc_bins=",np.sum(lbc_model)
+	print "\tn_bins=",np.sum(model)
+	print "\tlogBayes=",lb
 	print "\thrss=",hrss
 	print "\tsnr=",snr_net
 	print ""
 
-#	lbc_models[inj_id,:] = lbc_model
-#	lbc_log_bayes[inj_id] = lbc_lb
-
 	print "\tlog_posterior"
 	to=time.time()
-	lbc_log_posterior = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, normalize=True)
+	log_posterior = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, model, normalize=True)
 	print "\t\t", time.time()-to
 
 #	lbc_log_posteriors[inj_id,:] = lbc_log_posterior
 
 	print "\tposterior by hand"
 	to=time.time()
-	posterior = np.exp(lbc_log_posterior) ### find posterior
+	posterior = np.exp(log_posterior) ### find posterior
 	print "\t\t", time.time()-to
 	
 	#=================================================
@@ -287,8 +290,8 @@ for inj_id in xrange(num_inj):
 	figname = "%s/inj=%d%s.png"%(opts.output_dir, inj_id, opts.tag)
 	logfigname = "%s/inj=%d-log%s.png"%(opts.output_dir, inj_id, opts.tag)
 	to=time.time()
-	posterior_obj.plot(figname, posterior=posterior/pixarea, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model),lbc_lb,snr_net), unit="prob/deg$^2$", inj=(theta, phi), est=estang)
-	posterior_obj.plot(logfigname, posterior=lbc_log_posterior-np.log(pixarea), title="log(posterior)\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model),lbc_lb,snr_net), unit="log(prob/deg$^2$)", inj=(theta,phi), est=estang)
+	posterior_obj.plot(figname, posterior=posterior/pixarea, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(model),lb,snr_net), unit="prob/deg$^2$", inj=(theta, phi), est=estang)
+	posterior_obj.plot(logfigname, posterior=log_posterior-np.log(pixarea), title="log(posterior)\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(model),lb,snr_net), unit="log(prob/deg$^2$)", inj=(theta,phi), est=estang)
 	print "\t\t", time.time()-to
 
 	#=================================================
@@ -333,7 +336,7 @@ ax.set_xlabel("bayesian confidence level")
 ax.set_ylabel("probability density")
 ax1.set_ylabel("fraction of events")
 ax.grid(True, which="both")
-ax_1.plot([0,0],[1,1], 'k-') ### reference line for pp plots
+ax1.plot([0,1],[0,1], 'k-') ### reference line for pp plots
 ax.set_xlim(xmin=0, xmax=1)
 ax1.set_xlim(xmin=0, xmax=1)
 fig.savefig(figname)
