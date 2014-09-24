@@ -106,7 +106,7 @@ def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_eleme
         for iproc in xrange(num_proc):
                 if len(procs):
                         if len(procs) >= max_proc: ### reap old processes
-                                p, i, con1 = procs.pop()
+                                p, i, con1 = procs.pop(0)
                                 model += utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size, dtype=bool)
 
                 ### launch new process
@@ -117,7 +117,7 @@ def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_eleme
                 procs.append( (p, iproc, con1) )
 
         while len(procs):
-                p, i, con1 = procs.pop()
+                p, i, con1 = procs.pop(0)
                 model += utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size, dtype=bool)
 
 	model = model.astype(bool)
@@ -193,7 +193,7 @@ def fixed_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_ef
 	for iproc in xrange(num_proc):
 		if len(procs):
 			if len(procs) >= max_proc: ### reap old process
-				p, i, con1 = procs.pop()
+				p, i, con1 = procs.pop(0)
 				models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
 				log_bayes[i] = con1.recv()			
 
@@ -205,7 +205,7 @@ def fixed_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol_ef
                 procs.append( (p, iproc, con1) )
 
         while len(procs):
-                p, i, con1 = procs.pop()
+                p, i, con1 = procs.pop(0)
 		models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
 		log_bayes[i] = con1.recv()
 
@@ -300,7 +300,11 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
 
         model_sets = np.zeros((num_proc,n_freqs), bool)
         for iproc in xrange(num_proc):
-                model_sets[iproc][binNos[iproc:iproc-num_proc+1]] = True
+		istop = iproc-num_proc+1
+		if istop == 0: ### last index is the last element of the array
+	                model_sets[iproc][binNos[iproc:]] = True
+		else:
+			model_sets[iproc][binNos[iproc:istop]] = True
 
         log_bayes = np.empty((num_proc,),float)
         models = np.empty((num_proc,n_freqs),bool)
@@ -309,7 +313,7 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
         for iproc in xrange(num_proc):
                 if len(procs):
                         if len(procs) >= max_proc: ### reap old process
-                                p, i, con1 = procs.pop()
+                                p, i, con1 = procs.pop(0)
                                 models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
                                 log_bayes[i] = con1.recv()
 
@@ -321,7 +325,7 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
                 procs.append( (p, iproc, con1) )
 
         while len(procs):
-                p, i, con1 = procs.pop()
+                p, i, con1 = procs.pop(0)
                 models[i] = utils.recv_and_reshape(con1, (n_freqs), max_array_size=max_array_size)
                 log_bayes[i] = con1.recv()
 
