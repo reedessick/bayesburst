@@ -101,6 +101,8 @@ def inject(network, h, theta, phi, psi=0.0):
 #=================================================
 def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_snr=5, num_inj=1, max_trials=100, verbose=False):
 	"""
+	draws random sky positions with fixed intrinsic parameters, except hrss is drawn from a pareto distribution with the specified lower bound
+
 	generates waveforms using waveform_func and waveform_args
 		waveform_args is passed vi waveform_func(..., **waveform_args)
 
@@ -137,7 +139,7 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 		psi *= 2*np.pi ### uniform in psi (not inclination!)
 	
 		### draw hrss
-		### cdf = 1 - (hrss/min_hrss)**(1-a)
+		### cdf = 1 - (hrss/min_hrss)**(1-a) if a > 1
 		hrss = min_hrss * (1 - hrss)**(1.0/(1-a))
 
 		### generate waveform with waveform_func
@@ -163,3 +165,65 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 
 	return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
 
+###
+def min_snr(network, waveform_func, waveform_args, hrss=1e-23, min_snr=5, num_inj=1, max_trials=100, verbose=False):
+        """
+	draws random sky positions with fixed injected (intrinsic) parameters
+
+        generates waveforms using waveform_func and waveform_args
+                waveform_args is passed vi waveform_func(..., **waveform_args)
+
+        sky positions are randomly drawn (uniformly over the sky)
+        
+        injections are only kept if the proposed position and hrss value produce network_snr > min_snr
+        procedure is repeated until num_inj events are found.
+
+        return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
+        """
+        freqs = network.freqs
+        n_ifo = len(network.detectors)
+
+        ### place holders for injection parameters
+        theta_inj = np.empty((num_inj,),float)
+        phi_inj = np.empty((num_inj,),float)
+        psi_inj = np.empty((num_inj,),float)
+        hrss_inj = np.empty((num_inj,),float)
+        snrs_inj = np.zeros((num_inj,n_ifo),float)
+
+        inj_id = 0
+        trial = 0
+        while trial < max_trials:
+
+                if inj_id >= num_inj: ### we have enough
+                        break
+
+                ### call random.rand only once each epoch
+                theta, phi, psi = np.random.rand(3)
+
+                ### draw position and polarization angle
+                theta = np.arccos( 2*theta-1 ) ### uniform in cos(theta)
+                phi *= 2*np.pi ### uniform in phi
+                psi *= 2*np.pi ### uniform in psi (not inclination!)
+
+                ### generate waveform with waveform_func
+                h = waveform_func(freqs, hrss=hrss, **waveform_args)
+
+                ### compute snr
+                snrs = network.snrs( inject(network, h, theta, phi, psi=psi) )
+
+                if np.sum(snrs**2)**0.5 >= min_snr:
+                        if verbose: print "trial : %d\tnum_inj : %d"%(trial, inj_id)
+                        ### fill in paramters
+                        theta_inj[inj_id] = theta
+                        phi_inj[inj_id] = phi
+                        psi_inj[inj_id] = psi
+                        hrss_inj[inj_id] = hrss
+                        snrs_inj[inj_id,:] = snrs
+
+                        inj_id += 1 ### increment id
+
+                trial += 1
+        else:
+                raise StandardError, "could not find %d injections after %d trials"%(num_inj, trial)
+
+        return theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj
