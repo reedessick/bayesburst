@@ -99,8 +99,7 @@ def log_bayes_cut_mp(log_bayes_thr, posterior, thetas, phis, log_posterior_eleme
         for modelNo in xrange(num_proc):
                 models[modelNo][binNos[modelNo*nbins_per_proc:(modelNo+1)*nbins_per_proc]] = True
 
-        model = np.empty((n_freqs,),float)
-        shape = (n_freqs)
+        model = np.zeros((n_freqs,),bool)
 
         procs = []
         for iproc in xrange(num_proc):
@@ -319,7 +318,7 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
 
                 ### launch new process
                 con1, con2 = mp.Pipe()
-                p = mp.Process(target=variable_bandwidth, args=(posterior, thetas, phis, log_posterior_elements, n_pol_eff, model_sets[iproc], min_n_bins, max_n_bins, dn_bins))
+                p = mp.Process(target=variable_bandwidth, args=(posterior, thetas, phis, log_posterior_elements, n_pol_eff, model_sets[iproc], min_n_bins, max_n_bins, dn_bins, con2, max_array_size))
                 p.start()
                 con2.close()
                 procs.append( (p, iproc, con1) )
