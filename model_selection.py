@@ -42,6 +42,40 @@ def log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_e
 
 #=================================================
 #
+# model averaging
+#
+#=================================================
+def model_average(posterior, thetas, phis, log_posterior_elements, n_pol_eff, models, connection=None, max_array_size=100):
+	""" 
+	compute the model-averaged log_posterior using 'models' 
+	returns log_posterior
+	"""
+	n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
+
+	if len(np.shape(models)) != 2:
+		raise ValueError, "bad shape for models"
+	n_models, n_f = np.shape(models)
+
+	log_posterior = np.zeros((n_pix, n_models), float)
+	log_bayes = np.zeros((n_models,), float)
+
+	### compute posterior and log_bayes for each model
+	for modelNo, model in enumerate(models):
+		this_log_posterior = posterior.log_posterior(thetas, phis, log_posterior_elements, n_pol_eff, model, normalize=False)
+		log_posterior[:,modelNo] = this_log_posterior - utils.sum_logs( this_log_posterior ) ### normalize
+		log_bayes[modelNo] = posterior.log_bayes( this_log_posterior ) ### compute log_Bayes
+
+	### average!
+	###            ### weighted sum                        ### normalize the sum
+	averaged_log_posterior = utils.sum_logs( log_posterior+log_bayes ) - utils.sum_logs( log_bayes )
+	if connection:
+		utils.flatten_and_send(connection, averaged_log_posterior, max_array_size=max_array_size)
+	else:
+		return averaged_log_posterior
+
+#=================================================
+#
 # model selection algorithms
 #
 #=================================================
