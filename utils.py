@@ -570,24 +570,22 @@ class Network(object):
 			for detector in self.detectors.values():
 				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #time shifts cancel within A so we supply no freqs
 				for i in xrange(self.Np):
-					a[:,i,i] += np.abs(F[i])**2
+					a[:,i,i] += F[i].real**2 + F[i].imag**2
 					for j in xrange(i+1,self.Np):
-						_ = np.conjugate(F[i])*F[j]
+						_ = F[i].real*F[j].real + F[i].imag*F[j].imag
 						a[:,i,j] += _
-						a[:,j,i] += np.conjugate(_)
+						a[:,j,i] += _
 		else:  #if given a psd
 			a=np.zeros((n_pix, len(self.freqs), self.Np, self.Np), float)  #initialize a 3-D array (frequencies x polarizations x polarizations)
 			for detector in self.detectors.values():
 				F = detector.antenna_patterns(theta, phi, psi, freqs=None) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
-				_psd = detector.psd.interpolate(self.freqs)  #1-D array (frequencies)
+				_psd = detector.psd.interpolate(self.freqs)**-1  #1-D array (frequencies)
 				for i in xrange(self.Np):
-					a[:,:,i,i] += np.outer(np.abs(F[i])**2, _psd**-1)
+					a[:,:,i,i] += np.outer(F[i]**2, _psd) ### freqs=None -> F is real
 					for j in xrange(i+1,self.Np):
-						_ = np.outer(np.conjugate(F[i])*F[j], _psd**-1)
-#						_ = np.outer(np.abs(F[i]*F[j]), _psd**-1)
+						_ = np.outer(F[i]*F[j], _psd) ### freqs=None -> F is real
 						a[:,:,i,j] += _
-#						a[:,:,j,i] += _
-						a[:,:,j,i] += np.conjugate(_)
+						a[:,:,j,i] += _
 		if n_pix == 1:
 			return a[0]
 		else:
@@ -674,12 +672,12 @@ class Network(object):
                         for d_ind, detector in enumerate(sorted_detectors):
                                 F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs) #time shifts cancel within A so we supply no freqs
                                 for i in xrange(self.Np):
-                                        a[:,i,i] += np.abs(F[i])**2
+                                        a[:,i,i] += F[i].real**2 + F[i].imag**2
 					b[:,:,i,d_ind] = np.conjugate(F[i])
                                         for j in xrange(i+1,self.Np):
-                                                _ = np.conjugate(F[i])*F[j]
+                                                _ = F[i].real*F[j].real + F[i].imag*F[j].imag
                                                 a[:,i,j] += _
-                                                a[:,j,i] += np.conjugate(_)
+                                                a[:,j,i] += _
                 else:  #if given a psd
                         a=np.zeros((n_pix, n_freqs, self.Np, self.Np), float)  #initialize a 3-D array (frequencies x polarizations x polarizations)
 			b=np.zeros((n_pix, n_freqs, self.Np, Nd), complex)
@@ -688,15 +686,12 @@ class Network(object):
                                 F = detector.antenna_patterns(theta, phi, psi, freqs=self.freqs) #tuple of numbers (pols), time shifts cancel within A so we supply no freqs
                                 _psd = np.outer(n_pix_ones, detector.psd.interpolate(self.freqs) ) #2-D array: (n_pix,n_freqs)
                                 for i in xrange(self.Np):
-                                        a[:,:,i,i] += np.abs(F[i])**2 / _psd
+					a[:,:,i,i] += (F[i].real**2 + F[i].imag**2) / _psd
 					b[:,:,i,d_ind] =  np.conjugate(F[i]) / _psd
                                         for j in xrange(i+1,self.Np):
-                                                _ = np.conjugate(F[i])*F[j] / _psd
-#                                                _ = np.abs(F[i]*F[j]) / _psd
-#                                                _ = np.real( np.conjugate(F[i])*F[j] / _psd ) ### should be a real number
+						_ = (F[i].real*F[j].real + F[i].imag*F[j].imag) / _psd ### we take only the real part
                                                 a[:,:,i,j] += _
-#						a[:,:,j,i] += _
-                                                a[:,:,j,i] += np.conjugate(_)
+						a[:,:,j,i] += _
                 if n_pix == 1:
                         return a[0], b[0]
                 else:
