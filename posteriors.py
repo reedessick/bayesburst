@@ -1098,9 +1098,9 @@ class Posterior(object):
 		for g in xrange(n_gaus):
 			for j in xrange(n_pol):
 				for k in xrange(n_pol):
-					ans[:,g,:] += dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]
+					ans[:,g,:] += (dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]).real ### we keep only the real part
 			detZ = self.hPrior.detinvcovariance[:,g]
-			ans[:,g,:] += ( np.log( detinvP[:,:,g]) + np.log( detZ ) ) / df
+			ans[:,g,:] += ( np.log( detinvP[:,:,g]) + np.log( detZ ) ).real / df ### we keep only the real part
 #			ans[:,g,:] += ( np.log( detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
 
 		### diagnostic arrays
@@ -1109,7 +1109,7 @@ class Posterior(object):
 			_mle = np.zeros((n_pix, n_freqs), float)
 			for j in xrange(n_pol):
 				for k in xrange(n_pol):
-					_mle += h_mle_conj[:,:,j] * A[:,:,j,k] * h_mle[:,:,k]
+					_mle += (h_mle_conj[:,:,j] * A[:,:,j,k] * h_mle[:,:,k]).real ### take only the real part
 			for g in xrange(n_gaus):
 				mle[:,g,:] = _mle
 
@@ -1121,15 +1121,16 @@ class Posterior(object):
 					for k in xrange(n_pol):
 						diff = h_mle[:,:,k] - means[:,k,g]
 						
-						cts[:,g,:] -= diff_conj * Z[:,j,k] * diff
+						cts[:,g,:] -= (diff_conj * Z[:,j,k] * diff).real ### take only real part
 						for m in xrange(n_pol):
 							for n in xrange(n_pol):
-								cts[:,g,:] += diff_conj * Z[:,j,m] * invP[:,:,m,n,g] * Z[:,n,k] * diff
+								cts[:,g,:] += (diff_conj * Z[:,j,m] * invP[:,:,m,n,g] * Z[:,n,k] * diff).real ### take only real part
 
 			### det
 			for g in xrange(n_gaus):
 				detZ = self.hPrior.detinvcovariance[:,g]
-				det[:,g,:] = ( np.log( detinvP[:,:,g]) + np.log( detZ ) ) / df ### determinant includes detZ because we need to normalize the individual frequencies
+				det[:,g,:] = ( np.log( detinvP[:,:,g]) + np.log( detZ ) ).real / df ### tak only the real part
+				                                                                    ### determinant includes detZ because we need to normalize the individual frequencies
 				                                                                    ### see write-up for tentative rationalization
 				                                                                    ### practically, this is needed to prevent determinant-domination for all terms
 				                                                                    ###   without these controlling detZ terms, the determinant can diverge around singular points for A
@@ -1484,6 +1485,12 @@ class Posterior(object):
 		"""
 		calculate the posterior at all points in the sky defined by self.nside and healpy
 		we use all frequency bins
+
+		we may want to run everything in parallel instead of recombining the outputs at each step
+			we will save time on communicating?
+			although we will lose time in the end?
+
+		add optional arguments for theta, phi and pass those along via delegation?
 		"""
 		### check for pre-computed arrays
 		if self.theta==None or self.phi==None:
@@ -1497,7 +1504,7 @@ class Posterior(object):
 			self.set_B_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 		if self.dataB==None:
 			self.set_dataB_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
-		invP_dataB = (self.invP, self.dataB, self.dataB_conj)
+		invP_dataB = (self.invP, self.detinvP, self.dataB, self.dataB_conj)
 
 		log_posterior_elements, n_pol_eff = self.log_posterior_elements_mp(theta, phi, psi=0.0, invP_dataB=invP_dataB, A_invA=None, diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
