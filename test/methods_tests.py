@@ -64,8 +64,9 @@ num_proc = opts.num_proc
 max_proc = opts.max_proc
 max_array_size = opts.max_array_size
 
-eps = 1e-05 ### precision for "floating point errors"? Not sure where the errors are coming into AB_A and AB_invA relative to A, invA
+eps = 1e-10 ### precision for "floating point errors"? Not sure where the errors are coming into AB_A and AB_invA relative to A, invA
             ### important for comparing output from different methods
+eps_bayes = 1e-3 ### different parameter for log_bayes...
 
 #=================================================
 # set up
@@ -93,12 +94,12 @@ df = freqs[1]-freqs[0]
 seglen = df**-1
 
 ### set up stuff for angprior
-nside_exp = 5
+nside_exp = 4
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+#network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
 
 n_ifo = len(network.detectors)
 
@@ -405,13 +406,13 @@ if opts.posterior:
 		if np.any(np.abs(AB_A-A) > eps*np.abs(AB_A+A)):
 			raise StandardError, "AB_A!=A"
 		elif np.any(AB_A!=A):
-			print "AB_A~A"
+			print "\tAB_A-A <= %s*(AB_A+A)"%str(eps)
 		else:
 			print "\tAB_A==A"
 		if np.any(np.abs(AB_invA-invA) > eps*np.abs(AB_invA+invA)):
 			raise StandardError, "AB_invA!=invA"
 		elif np.any(AB_invA!=invA):
-			print "AB_invA~invA"
+			print "\tAB_invA-invA <= %s*(AB_A+A)"%str(eps)
 		else:
 			print "\tAB_invA==invA"
 		if np.any(AB_B!=B):
@@ -440,11 +441,11 @@ if opts.posterior:
 			if np.any(P!=P_mp):
 				raise StandardError, "P!=P_mp"
 			else:
-				print "P==P_mp"
+				print "\tP==P_mp"
 			if np.any(invP!=invP_mp):
 				raise StandardError, "invP!=invP_mp"
 			else:
-				print "invP==invP_mp"
+				print "\tinvP==invP_mp"
 
 	print "posterior.set_dataB"
 	to=time.time()
@@ -521,14 +522,14 @@ if opts.posterior:
 		print "\t", time.time()-to
 
 		if opts.check:
-			if np.any(np.abs(log_posterior_elements-mp_log_posterior_elements) > eps*np.abs(log_posterior_elements+mp_log_posterior_elements)):
+			if np.any(log_posterior_elements!=mp_log_posterior_elements) :
 				raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
 			else:
-				print "log_posterior_elements==mp_log_posterior_elements"
+				print "\tlog_posterior_elements==mp_log_posterior_elements"
 			if np.any(n_pol_eff!=mp_n_pol_eff):
 				raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
 			else:
-				print "n_pol_eff==mp_n_pol_eff"
+				print "\tn_pol_eff==mp_n_pol_eff"
 
 	if not opts.skip_diagnostic:
 		print "posterior.log_posterior_elements(diagnostic=True)"
@@ -567,28 +568,51 @@ if opts.posterior:
 					raise StandardError, "conflict between det and mp_det"
 
 		if opts.check:
-			if np.any(log_posterior_elements!=mle+cts+det):
+			if np.any(np.abs(log_posterior_elements-(mle+cts+det)) > eps*np.abs(log_posterior_elements+mle+cts+det)):
 				raise StandardError, "log_posterior_elements!=mle+cts+det"
+			elif np.any(log_posterior_elements!=mle+cts+det):
+				print "\tlog_posterior_elements - (mle+cts+det) <= %s*(log_posterior_elements + mle+cts+det)"%str(eps)
 			else:
-				print "log_posterior_elements==mle+cts+det"
+				print "\tlog_posterior_elements==mle+cts+det"
 
 
 	print "posterior.log_posterior"
 	to=time.time()
-	log_posterior = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True)
+	log_posterior_unnorm = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=False)
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.log_posterior_mp"
 		to=time.time()
-		log_posterior_mp = posterior_obj.log_posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+		log_posterior_unnorm_mp = posterior_obj.log_posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, num_proc=num_proc, max_proc=max_proc)
 		if not opts.check:
 			del log_posterior_mp
 		print "\t", time.time()-to
 
 		if opts.check:
-			if np.any(log_posterior!=log_posterior_mp):
-				raise StandardError, "log_posterior!=log_posterior_mp"
+			if np.any(log_posterior_unnorm!=log_posterior_unnorm_mp):
+				raise StandardError, "log_posterior_unnorm!=log_posterior_unnorm_mp"
+			else:
+				print "\tlog_posterior_unnorm==log_posterior_unnorm_mp"
+
+	print "posterior.log_posterior(normalize=True)"
+	to=time.time()
+	log_posterior = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True)
+        print "\t", time.time()-to
+
+        if not opts.skip_mp:
+                print "posterior.log_posterior_mp(normalize=True)"
+                to=time.time()
+                log_posterior_mp = posterior_obj.log_posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+                if not opts.check:
+                        del log_posterior_mp
+                print "\t", time.time()-to
+
+                if opts.check:
+                        if np.any(log_posterior!=log_posterior_mp):
+                                raise StandardError, "log_posterior!=log_posterior_mp"
+                        else:
+                                print "\tlog_posterior==log_posterior_mp"
 
 	print "posterior.posterior"
 	to=time.time()
@@ -606,13 +630,16 @@ if opts.posterior:
 		if opts.check:
 			if np.any(posterior!=posterior_mp):
 				raise StandardError, "posterior!=posterior_mp"
-
+			else:
+				print "\tposterior==posterior_mp"
 			if np.any(posterior!=np.exp(log_posterior)):
 				raise StandardError, "posterior!=np.exp(log_posterior)"
+			else:
+				print "\tposterior!=np.exp(log_posterior)"
 
 	print "posterior.log_bayes"
 	to=time.time()
-	log_bayes = posterior_obj.log_bayes(log_posterior)
+	log_bayes = posterior_obj.log_bayes(log_posterior_unnorm)
 	print "\t", time.time()-to
 
 	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(freq_truth), log_bayes)
@@ -620,38 +647,43 @@ if opts.posterior:
 	if not opts.skip_mp:
 		print "posterior.log_bayes_mp"
 		to=time.time()
-		log_bayes_mp = posterior_obj.log_bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc)
+		log_bayes_mp = posterior_obj.log_bayes_mp(log_posterior_unnorm, num_proc=num_proc, max_proc=max_proc)
 		if not opts.check:
 			del log_bayes_mp
 		print "\t", time.time()-to
 
 		if opts.check:
-			if np.any(np.abs(log_bayes-log_bayes_mp) > eps*np.abs(log_bayes+log_bayes_mp)):
+			if np.any(np.abs(log_bayes-log_bayes_mp) > eps_bayes*np.abs(log_bayes+log_bayes_mp)):
 				raise StandardError, "log_bayes!=log_bayes_mp"
 			elif np.any(log_bayes!=log_bayes_mp):
-				print "log_bayes~log_bayes_mp"
+				print "\tlog_bayes-log_bayes_mp <= %s*(log_bayes+log_bayes_mp)"%str(eps_bayes)
 			else:
-				print "log_bayes==log_bayes_mp"
+				print "\tlog_bayes==log_bayes_mp"
 
 	print "posterior.bayes"
 	to=time.time()
-	bayes = posterior_obj.bayes(log_posterior)
+	bayes = posterior_obj.bayes(log_posterior_unnorm)
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
 		print "posterior.bayes_mp"
 		to=time.time()
-		bayes_mp = posterior_obj.bayes_mp(log_posterior, num_proc=num_proc, max_proc=max_proc)
+		bayes_mp = posterior_obj.bayes_mp(log_posterior_unnorm, num_proc=num_proc, max_proc=max_proc)
 		if not opts.check:
 			del bayes_mp
 		print "\t", time.time()-to
 
 		if opts.check:
-			if np.any(bayes!=bayes_mp):
+			if np.any(np.abs(log_bayes-log_bayes_mp) > eps_bayes*np.abs(log_bayes+log_bayes_mp)):
 				raise StandardError, "bayes!=bayes_mp"
-
+			elif np.any(bayes!=bayes_mp):
+				print "\tbayes-bayes_mp <= %s*(bayes+bayes_mp)"%str(eps_bayes)
+			else:
+				print "\tbayes==bayes_mp"
 			if np.any(bayes!=np.exp(log_bayes)):
 				raise StandardError, "bayes!=np.exp(log_bayes)"
+			else:
+				print "\tbayes==np.exp(log_bayes)"
 
 	print "posterior.__call__"
 	to=time.time()

@@ -55,17 +55,43 @@ max_array_size = opts.max_array_size
 #=================================================
 ### set up stuff for hPrior
 a = 4
+
 xmin = 1e-24
 xmax = 1e-20
-npts = 1001
+#npts = 1001
 
 vmin = 10*xmin**2
 vmax = 0.1*xmax**2
 
 n_gaus_per_decade = 5 ### approximate scaling found empirically to make my decomposition work well
+#n_gaus_per_decade = 2 ### approximate scaling found empirically to make my decomposition work well
 n_gaus = int(round((np.log10(vmax**0.5)-np.log10(vmin**0.5))*n_gaus_per_decade, 0))
 print "n_gaus :", n_gaus
 variances = np.logspace(np.log10(vmin), np.log10(vmax), n_gaus)
+
+#n_gaus = 1
+#variances = 10*np.array([1e-24])**2 ### single-gaussian
+### expect minimum hrss to be around 2.8e-23 for SNR~10 at design sensitivity
+### we expect there to be roughly 5 bins, 2 polarizations
+### this means we have a correction factor of sqrt(2*n_freqs*n_pol-1) ~ 3 in the maximum of the marginalized prior
+### let's set the variance to be (1e-23)**2/10
+#variance = np.array([2.83e-24 * 10 ])**2 / 20  ### single-gaussian1
+#variance = np.array([5e-24 * 10 ])**2 / 10 ### single-gaussian2
+
+'''
+vmin = (2.83e-24 * 10)**2 / 20 ### high_confidence
+vmax = (1e-20)**2
+
+n_gaus_per_decade=5
+n_gaus = int(round((np.log10(vmax)*0.5-np.log10(vmin)*0.5)*n_gaus_per_decade, 0))
+variacnes = np.logspace(np.log10(vmin), np.log10(vmax), n_gaus)
+'''
+
+'''
+n_gaus=1
+fixed_hrss = 2e-23
+variances = np.array([fixed_hrss])**2 / 20
+'''
 
 n_pol = 2
 #n_pol = 1
@@ -76,15 +102,15 @@ df = freqs[1]-freqs[0]
 seglen = df**-1
 
 ### set up stuff for angprior
-nside_exp = 7
+nside_exp = 6
 nside = 2**nside_exp
 npix = hp.nside2npix(nside)
 pixarea = hp.nside2pixarea(nside, degrees=True)
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+#network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
 
 n_ifo = len(network.detectors)
 
@@ -92,10 +118,13 @@ n_ifo = len(network.detectors)
 freq_truth = np.ones_like(freqs, bool)
 
 ### set up stuff for model selection
+#log_bayes_thr = 0
 log_bayes_thr = -1
 
-min_n_bins = 1
-max_n_bins = 20
+n_bins = 7
+
+min_n_bins = 0
+max_n_bins = n_freqs
 dn_bins = 1
 
 ### plotting options
@@ -111,12 +140,12 @@ log=False
 to=0.0
 phio=0.0
 fo=200
-#tau=0.010
-tau=0.100
+tau=0.010
+#tau=0.100
 q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
 
 min_snr = 10
-min_hrss = 1e-23
+min_hrss = 6e-24
 
 waveform_func = injections.sinegaussian_f
 waveform_args = {"to":to, "phio":phio, "fo":fo, "tau":tau, "alpha":np.pi/2}
@@ -125,6 +154,11 @@ print "injections.pareto_hrss"
 to=time.time()
 theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj = injections.pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=min_hrss, min_snr=min_snr, num_inj=num_inj, max_trials=max_trials, verbose=opts.verbose)
 print "\t", time.time()-to
+
+#print "injections.min_snr"
+#to=time.time()
+#theta_inj, phi_inj, psi_inj, hrss_inj, snrs_inj = injections.min_snr(network, waveform_func, waveform_args, hrss=fixed_hrss, min_snr=min_snr, num_inj=num_inj, max_trials=max_trials, verbose=opts.verbose)
+#print "\t", time.time()-to
 
 print "plotting hrss distribution"
 to=time.time()
@@ -157,6 +191,18 @@ ax1.set_xlim(xmin=min_snr)
 fig.savefig(figname)
 print "\t", time.time()-to
 vis.plt.close(fig)
+
+### save injected parameters
+import pickle
+inj_params_pklname = "%s/inj-params%s.pkl"%(opts.output_dir, opts.tag)
+file_obj = open(inj_params_pklname, "w")
+pickle.dump(waveform_args, file_obj)
+pickle.dump(theta_inj, file_obj)
+pickle.dump(phi_inj, file_obj)
+pickle.dump(psi_inj, file_obj)
+pickle.dump(hrss_inj, file_obj)
+pickle.dump(snrs_inj, file_obj)
+file_obj.close()
 
 #=================================================
 # PRIORS
@@ -254,15 +300,20 @@ for inj_id in xrange(num_inj):
 	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
+#	print "\tlog_bayes_cut_mp"
 	print "\tvariable_bandwidth_mp(log_bayes_cut_mp)"
+#	print "\tvariable_bandwidth_mp"
+#	print "\tfixed_bandwidth_mp"
 	to=time.time()
 #	model, lb = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=True)
 
 	lbc_model = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, joint_log_bayes=False)
-	_max_n_bins = min(max_n_bins, np.sum(lbc_model))
-	model, lb = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, min_n_bins=min_n_bins, max_n_bins=_max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+#	max_n_bins = min(max_n_bins, np.sum(lbc_model))
+	model, lb = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 #	model, lb = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+
+#	model, lb = model_selection.fixed_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, n_bins=n_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
 	print ""
