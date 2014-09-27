@@ -1091,8 +1091,8 @@ class Posterior(object):
 			det = np.zeros_like(ans, float) ### term from determinant from marginalization
 	
 		### define frequency spacing (important for determinant terms)
-		df = self.seglen**-1
-		npol_logdf = np.log(df)*n_pol
+#		df = self.seglen**-1
+#		npol_logdf = np.log(df)*n_pol
 
 		### compute ans
 		for g in xrange(n_gaus):
@@ -1100,7 +1100,7 @@ class Posterior(object):
 				for k in xrange(n_pol):
 					ans[:,g,:] += (dataB_conj[:,:,j] * invP[:,:,j,k,g] * dataB[:,:,k]).real ### we keep only the real part
 			detZ = self.hPrior.detinvcovariance[:,g]
-			ans[:,g,:] += ( np.log( detinvP[:,:,g]) + np.log( detZ ) ).real / df ### we keep only the real part
+			ans[:,g,:] += ( np.log( detinvP[:,:,g]) + np.log( detZ ) ).real * self.seglen ### we keep only the real part
 #			ans[:,g,:] += ( np.log( detinvP[:,:,g]) - npol_logdf ) / df ### CURRENT NORMALIZATION SCHEME USES UN-NORMALIZED KERNALS
 
 		### diagnostic arrays
@@ -1129,7 +1129,7 @@ class Posterior(object):
 			### det
 			for g in xrange(n_gaus):
 				detZ = self.hPrior.detinvcovariance[:,g]
-				det[:,g,:] = ( np.log( detinvP[:,:,g]) + np.log( detZ ) ).real / df ### tak only the real part
+				det[:,g,:] = ( np.log( detinvP[:,:,g]) + np.log( detZ ) ).real * self.seglen ### tak only the real part
 				                                                                    ### determinant includes detZ because we need to normalize the individual frequencies
 				                                                                    ### see write-up for tentative rationalization
 				                                                                    ### practically, this is needed to prevent determinant-domination for all terms
