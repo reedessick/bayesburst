@@ -66,9 +66,9 @@ num_proc = opts.num_proc
 max_proc = opts.max_proc
 max_array_size = opts.max_array_size
 
-eps = 1e-10 ### precision for "floating point errors"? Not sure where the errors are coming into AB_A and AB_invA relative to A, invA
+eps = 1e-03 ### precision for "floating point errors"? Not sure where the errors are coming into AB_A and AB_invA relative to A, invA
             ### important for comparing output from different methods
-eps_bayes = 1e-3 ### different parameter for log_bayes...
+eps_bayes = 1e-03 ### different parameter for log_bayes...
 
 #=================================================
 # set up
@@ -96,12 +96,12 @@ df = freqs[1]-freqs[0]
 seglen = df**-1
 
 ### set up stuff for angprior
-nside_exp = 4
+nside_exp = 5
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
 
 n_ifo = len(network.detectors)
 
@@ -112,8 +112,8 @@ freq_truth = np.ones_like(freqs, bool)
 ### set up stuff for model selection
 n_bins = 23
 
-min_n_bins = 20
-max_n_bins = 26
+min_n_bins = 15
+max_n_bins = 25
 dn_bins = 1
 
 log_bayes_thr = 0
@@ -128,8 +128,8 @@ import injections
 to=0.0
 phio=0.0
 fo=200
-#tau=0.010
-tau=0.100
+tau=0.010
+#tau=0.100
 q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
 #hrss=2e-22 #network SNR ~50 (screaming)
 #hrss=1e-22 #network SNR ~25 (cacophonous)
@@ -177,6 +177,9 @@ stacked_vb_logposterior_figname="%s/log-posterior-stacked_variable_bandwidth%s.p
 lbc_posterior_figname="%s/posterior-log_bayes_cut%s.png"%(opts.output_dir, tag)
 lbc_logposterior_figname="%s/log-posterior-log_bayes_cut%s.png"%(opts.output_dir, tag)
 
+ma_posterior_figname="%s/posterior-model_average%s.png"%(opts.output_dir, tag)
+ma_logposterior_figname="%s/log-posterior-model_avera%s.png"%(opts.output_dir, tag)
+
 posterior_pklname = "%s/posterior%s.pkl"%(opts.output_dir, tag)
 posterior_filename = "%s/posterior%s.fits"%(opts.output_dir, tag)
 
@@ -184,6 +187,7 @@ fb_posterior_filename = "%s/posterior-fixed_bandwidth%s.fits"%(opts.output_dir, 
 vb_posterior_filename = "%s/posterior-variable_bandwidth%s.fits"%(opts.output_dir, tag)
 stacked_vb_posterior_filename = "%s/posterior-stacked_variable_bandwidth%s.fits"%(opts.output_dir, tag)
 lbc_posterior_filename = "%s/posterior-log_bayes_cut%s.fits"%(opts.output_dir, tag)
+ma_posterior_filename = "%s/posterior-model_average%s.fits"%(opts.output_dir, tag)
 
 angfigname = "%s/angprior%s.png"%(opts.output_dir, tag)
 
@@ -433,6 +437,7 @@ if opts.posterior:
 	if opts.check:
 		P = posterior_obj.P
 		invP = posterior_obj.invP
+		detinvP = posterior_obj.detinvP
 	print "\t", time.time()-to
 
 	if not opts.skip_mp:
@@ -442,6 +447,7 @@ if opts.posterior:
 		if opts.check:
 			P_mp = posterior_obj.P
 			invP_mp = posterior_obj.invP
+			detinvP_mp = posterior_obj.detinvP
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -453,6 +459,10 @@ if opts.posterior:
 				raise StandardError, "invP!=invP_mp"
 			else:
 				print "\tinvP==invP_mp"
+			if np.any(detinvP!=detinvP_mp):
+				raise StandardError, "invP!=invP_mp"
+			else:
+				print "\tdetinvP==detinvP_mp"
 
 	print "posterior.set_dataB"
 	to=time.time()
@@ -911,7 +921,7 @@ if opts.model_selection:
 	print "model_selection.variable_bandwidth(model_selection.log_bayes_cut)"
 	to=time.time()
 	generous_lbc_model = model_selection.log_bayes_cut(generous_log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=False)
-	stacked_vb_model, stacked_vb_lb = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins)
+	stacked_vb_model, stacked_vb_lb = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, generous_lbc_model, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins)
 	print "\t", time.time()-to
 
 	print "\tn_bins=%d->%d, logBayes=%.3f"%(np.sum(generous_lbc_model), np.sum(stacked_vb_model), stacked_vb_lb)
@@ -931,11 +941,38 @@ if opts.model_selection:
         print "writing posterior to file"
         hp.write_map(stacked_vb_posterior_filename, stacked_vb_posterior)
 
+	print "setting up fixed_bandwidth models for model_selection.model_average"
+	to=time.time()
+	binNos = np.arange(n_freqs)[freq_truth]
+	n_models = np.sum(freq_truth)-n_bins+1
+	models = np.zeros((n_models, n_freqs),bool)
+	for modelNo in xrange(n_models):
+		models[modelNo][binNos[modelNo:modelNo+n_bins]] = True
+	print "\t", time.time()-to
+
+	print "model_selection.model_average"
+	to=time.time()
+	ma_log_posterior = model_selection.model_average(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, models)
+	ma_posterior = np.exp( ma_log_posterior )
+	print "\t", time.time()
+
+	if not opts.skip_plots:
+                print "posterior.plot(fixed_bandwidth model_average)"
+                to=time.time()
+                posterior_obj.plot(ma_posterior_figname, posterior=ma_posterior, title="posterior\n\\rho_{net}$=%.3f"%(snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
+                posterior_obj.plot(ma_logposterior_figname, posterior=np.log10(ma_posterior), title="log10( posterior )\n\\rho_{net}$=%.3f"%(snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(ma_posterior_filename, ma_posterior)
+
+
 
 	print """WRITE TESTS FOR
 	remaining model_selection (to be written?)
 
 	plot diagnostic values using the models -> see how these break down
 	"""
+
 
 
