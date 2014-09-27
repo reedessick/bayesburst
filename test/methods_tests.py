@@ -959,8 +959,8 @@ if opts.model_selection:
 	if not opts.skip_plots:
                 print "posterior.plot(fixed_bandwidth model_average)"
                 to=time.time()
-                posterior_obj.plot(ma_posterior_figname, posterior=ma_posterior, title="posterior\n\\rho_{net}$=%.3f"%(snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
-                posterior_obj.plot(ma_logposterior_figname, posterior=np.log10(ma_posterior), title="log10( posterior )\n\\rho_{net}$=%.3f"%(snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
+                posterior_obj.plot(ma_posterior_figname, posterior=ma_posterior, title="posterior\n$\\rho_{net}$=%.3f"%(snr_net_inj), unit="prob/pix", inj=(theta_inj, phi_inj), est=None)
+                posterior_obj.plot(ma_logposterior_figname, posterior=np.log10(ma_posterior), title="log10( posterior )\n$\\rho_{net}$=%.3f"%(snr_net_inj), unit="log10(prob/pix)", inj=(theta_inj, phi_inj), est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
                 print "\t", time.time()-to
 
         print "writing posterior to file"
