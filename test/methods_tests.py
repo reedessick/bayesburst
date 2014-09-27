@@ -41,6 +41,8 @@ parser.add_option("", "--skip-plots", default=False, action="store_true")
 parser.add_option("", "--skip-diagnostic", default=False, action="store_true")
 parser.add_option("", "--skip-diagnostic-plots", default=False, action="store_true")
 
+parser.add_option("", "--zero-data", default=False, action="store_true")
+
 parser.add_option("-o", "--output-dir", default="./", type="string")
 parser.add_option("-t", "--tag", default="", type="string")
 
@@ -126,7 +128,8 @@ import injections
 to=0.0
 phio=0.0
 fo=200
-tau=0.010
+#tau=0.010
+tau=0.100
 q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
 #hrss=2e-22 #network SNR ~50 (screaming)
 #hrss=1e-22 #network SNR ~25 (cacophonous)
@@ -141,12 +144,16 @@ h = injections.sinegaussian_f(freqs, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss
 theta_inj =   np.pi/4
 phi_inj   = 3*np.pi/2
 
-data_inj = injections.inject(network, h, theta_inj, phi_inj, psi=0.0)
-snrs_inj = network.snrs(data_inj) ### compute individual SNRs for detectors
-snr_net_inj = np.sum(snrs_inj**2)**0.5 ### network SNR
+if opts.zero_data:
+	data_inj = np.zeros((n_freqs, n_ifo), complex)
+else:
+	data_inj = injections.inject(network, h, theta_inj, phi_inj, psi=0.0)
+	snrs_inj = network.snrs(data_inj) ### compute individual SNRs for detectors
+	snr_net_inj = np.sum(snrs_inj**2)**0.5 ### network SNR
 
-data = data_inj
-#data = np.random.random((n_freqs, n_ifo))
+noise = np.zeros((n_freqs, n_ifo), complex)
+
+data = data_inj + noise
 
 #=================================================
 ### filenames
