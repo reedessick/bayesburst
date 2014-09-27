@@ -578,7 +578,7 @@ class Posterior(object):
 
 			P[:,:,:,:,g] = this_P
 			invP[:,:,:,:,g] = linalg.inv( this_P )
-			detinvP[:,:,g] = linalg.det( this_P )
+			detinvP[:,:,g] = 1.0/linalg.det( this_P )
 		utils.flatten_and_send(connection, P, max_array_size=max_array_size)
 		utils.flatten_and_send(connection, invP, max_array_size=max_array_size)
 		utils.flatten_and_send(connection, detinvP, max_array_size=max_array_size)
