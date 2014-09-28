@@ -148,7 +148,7 @@ def pareto_hrss(network, a, waveform_func, waveform_args, min_hrss=1e-24, min_sn
 		### compute snr
 		snrs = network.snrs( inject(network, h, theta, phi, psi=psi) )
 
-		if np.sum(snrs**2)**0.5 >= min_snr:
+		if np.sum(snrs**2) >= min_snr**2:
 			if verbose: print "trial : %d\tnum_inj : %d"%(trial, inj_id)
 			### fill in paramters
 			theta_inj[inj_id] = theta
