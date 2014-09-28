@@ -211,7 +211,7 @@ class Posterior(object):
 #		raise StandardError, "WRITE ME"
 
 	###
-	def set_A(self, psi=0.0):
+	def set_A(self, psi=0.0, byhand=False):
 		"""
 		compute and store A, invA
 		A is computed through delegation to self.network
@@ -224,20 +224,45 @@ class Posterior(object):
 			raise ValueError, "set_theta_phi() first"
 
                 self.A = self.network.A(self.theta, self.phi, psi, no_psd=False)
-		self.invA = linalg.inv(self.A)
+                if byhand:
+                        self.invA = np.zeros_like(self.A, float)
+                        a = self.A[:,:,0,0]
+                        b = self.A[:,:,0,1]
+                        c = self.A[:,:,1,0]
+                        d = self.A[:,:,1,1]
+                        detA = a*d-b*c
+                        self.invA[:,:,0,0] = d/detA
+                        self.invA[:,:,0,1] = -b/detA
+                        self.invA[:,:,1,0] = -c/detA
+                        self.invA[:,:,1,1] = a/detA
+                else:
+                        self.invA = linalg.inv(self.A)
 
 	###
-	def __set_A_mp(self, theta, phi, psi, connection, max_array_size=100):
+	def __set_A_mp(self, theta, phi, psi, connection, max_array_size=100, byhand=False):
 		"""
 		a helper method for set_A_mp
 		"""
 		A = self.network.A(theta, phi, psi, no_psd=False)
-		invA = linalg.inv(A)
+                if byhand:
+                        invA = np.zeros_like(A, float)
+                        a = A[:,:,0,0]
+                        b = A[:,:,0,1]
+                        c = A[:,:,1,0]
+                        d = A[:,:,1,1]
+                        detA = a*d-b*c
+                        invA[:,:,0,0] = d/detA
+                        invA[:,:,0,1] = -b/detA
+                        invA[:,:,1,0] = -c/detA
+                        invA[:,:,1,1] = a/detA
+                else:
+                        invA = linalg.inv(A)
+
 		utils.flatten_and_send(connection, A, max_array_size=max_array_size)
 		utils.flatten_and_send(connection, invA, max_array_size=max_array_size)
 
 	###
-	def set_A_mp(self, psi=0.0, num_proc=1, max_proc=1, max_array_size=100):
+	def set_A_mp(self, psi=0.0, num_proc=1, max_proc=1, max_array_size=100, byhand=False):
 		"""
 		compute and store A, invA
 		A is computed through delegation to self.network
@@ -279,7 +304,7 @@ class Posterior(object):
 
                         ### launch process
                         con1, con2 = mp.Pipe()
-                        p = mp.Process(target=self.__set_A_mp, args=(_theta, _phi, _psi, con2, max_array_size))
+                        p = mp.Process(target=self.__set_A_mp, args=(_theta, _phi, _psi, con2, max_array_size, byhand))
                         p.start()
                         con2.close()
                         procs.append( (p, start, end, con1) )
@@ -365,7 +390,7 @@ class Posterior(object):
                         self.B[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
 
 	###
-	def set_AB(self, psi=0.0):
+	def set_AB(self, psi=0.0, byhand=False):
 		""" computes and stores both A and B """
 		if not self.network:
 			raise ValueError, "set_network() first!"
@@ -373,21 +398,46 @@ class Posterior(object):
 			raise ValueError, "set_theta_phi() first"
 
 		self.A, self.B = self.network.AB(self.theta, self.phi, psi, no_psd=False)
-		self.invA = linalg.inv(self.A)
+
+		if byhand:
+			self.invA = np.zeros_like(self.A, float)
+			a = self.A[:,:,0,0]
+			b = self.A[:,:,0,1]
+			c = self.A[:,:,1,0]
+			d = self.A[:,:,1,1]
+			detA = a*d-b*c
+			self.invA[:,:,0,0] = d/detA
+			self.invA[:,:,0,1] = -b/detA
+			self.invA[:,:,1,0] = -c/detA
+			self.invA[:,:,1,1] = a/detA
+		else:
+			self.invA = linalg.inv(self.A)
 
         ###
-        def __set_AB_mp(self, theta, phi, psi, connection, max_array_size=100):
+        def __set_AB_mp(self, theta, phi, psi, connection, max_array_size=100, byhand=False):
                 """
                 a helper method for set_AB_mp
                 """
                 A, B = self.network.AB(theta, phi, psi, no_psd=False)
-		invA = linalg.inv(A)
+                if byhand:
+                        invA = np.zeros_like(A, float)
+                        a = A[:,:,0,0]
+                        b = A[:,:,0,1]
+                        c = A[:,:,1,0]
+                        d = A[:,:,1,1]
+                        detA = a*d-b*c
+                        invA[:,:,0,0] = d/detA
+                        invA[:,:,0,1] = -b/detA
+                        invA[:,:,1,0] = -c/detA
+                        invA[:,:,1,1] = a/detA
+                else:
+                        invA = linalg.inv(A)
 		utils.flatten_and_send(connection, A, max_array_size=max_array_size)
 		utils.flatten_and_send(connection, invA, max_array_size=max_array_size)
                 utils.flatten_and_send(connection, B, max_array_size=max_array_size)
 
         ###
-        def set_AB_mp(self, psi=0.0, num_proc=1, max_proc=1, max_array_size=100):
+        def set_AB_mp(self, psi=0.0, num_proc=1, max_proc=1, max_array_size=100, byhand=False):
                 """
                 compute and store A, invA, B
                 A,B are computed through delegation to self.network
@@ -433,7 +483,7 @@ class Posterior(object):
 
                         ### launch process
                         con1, con2 = mp.Pipe()
-                        p = mp.Process(target=self.__set_AB_mp, args=(_theta, _phi, _psi, con2, max_array_size))
+                        p = mp.Process(target=self.__set_AB_mp, args=(_theta, _phi, _psi, con2, max_array_size, byhand))
                         p.start()
                         con2.close()
                         procs.append( (p, start, end, con1) )
@@ -533,11 +583,13 @@ class Posterior(object):
                         self.dataB[start:end] = utils.recv_and_reshape(con1, shape, max_array_size=max_array_size, dtype=complex)
 
 	###
-	def set_P(self):
+	def set_P(self, byhand=False):
 		"""
 		comptue and store P, invP
 		P is computed with knowledge of self.A and self.hPrior
 		pixelization is defined by healpy and self.nside (through self.angPrior)
+
+		if byhand: we take determinants and inverses by hand assuming 2x2 matrices
 		"""
 		if self.A == None:
 			raise ValueError, "set_A() first"
@@ -554,14 +606,28 @@ class Posterior(object):
 			P = A+Z
 
                         self.P[:,:,:,:,g] = P
-			self.invP[:,:,:,:,g] = linalg.inv( P ) ### this appears to be VERY memory intensive...
+
+			if byhand:
+				a = P[:,:,0,0]
+				b = P[:,:,0,1]
+				c = P[:,:,1,0]
+				d = P[:,:,1,1]
+				detP = a*d-c*b
+				self.detinvP[:,:,g] = 1.0/detP
+				self.invP[:,:,0,0,g] = d/detP
+				self.invP[:,:,0,1,g] = -b/detP
+				self.invP[:,:,1,0,g] = -c/detP
+				self.invP[:,:,1,1,g] = a/detP
+			else:
+				self.invP[:,:,:,:,g] = linalg.inv( P ) ### this appears to be VERY memory intensive...
 			                                             ### perhaps prohibitively so
-			self.detinvP[:,:,g] = 1.0/linalg.det( P )
+				self.detinvP[:,:,g] = 1.0/linalg.det( P )
 
         ###
-        def __set_P_mp(self, n_pix, A, connection, max_array_size=100):
+        def __set_P_mp(self, n_pix, A, connection, max_array_size=100, byhand=False):
                 """
                 a helper method for set_AB_mp
+		if byhand, we take determinants and inverses by hand assuming a 2x2 matrix
                 """
 
 		n_pix, n_freqs, n_pol, A = self.check_A(A, n_pix, self.n_pol)
@@ -577,21 +643,33 @@ class Posterior(object):
 			this_P = A+Z
 
 			P[:,:,:,:,g] = this_P
-			invP[:,:,:,:,g] = linalg.inv( this_P )
-			detinvP[:,:,g] = 1.0/linalg.det( this_P )
+			if byhand:
+				a = this_P[:,:,0,0]
+				b = this_P[:,:,0,1]
+				c = this_P[:,:,1,0]
+				d = this_P[:,:,1,1]
+				detP = a*d-c*b
+				detinvP[:,:,g] = 1.0/detP
+				invP[:,:,0,0,g] = d/detP
+				invP[:,:,0,1,g] = -b/detP
+				invP[:,:,1,0,g] = -c/detP
+				invP[:,:,1,1,g] = a/detP
+			else:
+				invP[:,:,:,:,g] = linalg.inv( this_P )
+				detinvP[:,:,g] = 1.0/linalg.det( this_P )
 		utils.flatten_and_send(connection, P, max_array_size=max_array_size)
 		utils.flatten_and_send(connection, invP, max_array_size=max_array_size)
 		utils.flatten_and_send(connection, detinvP, max_array_size=max_array_size)
 
         ###
-        def set_P_mp(self, num_proc=1, max_proc=1, max_array_size=100):
+        def set_P_mp(self, num_proc=1, max_proc=1, max_array_size=100, byhand=False):
                 """
                 compute and store A, invA, B
                 A,B are computed through delegation to self.network
                 pixelization is defined by healpy and self.nside (through self.angPrior)
                 """
                 if num_proc==1:
-                        self.set_P()
+                        self.set_P(byhand=byhand)
 			return
 
                 if self.A == None:
@@ -626,7 +704,7 @@ class Posterior(object):
 
                         ### launch process
                         con1, con2 = mp.Pipe()
-                        p = mp.Process(target=self.__set_P_mp, args=(len(_A), _A, con2, max_array_size))
+                        p = mp.Process(target=self.__set_P_mp, args=(len(_A), _A, con2, max_array_size, byhand))
                         p.start()
                         con2.close()
                         procs.append( (p, start, end, con1) )
