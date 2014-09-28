@@ -303,6 +303,19 @@ class PSD(object):
 		return np.interp(freqs, self.freqs, self.psd)
 
 	###
+	def draw_noise(self, freqs, N):
+		"""
+		draws a noise realization at the specified frequencies
+		"""
+		n_freqs = len(freqs)
+
+		vars = self.interpolate(freqs) / N
+		amp = np.random.normal(size=(n_freqs))
+		phs = np.random.random(n_freqs)*2*np.pi
+
+		return (amp * vars**0.5) * np.exp(1j*phs)
+
+	###
 	def normalization(self, fs, T):
 		""" returns the normalization for psd given an FFT defined by
 	fs : sampling frequency
@@ -398,7 +411,7 @@ class Detector(object):
 		if len(data) != len(freqs):
 			raise ValueError, "len(data) != len(freqs)"
 		
-		return ( 4*np.sum(np.abs(data)**2 / self.get_psd().interpolate(freqs)) )**0.5 ### return SNR
+		return ( 4*np.sum((data.real**2+data.imag**2) / self.get_psd().interpolate(freqs))*(freqs[1]-freqs[0]) )**0.5 ### return SNR
 
 	###
 	def __repr__(self):
@@ -540,7 +553,25 @@ class Network(object):
 			snrs[ifo_ind] = detector.snr(data[:,ifo_ind], freqs=self.freqs)
 
 		return snrs
-		
+	
+	###
+	def draw_noise(self):
+		"""
+		generates a noise realization for the detectors in this network
+		"""
+		detectors_list = self.detectors_list()
+		n_ifo = len(detectors_list)
+		n_freqs = len(self.freqs)
+		noise = np.empty((n_freqs, n_ifo), complex)
+
+		N = 2*np.max(self.freqs)/(self.freqs[1]-self.freqs[0]) ### normalization for noise realization...
+		                                                       ### fs*seglen
+		                                                       ### strong chance this is wrong...
+
+		for ifo_ind, detector in enumerate(detectors_list):
+			noise[:,ifo_ind] = detector.get_psd().draw_noise(self.freqs, N)
+		return noise
+
 	###
 	def ang_res(self, f, degrees=False):
 		"""computes the minimum angular resolution achievable with this network for a signal at frequency "f" 
