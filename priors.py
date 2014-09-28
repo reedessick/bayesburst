@@ -42,7 +42,7 @@ class hPrior(object):
 	"""
 	
 	###
-	def __init__(self, freqs=None, means=None, covariance=None, amplitudes=None, n_freqs=1, n_gaus=1, n_pol=2):
+	def __init__(self, freqs=None, means=None, covariance=None, amplitudes=None, n_freqs=1, n_gaus=1, n_pol=2, byhand=False):
 		"""
 		Priors are assumed to have form \sum_over N{
 		C_N(f) * exp( - conj( h_k(f) - mean_k(f)_N ) * Z_kj(f)_N * ( h_j(f) - mean_j(f)_N ) ) }
@@ -79,7 +79,7 @@ class hPrior(object):
 		if means != None:
 			self.set_means(means, n_freqs=n_freqs, n_pol=n_pol, n_gaus=n_gaus)
 		if covariance != None:
-			self.set_covariance(covariance, n_freqs=n_freqs, n_pol=n_pol, n_gaus=n_gaus)
+			self.set_covariance(covariance, n_freqs=n_freqs, n_pol=n_pol, n_gaus=n_gaus, byhand=byhand)
 		if amplitudes != None:
 			self.set_amplitudes(amplitudes, n_gaus=n_gaus)
 
@@ -135,7 +135,7 @@ class hPrior(object):
 			self.n_freqs = n_freqs
 	
 	###
-	def set_covariance(self, covariance, n_freqs=1, n_pol=2, n_gaus=1):
+	def set_covariance(self, covariance, n_freqs=1, n_pol=2, n_gaus=1, byhand=False):
 		""" check and set covariance. n_freqs, n_gaus, n_pol are only used if they are not already defined within the object """
 		if isinstance(covariance, (int,float)): ### scalar covariances
 			if self.n_freqs:
@@ -173,9 +173,21 @@ class hPrior(object):
 		self.invcovariance = np.zeros_like(covariance, dtype=complex)
 		self.detinvcovariance = np.zeros((n_freqs, n_gaus), dtype=complex)
                 for n in xrange(n_gaus):
-			invc = linalg.inv(self.covariance[:,:,:,n])
-                        self.invcovariance[:,:,:,n] = invc
-			self.detinvcovariance[:,n] = linalg.det(invc)
+			if byhand:
+				a = self.covariance[:,0,0,n]
+				b = self.covariance[:,0,1,n]
+				c = self.covariance[:,1,0,n]
+				d = self.covariance[:,1,1,n]
+				det = a*d-b*c
+				self.detinvcovariance[:,n] = 1.0/det
+				self.invcovariance[:,0,0,n] = d/det
+				self.invcovariance[:,0,1,n] = -b/det
+				self.invcovariance[:,1,0,n] = -c/det
+				self.invcovariance[:,1,1,n] = a/det
+			else:
+				invc = linalg.inv(self.covariance[:,:,:,n])
+        	                self.invcovariance[:,:,:,n] = invc
+				self.detinvcovariance[:,n] = linalg.det(invc)
 			
 	###
 	def set_amplitudes(self, amplitudes, n_gaus=1):
@@ -237,7 +249,7 @@ class hPrior(object):
 			sum C[n] * np.exp( - np.conj(h-means) * incovariance * (h-means) )
 		"""
 
-		print "WARNING: normalizations for this prior are all messed up. Take these plots with a grain of salt."
+#		print "WARNING: normalizations for this prior are all messed up. Take these plots with a grain of salt."
 
 		### make sure h has the expected shape
 		if isinstance(h, (int, float)): ### h is a scalar
@@ -276,7 +288,7 @@ class hPrior(object):
 					e -= np.real(dc[:,i] * m[:,i,j] * d[:,j]) ### we expect this to be a real number, so we cast it to reals
 
 			### insert into prior array
-			mean_variance = np.exp( np.mean( np.log( linalg.det(self.covariance[:,:,:,n]) )*(1.0/self.n_pol) ) )
+			mean_variance = np.exp( -np.mean( np.log( self.detinvcovariance[:,n] )*(1.0/self.n_pol) ) )
 			p += self.amplitudes[n] * np.exp( np.sum(e)*self.df ) / (2*np.pi*mean_variance)**0.5
 
 		return p
