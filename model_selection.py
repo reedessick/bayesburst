@@ -367,3 +367,44 @@ def variable_bandwidth_mp(posterior, thetas, phis, log_posterior_elements, n_pol
 
         return models[best_modelNo], log_bayes[best_modelNo]
 
+###
+def waterfill(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, connection=None, max_array_size=100):
+	"""
+	continues to add bins from the top down until the marginal bayes factor becomes negative
+	
+	this method may be fragile. If no individual bin has enough evidence, then no bins will be returned even if there is a detectable signal when we include several bins
+	"""
+        n_pix, thetas, phis, psis = posterior.check_theta_phi_psi(thetas, phis, 0.0)
+        n_pix, n_gaus, n_freqs, log_posterior_elements = posterior.check_log_posterior_elements(log_posterior_elements, n_pix)
+
+        ### define the sliding frequency ranges for each possible model
+        binNos = np.arange(n_freqs)[freq_truth]
+
+	nBins = np.sum(freq_truth)
+
+        n_models = np.sum(freq_truth)
+        models = np.zeros((n_models, n_freqs), bool)
+        for modelNo in xrange(n_models):
+                models[modelNo][binNos[modelNo]] = True
+
+	### compute bayes factors for bins individually
+        log_bayes = np.array([log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, m) for m in models])
+
+	### need to iteratively find the maximum and expand around it.
+	model = np.zeros((n_freqs,), bool) ### set up the model
+
+	old_model = np.zeros((n_freqs,), bool)
+	old_logB = log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, old_model)
+
+	while np.sum(old_model) < nBins:
+		binNo = log_bayes.argmax() ### bin with max individual log_bayes
+		log_bayes[binNo] = -np.infty ### so we don't pick it up again
+		model[binNo] = True ### add this bin
+		logB = log_posterior_elements_to_log_bayes(posterior, thetas, phis, log_posterior_elements, n_pol_eff, model)
+		if logB >= old_logB: ### add this bin, and tend toward including marginal bins
+			old_model[binNo] = True
+			old_logB = logB
+		else: ### marginal bin is not helpful
+			break
+
+	return old_model, old_logB
