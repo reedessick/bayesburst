@@ -37,6 +37,9 @@ parser.add_option("", "--max-array-size", default=100, type="int")
 parser.add_option("", "--zero-data", default=False, action="store_true")
 parser.add_option("", "--zero-noise", default=False, action="store_true")
 
+parser.add_option("", "--skip-plots", default=False, action="store_true")
+parser.add_option("", "--skip-fits", default=False, action="store_true")
+
 parser.add_option("-o", "--output-dir", default="./", type="string")
 parser.add_option("-t", "--tag", default="", type="string")
 
@@ -59,8 +62,8 @@ max_array_size = opts.max_array_size
 ### set up stuff for hPrior
 a = 4
 
-xmin = 1e-24
-xmax = 1e-20
+xmin = 1e-25
+xmax = 1e-19
 #npts = 1001
 
 vmin = 10*xmin**2
@@ -367,25 +370,27 @@ for inj_id in xrange(num_inj):
 	#=================================================
 	# PLOT POSTERIOR
 	#=================================================
-	estang = stats.estang(posterior, nside=nside)
-	print "\tplotting posterior"
-	figname = "%s/inj=%d%s.png"%(opts.output_dir, inj_id, opts.tag)
-	logfigname = "%s/inj=%d-log%s.png"%(opts.output_dir, inj_id, opts.tag)
-	to=time.time()
-	posterior_obj.plot(figname, posterior=posterior/pixarea, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(model),lb,snr_net), unit="prob/deg$^2$", inj=injang, est=estang)
-	posterior_obj.plot(logfigname, posterior=log_posterior-np.log(pixarea), title="log(posterior)\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(model),lb,snr_net), unit="log(prob/deg$^2$)", inj=injang, est=estang)
-	print "\t\t", time.time()-to
+	if not opts.skip_plots:
+		estang = stats.estang(posterior, nside=nside)
+		print "\tplotting posterior"
+		figname = "%s/inj=%d%s.png"%(opts.output_dir, inj_id, opts.tag)
+		logfigname = "%s/inj=%d-log%s.png"%(opts.output_dir, inj_id, opts.tag)
+		to=time.time()
+		posterior_obj.plot(figname, posterior=posterior/pixarea, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(model),lb,snr_net), unit="prob/deg$^2$", inj=injang, est=estang)
+		posterior_obj.plot(logfigname, posterior=log_posterior-np.log(pixarea), title="log(posterior)\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(model),lb,snr_net), unit="log(prob/deg$^2$)", inj=injang, est=estang)
+		print "\t\t", time.time()-to
 
 	#=================================================
 	# SAVE POSTERIOR
 	#=================================================
-	print "\twriting posterior to file"
-	fits = "%s/inj-%d%s.fits"%(opts.output_dir, inj_id, opts.tag)
-	to=time.time()
-        hp.write_map(fits, posterior)
-	print "\t\t", time.time()-to
+	if not opts.skip_fits:
+		print "\twriting posterior to file"
+		fits = "%s/inj-%d%s.fits"%(opts.output_dir, inj_id, opts.tag)
+		to=time.time()
+        	hp.write_map(fits, posterior)
+		print "\t\t", time.time()-to
 
-	fitsnames.append(fits)
+		fitsnames.append(fits)
 
 	#=================================================
 	# COMPUTE STATISTICS
