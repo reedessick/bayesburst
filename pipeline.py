@@ -325,8 +325,8 @@ if opts.verbose:
 		to = time.time()
 
 pkl_obj = open(pklname, "w")
-pickle.dump(posterior, pkl_obj)
-pickle.dump(log_posterior_elements, pkl_obj)
+#pickle.dump(posterior, pkl_obj)
+#pickle.dump(log_posterior_elements, pkl_obj)
 pickle.dump(model, pkl_obj)
 pickle.dump(log_bayes, pkl_obj)
 pickle.dump(log_posterior, pkl_obj)
