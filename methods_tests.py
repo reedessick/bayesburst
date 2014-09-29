@@ -1,0 +1,1192 @@
+#!/usr/bin/python
+
+usage = """a script that tests the basic functionality of our modules"""
+
+#=================================================
+
+import os
+import sys
+sys.path.append("/home/reed/LIGO/BAYESburst/bayesburst/")
+
+import numpy as np
+import healpy as hp
+
+import utils
+import detector_cache
+
+import time
+import pickle
+
+from optparse import OptionParser
+
+#=================================================
+
+parser = OptionParser(usage=usage)
+
+parser.add_option("", "--hPrior", default=False, action="store_true")
+parser.add_option("", "--malmquist-hPrior", default=False, action="store_true")
+parser.add_option("", "--angPrior", default=False, action="store_true")
+parser.add_option("", "--ap_angPrior", default=False, action="store_true")
+parser.add_option("", "--posterior", default=False, action="store_true")
+parser.add_option("", "--model-selection", default=False, action="store_true")
+
+parser.add_option("", "--num-proc", default=2, type="int")
+parser.add_option("", "--max-proc", default=2, type="int")
+parser.add_option("", "--max-array-size", default=100, type="int")
+
+parser.add_option("", "--pkl", default=False, action="store_true")
+parser.add_option("", "--check", default=False, action="store_true")
+parser.add_option("", "--skip-mp", default=False, action="store_true")
+parser.add_option("", "--skip-plots", default=False, action="store_true")
+parser.add_option("", "--skip-diagnostic", default=False, action="store_true")
+parser.add_option("", "--skip-diagnostic-plots", default=False, action="store_true")
+
+parser.add_option("", "--zero-data", default=False, action="store_true")
+parser.add_option("", "--zero-noise", default=False, action="store_true")
+
+parser.add_option("-o", "--output-dir", default="./", type="string")
+parser.add_option("-t", "--tag", default="", type="string")
+
+opts, args = parser.parse_args()
+
+if opts.tag:
+	opts.tag = "_"+opts.tag
+
+if opts.model_selection:
+	opts.posterior = True
+
+if opts.posterior:
+	opts.hPrior = opts.angPrior = True
+
+opts.skip_diagnostic_plots = opts.skip_diagnostic + opts.skip_diagnostic_plots
+
+if not os.path.exists(opts.output_dir):
+	os.makedirs(opts.output_dir)
+
+num_proc = opts.num_proc
+max_proc = opts.max_proc
+max_array_size = opts.max_array_size
+
+eps = 1e-03 ### precision for "floating point errors"? Not sure where the errors are coming into AB_A and AB_invA relative to A, invA
+            ### important for comparing output from different methods
+eps_bayes = 1e-03 ### different parameter for log_bayes...
+
+#=================================================
+# set up
+#=================================================
+### set up stuff for hPrior
+a = 4
+xmin = 1e-24
+xmax = 1e-20
+npts = 1001
+
+vmin = 10*xmin**2
+vmax = 0.1*xmax**2
+
+n_gaus_per_decade = 5 ### approximate scaling found empirically to make my decomposition work well
+n_gaus = int(round((np.log10(vmax**0.5)-np.log10(vmin**0.5))*n_gaus_per_decade, 0))
+print "n_gaus :", n_gaus
+variances = np.logspace(np.log10(vmin), np.log10(vmax), n_gaus)
+
+n_pol = 2
+#n_pol = 1
+
+n_freqs = 101
+freqs = np.linspace(100, 300, n_freqs)
+df = freqs[1]-freqs[0]
+seglen = df**-1
+
+### set up stuff for angprior
+nside_exp = 5
+prior_type="uniform"
+
+### set up stuff for ap_angprior
+network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+
+n_ifo = len(network.detectors)
+
+### set up stuff for posterior
+
+freq_truth = np.ones_like(freqs, bool)
+
+### set up stuff for model selection
+n_bins = 23
+
+min_n_bins = 15
+max_n_bins = 25
+dn_bins = 1
+
+log_bayes_thr = 0
+generous_log_bayes_thr = -1
+
+### plotting options
+log_dynamic_range = 100
+
+### define injection data
+import injections
+
+to=0.0
+phio=0.0
+fo=200
+tau=0.010
+#tau=0.100
+q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
+#hrss=2e-22 #network SNR ~50 (screaming)
+#hrss=1e-22 #network SNR ~25 (cacophonous)
+hrss=6e-23 #network SNR ~15 (loud)
+#hrss=5e-23 #network SNR ~ 12.5 (audible)
+#hrss=4e-23 #network SNR ~10 (quiet)
+#hrss=2e-23 #network SNR ~5 (silent)
+
+print "injecting data"
+if opts.zero_data:
+	data_inj = np.zeros((n_freqs, n_ifo), complex)
+	snr_net_inj = 0.0
+	injang=None
+else:
+	print "generating injection"
+	theta_inj =   np.pi/4
+	phi_inj   = 3*np.pi/2
+
+	h = injections.sinegaussian_f(freqs, to=to, phio=phio, fo=fo, tau=tau, hrss=hrss, alpha=np.pi/2)
+
+	data_inj = injections.inject(network, h, theta_inj, phi_inj, psi=0.0)
+	snrs_inj = network.snrs(data_inj) ### compute individual SNRs for detectors
+	snr_net_inj = np.sum(snrs_inj**2)**0.5 ### network SNR
+
+	injang=(theta_inj, phi_inj)
+
+if opts.zero_noise:
+	noise = np.zeros((n_freqs, n_ifo), complex)
+else:
+	print "drawing noise"
+	noise = network.draw_noise()
+
+data = data_inj + noise
+
+#=================================================
+### filenames
+tag = "_%d-%d-%d%s"%(n_freqs, n_gaus, nside_exp, opts.tag)
+
+hfigname="%s/hprior%d%s.png"%(opts.output_dir, n_gaus_per_decade, tag)
+malmquist_hfigname="%s/malmquist_hprior%d%s.png"%(opts.output_dir, n_gaus_per_decade, tag)
+
+posterior_figname = "%s/posterior%s.png"%(opts.output_dir, tag)
+logposterior_figname="%s/log-posterior%s.png"%(opts.output_dir, tag)
+
+fb_posterior_figname="%s/posterior-fixed_bandwidth%s.png"%(opts.output_dir, tag)
+fb_logposterior_figname="%s/log-posterior-fixed_bandwidth%s.png"%(opts.output_dir, tag)
+
+vb_posterior_figname="%s/posterior-variable_bandwidth%s.png"%(opts.output_dir, tag)
+vb_logposterior_figname="%s/log-posterior-variable_bandwidth%s.png"%(opts.output_dir, tag)
+
+stacked_vb_posterior_figname="%s/posterior-stacked_variable_bandwidth%s.png"%(opts.output_dir, tag)
+stacked_vb_logposterior_figname="%s/log-posterior-stacked_variable_bandwidth%s.png"%(opts.output_dir, tag)
+
+lbc_posterior_figname="%s/posterior-log_bayes_cut%s.png"%(opts.output_dir, tag)
+lbc_logposterior_figname="%s/log-posterior-log_bayes_cut%s.png"%(opts.output_dir, tag)
+
+ma_posterior_figname="%s/posterior-model_average%s.png"%(opts.output_dir, tag)
+ma_logposterior_figname="%s/log-posterior-model_average%s.png"%(opts.output_dir, tag)
+
+wf_posterior_figname="%s/posterior-waterfill%s.png"%(opts.output_dir, tag)
+wf_logposterior_figname="%s/log-posterior-waterfill%s.png"%(opts.output_dir, tag)
+
+posterior_pklname = "%s/posterior%s.pkl"%(opts.output_dir, tag)
+posterior_filename = "%s/posterior%s.fits"%(opts.output_dir, tag)
+
+fb_posterior_filename = "%s/posterior-fixed_bandwidth%s.fits"%(opts.output_dir, tag)
+vb_posterior_filename = "%s/posterior-variable_bandwidth%s.fits"%(opts.output_dir, tag)
+stacked_vb_posterior_filename = "%s/posterior-stacked_variable_bandwidth%s.fits"%(opts.output_dir, tag)
+lbc_posterior_filename = "%s/posterior-log_bayes_cut%s.fits"%(opts.output_dir, tag)
+ma_posterior_filename = "%s/posterior-model_average%s.fits"%(opts.output_dir, tag)
+wf_posterior_filename = "%s/posterior-waterfill%s.fits"%(opts.output_dir, tag)
+
+angfigname = "%s/angprior%s.png"%(opts.output_dir, tag)
+
+ap_angfigname = "%s/ap_angprior%s.png"%(opts.output_dir, tag)
+
+diag_figname=opts.output_dir+"/%s-%s"+tag+".png"
+logdiag_figname=opts.output_dir+"/log-%s-%s"+tag+".png"
+
+#=================================================
+# PRIORS
+#=================================================
+import priors
+
+if opts.hPrior:
+	print "pareto_amplitudes"
+	to=time.time()
+	pareto_amps = priors.pareto_amplitudes(a, variances)
+	print "\t", time.time()-to
+
+	print "pareto"
+	to=time.time()
+	pareto_means, pareto_covariance, pareto_amps = priors.pareto(a, n_freqs, n_pol, variances)
+	print "\t", time.time()-to
+
+	print "hPrior"
+	to=time.time()
+	hprior_obj = priors.hPrior(freqs, pareto_means, pareto_covariance, amplitudes=pareto_amps, n_gaus=n_gaus, n_pol=n_pol)
+	print "\t", time.time()-to
+	if opts.check:
+		invcovariance = hprior_obj.invcovariance
+		detinvcovariance = hprior_obj.detinvcovariance
+
+	print "hPrior.set_covariance(byhand)"
+	to=time.time()
+	hprior_obj.set_covariance(pareto_covariance, n_freqs=n_freqs, n_pol=n_pol, n_gaus=n_gaus, byhand=True)
+	print "\t", time.time()-to
+	if opts.check:
+		invcovariance_byhand = hprior_obj.invcovariance
+		detinvcovariance_byhand = hprior_obj.detinvcovariance
+
+		if np.any(np.abs(invcovariance-invcovariance_byhand) > eps*np.abs(invcovariance+invcovariance_byhand)):
+			raise StandardError, "invcovariance != invcovariance_byhand"
+		elif np.any(invcovariance!=invcovariance_byhand):
+			print "\tinvcovariance-invcovariance_byhand < %s*(invcovariance+invcovariance_byhand)"%str(eps)
+		else:
+			print "\tinvcovariance==invcovariance_byhand"
+
+		if np.any(np.abs(detinvcovariance-detinvcovariance_byhand) > eps*np.abs(detinvcovariance+detinvcovariance_byhand)):
+			raise StandardError, "detinvcovariance != detinvcovariance_byhand"
+		elif np.any(detinvcovariance!=detinvcovariance_byhand):
+			print "\tdetinvcovariance-detinvcovariance_byhand <= %s*(detinvcovariance+detinvcovariance_byhand)"%str(eps)
+		else:
+			print "\tdetinvcovariance==detinvcovariance_byhand"
+
+        if not opts.skip_plots:
+                print "hPrior.plot"
+                to=time.time()
+                hprior_obj.plot(hfigname, grid=True, xmin=xmin, xmax=xmax, npts=npts)#, ymin=1e0)
+                print "\t", time.time()-to
+
+	if opts.malmquist_hPrior:
+		print "malmquist_pareto"
+		to=time.time()
+		malmquist_means, malmquist_covariance, malmquist_amps = priors.malmquist_pareto(a, n_freqs, n_pol, variances[1:], variances[0])
+		print "\t", time.time()-to
+
+		print "hPrior(malmquist)"
+		to=time.time()
+		hprior_obj = priors.hPrior(freqs, malmquist_means, malmquist_covariance, amplitudes=malmquist_amps, n_gaus=n_gaus, n_pol=n_pol)
+		print "\t", time.time()-to
+
+		if not opts.skip_plots:
+			print "hPrior.plot(malmquist)"
+			to=time.time()
+			hprior_obj.plot(malmquist_hfigname, grid=True, xmin=xmin, xmax=xmax, npts=npts)#, ymin=1e0)
+			print "\t", time.time()-to
+
+
+#=================================================
+if opts.angPrior:
+	print "angPrior"
+	to=time.time()
+	angprior_obj = priors.angPrior(nside_exp, prior_type=prior_type)
+	print "\t", time.time()-to
+
+	print "angPrior.angprior"
+	to=time.time()
+	angprior = angprior_obj.angprior()
+	print "\t", time.time()-to
+
+	print "angPrior.__call__"
+	to=time.time()
+	p = angprior_obj(np.pi/2, np.pi)
+	print "\t", time.time()-to
+
+	if not opts.skip_plots:
+		print "angPrior.plot"
+		to=time.time()
+		angprior_obj.plot(angfigname, inj=injang)
+		print "\t", time.time()-to
+
+#=================================================
+if opts.ap_angPrior:
+
+	print "ap_angPrior"
+	to=time.time()
+	ap_angprior_obj = priors.angPrior(nside_exp, prior_type="antenna_pattern", frequency=150, exp=3.0, network=network)
+	print "\t", time.time()-to
+
+	if not opts.skip_plots:
+		print "angPrior.plot"
+		to=time.time()
+		ap_angprior_obj.plot(ap_angfigname, inj=injang)
+		print "\t", time.time()-to
+
+
+#=================================================
+# POSTERIORS
+#=================================================
+import posteriors
+
+if opts.posterior:
+
+	print "posterior"
+	to=time.time()
+	posterior_obj = posteriors.Posterior()
+	print "\t", time.time()-to
+
+	#=========================================
+	# setting basic data stored within the object from which we compute stats
+	#=========================================
+	print "set_network"
+	to=time.time()
+	posterior_obj.set_network(network)
+	print "\t", time.time()-to
+
+	print "set_hPrior"
+	to=time.time()
+	posterior_obj.set_hPrior(hprior_obj)
+	print "\t", time.time()-to
+
+	print "set_angPrior"
+	to=time.time()
+	posterior_obj.set_angPrior(angprior_obj)
+	print "\t", time.time()-to
+
+	print "set_seglen"
+	to=time.time()
+	posterior_obj.set_seglen(seglen)
+	print "\t", time.time()-to
+
+	print "set_data"
+	to=time.time()
+	posterior_obj.set_data(data)
+	print "\t", time.time()-to
+
+	print "posterior.__init__()"
+	to=time.time()
+	posterior_obj = posteriors.Posterior(network=network, hPrior=hprior_obj, angPrior=angprior_obj, seglen=seglen, data=data)
+	print "\t", time.time()-to
+
+	#=========================================
+	# setting computed data stored within the object from which we compute stats
+	#=========================================
+	print "posterior.set_theta_phi()"
+	to=time.time()
+	posterior_obj.set_theta_phi()
+	print "\t", time.time()-to
+
+	print "posterior.set_A"	
+	to=time.time()
+	posterior_obj.set_A()
+	print "\t", time.time()-to
+	if opts.check:
+		A = posterior_obj.A
+		invA = posterior_obj.invA
+
+	print "posterior.set_A(byhand)"
+	to=time.time()
+	posterior_obj.set_A(byhand=True)
+	print "\t", time.time()-to
+	if opts.check:
+		A_byhand = posterior_obj.A
+		invA_byhand = posterior_obj.invA
+		if np.any(np.abs(A-A_byhand) > eps*np.abs(A+A_byhand)):
+			raise StandardError, "A_byhand != A"
+		elif np.any(A!=A_byhand):
+			print "\tA_byhand-A <= %s*(A+A_byhand)"%str(eps)
+		else:
+			print "\tA_byhand==A"
+                if np.any(np.abs(invA-invA_byhand) > eps*np.abs(invA+invA_byhand)):
+                        raise StandardError, "invA_byhand != invA"
+                elif np.any(invA!=invA_byhand):
+                        print "\tinvA_byhand-invA <= %s*(invA+invA_byhand)"%str(eps)
+                else:
+                        print "\tinvA_byhand==invA"
+
+	if not opts.skip_mp:
+		print "posterior.set_A_mp"
+		to=time.time()
+		posterior_obj.set_A_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		print "\t", time.time()-to
+		if opts.check:
+			A_mp = posterior_obj.A
+			invA_mp = posterior_obj.invA
+
+		print "posterior.set_A_mp(byhand)"
+		to=time.time()
+		posterior_obj.set_A_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, byhand=True)
+		print "\t", time.time()-to
+		if opts.check:
+			A_mp_byhand = posterior_obj.A
+			invA_mp_byhand = posterior_obj.invA
+
+		if opts.check:
+			if np.any(A!=A_mp):
+				raise StandardError, "A!=A_mp"
+			else:
+				print "\tA==A_mp"
+			if np.any(invA!=invA_mp):
+				raise StandardError, "invA!=invA_mp"
+			else:
+				print "\tinvA==invA_mp"
+
+			if np.any(A_byhand!=A_mp_byhand):
+				raise StandardError, "A_byhand!=A_mp_byhand"
+			else:
+				print "\tA_byhand==A_mp_byhand"
+
+			if np.any(invA_byhand!=invA_mp_byhand):
+				raise StandardError, "invA_byhand!=invA_mp_byhand"
+			else:
+				print "\tinvA_byhand==invA_mp_byhand"
+
+	print "posterior.set_B"
+	to=time.time()
+	posterior_obj.set_B()
+	if opts.check:
+		B = posterior_obj.B
+	print "\t", time.time()-to
+
+	if not opts.skip_mp:
+		print "posterior.set_B_mp"
+		to=time.time()
+		posterior_obj.set_B_mp(num_proc=num_proc, max_proc=max_proc)
+		if opts.check:
+			B_mp = posterior_obj.B
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(B!=B_mp):
+				raise StandardError, "B!=B_mp"
+			else:
+				print "\tB==B_mp"
+
+	print "posterior.set_AB"
+	to=time.time()
+	posterior_obj.set_AB()
+	print "\t", time.time()-to
+	if opts.check:
+		AB_A = posterior_obj.A
+		AB_invA = posterior_obj.invA
+		AB_B = posterior_obj.B
+
+	print "posterior.set_AB(byhand)"
+	to=time.time()
+	posterior_obj.set_AB(byhand=True)
+	print "\t", time.time()-to
+	if opts.check:
+		AB_A_byhand = posterior_obj.A
+		AB_invA_byhand = posterior_obj.invA
+		AB_B_byhand = posterior_obj.B
+
+		if np.any(np.abs(AB_A-AB_A_byhand) > eps*np.abs(AB_A+AB_A_byhand)):
+			raise StandardError, "AB_A!=AB_A_byhand"
+		elif np.any(AB_A!=AB_A_byhand):
+			print "\tAB_A-AB_A_byhand <= %s*(AB_A+AB_A_byhand)"%str(eps)
+		else:
+			print "\tAB_A==AB_A_byhand"
+
+		if np.any(np.abs(AB_invA-AB_invA_byhand) > eps*np.abs(AB_invA+AB_invA_byhand)):
+			raise StandardError, "AB_invA!=AB_invA_byhand" 
+		elif np.any(AB_invA!=AB_invA_byhand):
+			print "\tAB_invA-AB_invA_byhand <= %s*(AB_invA+AB_invA_byhand)"%str(eps)
+		else:
+			print "\tAB_invA==AB_invA_byhand"
+
+		if np.any(np.abs(AB_B-AB_B_byhand) > eps*np.abs(AB_B+AB_B_byhand)):
+			raise StandardError, "AB_B!=AB_B_byhand"
+		elif np.any(AB_B!=AB_B_byhand):
+			print "\tAB_B-AB_B_byhand <= %s*(AB_B+AB_B_byhand)"%str(eps)
+		else:
+			print "\tAB_B==AB_B_byhand"
+
+
+	if not opts.skip_mp:
+		print "posterior.set_AB_mp"
+		to=time.time()
+		posterior_obj.set_AB_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		print "\t", time.time()-to
+		if opts.check:
+			AB_A_mp = posterior_obj.A
+			AB_invA_mp = posterior_obj.invA
+			AB_B_mp = posterior_obj.B
+		
+		print "posterior.set_AB_mp(byhand)"
+		to=time.time()
+		posterior_obj.set_AB_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, byhand=True)
+		print "\t", time.time()-to
+		if opts.check:
+			AB_A_mp_byhand = posterior_obj.A
+			AB_invA_mp_byhand = posterior_obj.invA
+			AB_B_mp_byhand = posterior_obj.B
+
+		if opts.check:
+			if np.any(AB_A!=AB_A_mp):
+				raise StandardError, "AB_A!=AB_A_mp"
+			else:
+				print "\tAB_A==AB_A_mp"
+			if np.any(AB_invA!=AB_invA_mp):
+				raise StandardError, "AB_invA!=AB_invA_mp"
+			else:
+				print "\tAB_invA==AB_invA_mp"
+			if np.any(AB_B!=AB_B_mp):
+				raise StandardError, "AB_B!=AB_B_mp"
+			else:
+				print "\tAB_B==AB_B_mp"
+
+                        if np.any(np.abs(AB_A_mp-AB_A_mp_byhand) > eps*np.abs(AB_A_mp+AB_A_mp_byhand)):
+                                raise StandardError, "AB_A_mp!=AB_A_mp_byhand"
+                        elif np.any(AB_A_mp!=AB_A_mp_byhand):
+                                print "\tAB_A_mp-AB_A_mp_byhand <= %s*(AB_A_mp+AB_A_mp_byhand)"%str(eps)
+                        else:
+                                print "\tAB_A_mp==AB_A_mp_byhand"
+                                
+                        if np.any(np.abs(AB_invA_mp-AB_invA_mp_byhand) > eps*np.abs(AB_invA_mp+AB_invA_mp_byhand)):
+                                raise StandardError, "AB_invA_mp!=AB_invA_mp_byhand"
+                        elif np.any(AB_invA_mp!=AB_invA_mp_byhand):
+                                print "\tAB_invA_mp-AB_invA_mp_byhand <= %s*(AB_invA_mp+AB_invA_mp_byhand)"%str(eps)
+                        else:
+                                print "\tAB_invA_mp==AB_invA_mp_byhand"
+
+                        if np.any(np.abs(AB_B_mp-AB_B_mp_byhand) > eps*np.abs(AB_B_mp+AB_B_mp_byhand)):
+                                raise StandardError, "AB_B_mp!=AB_B_mp_byhand"
+                        elif np.any(AB_B_mp!=AB_B_mp_byhand):
+                                print "\tAB_B_mp-AB_B_mp_byhand <= %s*(AB_B_mp+AB_B_mp_byhand)"%str(eps)
+                        else:
+                                print "\tAB_B_mp==AB_B_mp_byhand"
+
+	if opts.check:
+		if np.any(np.abs(AB_A-A) > eps*np.abs(AB_A+A)):
+			raise StandardError, "AB_A!=A"
+		elif np.any(AB_A!=A):
+			print "\tAB_A-A <= %s*(AB_A+A)"%str(eps)
+		else:
+			print "\tAB_A==A"
+		if np.any(np.abs(AB_invA-invA) > eps*np.abs(AB_invA+invA)):
+			raise StandardError, "AB_invA!=invA"
+		elif np.any(AB_invA!=invA):
+			print "\tAB_invA-invA <= %s*(AB_A+A)"%str(eps)
+		else:
+			print "\tAB_invA==invA"
+		if np.any(AB_B!=B):
+			raise StandardError, "AB_B!=B"
+		else:
+			print "\tAB_B==B"
+
+	print "posterior.set_P"
+	to=time.time()
+	posterior_obj.set_P()
+	print "\t", time.time()-to
+	if opts.check:
+		P = posterior_obj.P
+		invP = posterior_obj.invP
+		detinvP = posterior_obj.detinvP
+
+	print "posterior.set_P(byhand)"
+	to=time.time()
+	posterior_obj.set_P(byhand=True)
+	print "\t", time.time()-to
+	if opts.check:
+		P_byhand = posterior_obj.P
+		invP_byhand = posterior_obj.invP
+		detinvP_byhand = posterior_obj.detinvP
+
+		if np.any(P != P_byhand):
+			raise StandardError, "P!=P_byhand"
+		else:
+			print "\tP==P_byhand"
+
+		if np.any(np.abs(invP-invP_byhand) > eps*np.abs(invP+invP_byhand)):
+			raise StandardError, "invP!=invP_byhand"
+		elif np.any(invP != invP_byhand):
+			print "\tinvP-invP_byhand <= %s*(invP+invP_byhand)"%str(eps)
+		else:
+			print "\tinvP==invP_byhand"
+
+		if np.any(np.abs(detinvP-detinvP_byhand) > eps*np.abs(detinvP+detinvP_byhand)):
+			raise StandardError, "detinvP!=detinvP_byhand"
+		elif np.any(detinvP != detinvP_byhand):
+			print "\tdetinvP-detinvP_byhand <= %s*(detinvP+detinvP_byhand)"%str(eps)
+		else:
+			print "\tdetinvP==detinvP_byhand"
+
+	if not opts.skip_mp:
+		print "posterior.set_P_mp"
+		to=time.time()
+		posterior_obj.set_P_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		print "\t", time.time()-to
+		if opts.check:
+			P_mp = posterior_obj.P
+			invP_mp = posterior_obj.invP
+			detinvP_mp = posterior_obj.detinvP
+
+		print "posterior.set_P_mp(byhand)"
+		to=time.time()
+		posterior_obj.set_P_mp(num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, byhand=True)
+		print "\t", time.time()-to
+		if opts.check:
+			P_mp_byhand = posterior_obj.P
+			invP_mp_byhand = posterior_obj.invP
+			detinvP_mp_byhand = posterior_obj.detinvP
+
+	                if np.any(P_mp != P_mp_byhand):
+        	                raise StandardError, "P_mp!=P_mp_byhand"
+	                else:
+        	                print "\tP_mp==P_mp_byhand"
+
+	                if np.any(np.abs(invP_mp-invP_mp_byhand) > eps*np.abs(invP_mp+invP_mp_byhand)):
+        	                raise StandardError, "invP_mp!=invP_mp_byhand"
+                	elif np.any(invP_mp != invP_mp_byhand):
+                        	print "\tinvP_mp-invP_mp_byhand <= %s*(invP_mp+invP_mp_byhand)"%str(eps)
+	                else:
+        	                print "\tinvP_mp==invP_mp_byhand"
+                
+	                if np.any(np.abs(detinvP_mp-detinvP_mp_byhand) > eps*np.abs(detinvP_mp+detinvP_mp_byhand)):
+        	                raise StandardError, "detinvP_mp!=detinvP_mp_byhand"
+                	elif np.any(detinvP_mp != detinvP_mp_byhand):
+                        	print "\tdetinvP_mp-detinvP_mp_byhand <= %s*(detinvP_mp+detinvP_mp_byhand)"%str(eps)
+	                else:
+        	                print "\tdetinvP_mp==detinvP_mp_byhand"
+
+		if opts.check:
+			if np.any(P!=P_mp):
+				raise StandardError, "P!=P_mp"
+			else:
+				print "\tP==P_mp"
+			if np.any(invP!=invP_mp):
+				raise StandardError, "invP!=invP_mp"
+			else:
+				print "\tinvP==invP_mp"
+			if np.any(detinvP!=detinvP_mp):
+				raise StandardError, "invP!=invP_mp"
+			else:
+				print "\tdetinvP==detinvP_mp"
+
+	print "posterior.set_dataB"
+	to=time.time()
+	posterior_obj.set_dataB()
+	if opts.check:
+		dataB = posterior_obj.dataB
+	print "\t", time.time()-to
+
+	if not opts.skip_mp:
+		print "posterior.set_dataB_mp"
+		to=time.time()
+		posterior_obj.set_dataB_mp(num_proc=num_proc, max_proc=max_proc)
+		if opts.check:
+			dataB_mp = posterior_obj.dataB
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(dataB!=dataB_mp): 
+				raise StandardError, "dataB!=dataB_mp"
+			else:
+				print "\tdataB==dataB_mp"
+
+	#================================================
+	# pickling to save
+	#================================================
+	if opts.pkl:
+		print "pickling posterior into ", posterior_pklname
+		to=time.time()
+		file_obj = open(posterior_pklname, "w")
+		pickle.dump(posterior_obj, file_obj)
+		file_obj.close()
+		print "\t", time.time()-to
+
+	#================================================
+	# analysis routines that do no store data within the object
+	#================================================
+	print "posterior.n_pol_eff()"
+	to=time.time()
+	posterior_obj.n_pol_eff(posterior_obj.theta, posterior_obj.phi)
+	print "\t", time.time()-to
+
+	print "posterior.mle_strain"
+	to=time.time()
+	mle_strain = posterior_obj.mle_strain(posterior_obj.theta, posterior_obj.phi, psi=0.0, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+	if not opts.check:
+		del mle_strain
+	print "\t", time.time()-to
+
+	if not opts.skip_mp:
+		print "posterior.mle_strain_mp"
+		to=time.time()
+		mle_strain_mp = posterior_obj.mle_strain_mp(posterior_obj.theta, posterior_obj.phi, 0.0, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+		if not opts.check:
+			del mle_strain_mp
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(mle_strain!=mle_strain_mp):
+				raise StandardError, "mle_strain!=mle_strain_mp"
+			else:
+				print "\tmle_strain==mle_strain_mp"
+
+	print "posterior.log_posterior_elements"
+	to=time.time()
+	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=False)
+	print "\t", time.time()-to
+
+	if not opts.skip_mp:
+		print "posterior.log_posterior_elements_mp"
+		to=time.time()
+		mp_log_posterior_elements, mp_n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		if not opts.check:
+			del mp_log_posterior_elements, mp_n_pol_eff
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(log_posterior_elements!=mp_log_posterior_elements) :
+				raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
+			else:
+				print "\tlog_posterior_elements==mp_log_posterior_elements"
+			if np.any(n_pol_eff!=mp_n_pol_eff):
+				raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
+			else:
+				print "\tn_pol_eff==mp_n_pol_eff"
+
+	if not opts.skip_diagnostic:
+		print "posterior.log_posterior_elements(diagnostic=True)"
+		to=time.time()
+		log_posterior_elements_diag, n_pol_eff_diag, (mle, cts, det) = posterior_obj.log_posterior_elements(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), connection=None, diagnostic=True)
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(log_posterior_elements_diag!=log_posterior_elements):
+				raise StandardError, "conflict between log_posterior_elements and log_posterior_elements_diag"
+			else:
+				print "\tlog_posterior_elements_diag==log_posterior_elements"
+			if np.any(n_pol_eff_diag!=n_pol_eff):
+				raise StandardError, "conflict between n_pol_eff and n_pol_eff_diag"
+			else:
+				print "\tn_pol_eff_diag==n_pol_eff"
+
+		if not opts.skip_mp:
+			print "posterior.log_posterior_elements_mp(diagnostic=True)"
+			to=time.time()
+			mp_log_posterior_elements, mp_n_pol_eff, (mp_mle, mp_cts, mp_det) = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, diagnostic=True)
+			if not opts.check:
+				del mp_log_posterior_elements, mp_n_pol_eff
+			print "\t", time.time()-to
+
+			if opts.check:
+				if np.any(log_posterior_elements!=mp_log_posterior_elements):
+					raise StandardError, "conflict between log_posterior_elements and mp_log_posterior_elements"
+				if np.any(n_pol_eff!=mp_n_pol_eff):
+					raise StandardError, "conflict between n_pol_eff and mp_n_pol_eff"
+				if np.any(mle!=mp_mle):
+					raise StandardError, "conflict between mle and mp_mle"
+				if np.any(cts!=mp_cts):
+					raise StandardError, "conflict between cts and mp_cts"
+				if np.any(det!=mp_det):
+					raise StandardError, "conflict between det and mp_det"
+
+		if opts.check:
+			if np.any(np.abs(log_posterior_elements-(mle+cts+det)) > eps*np.abs(log_posterior_elements+mle+cts+det)):
+				raise StandardError, "log_posterior_elements!=mle+cts+det"
+			elif np.any(log_posterior_elements!=mle+cts+det):
+				print "\tlog_posterior_elements - (mle+cts+det) <= %s*(log_posterior_elements + mle+cts+det)"%str(eps)
+			else:
+				print "\tlog_posterior_elements==mle+cts+det"
+
+
+	print "posterior.log_posterior"
+	to=time.time()
+	log_posterior_unnorm = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=False)
+	print "\t", time.time()-to
+
+	if not opts.skip_mp:
+		print "posterior.log_posterior_mp"
+		to=time.time()
+		log_posterior_unnorm_mp = posterior_obj.log_posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=False, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del log_posterior_mp
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(log_posterior_unnorm!=log_posterior_unnorm_mp):
+				raise StandardError, "log_posterior_unnorm!=log_posterior_unnorm_mp"
+			else:
+				print "\tlog_posterior_unnorm==log_posterior_unnorm_mp"
+
+	print "posterior.log_posterior(normalize=True)"
+	to=time.time()
+	log_posterior = posterior_obj.log_posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True)
+        print "\t", time.time()-to
+
+        if not opts.skip_mp:
+                print "posterior.log_posterior_mp(normalize=True)"
+                to=time.time()
+                log_posterior_mp = posterior_obj.log_posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+                if not opts.check:
+                        del log_posterior_mp
+                print "\t", time.time()-to
+
+                if opts.check:
+                        if np.any(log_posterior!=log_posterior_mp):
+                                raise StandardError, "log_posterior!=log_posterior_mp"
+                        else:
+                                print "\tlog_posterior==log_posterior_mp"
+
+	print "posterior.posterior"
+	to=time.time()
+	posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True)
+	print "\t", time.time()-to
+
+	if not opts.skip_mp:
+		print "posterior.posterior_mp"
+		to=time.time()
+		posterior_mp = posterior_obj.posterior_mp(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, normalize=True, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del posterior_mp
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(posterior!=posterior_mp):
+				raise StandardError, "posterior!=posterior_mp"
+			else:
+				print "\tposterior==posterior_mp"
+			if np.any(posterior!=np.exp(log_posterior)):
+				raise StandardError, "posterior!=np.exp(log_posterior)"
+			else:
+				print "\tposterior==np.exp(log_posterior)"
+
+	print "posterior.log_bayes"
+	to=time.time()
+	log_bayes = posterior_obj.log_bayes(log_posterior_unnorm)
+	print "\t", time.time()-to
+
+	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(freq_truth), log_bayes)
+
+	if not opts.skip_mp:
+		print "posterior.log_bayes_mp"
+		to=time.time()
+		log_bayes_mp = posterior_obj.log_bayes_mp(log_posterior_unnorm, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del log_bayes_mp
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(np.abs(log_bayes-log_bayes_mp) > eps_bayes*np.abs(log_bayes+log_bayes_mp)):
+				raise StandardError, "log_bayes!=log_bayes_mp"
+			elif np.any(log_bayes!=log_bayes_mp):
+				print "\tlog_bayes-log_bayes_mp <= %s*(log_bayes+log_bayes_mp)"%str(eps_bayes)
+			else:
+				print "\tlog_bayes==log_bayes_mp"
+
+	print "posterior.bayes"
+	to=time.time()
+	bayes = posterior_obj.bayes(log_posterior_unnorm)
+	print "\t", time.time()-to
+
+	if not opts.skip_mp:
+		print "posterior.bayes_mp"
+		to=time.time()
+		bayes_mp = posterior_obj.bayes_mp(log_posterior_unnorm, num_proc=num_proc, max_proc=max_proc)
+		if not opts.check:
+			del bayes_mp
+		print "\t", time.time()-to
+
+		if opts.check:
+			if np.any(np.abs(log_bayes-log_bayes_mp) > eps_bayes*np.abs(log_bayes+log_bayes_mp)):
+				raise StandardError, "bayes!=bayes_mp"
+			elif np.any(bayes!=bayes_mp):
+				print "\tbayes-bayes_mp <= %s*(bayes+bayes_mp)"%str(eps_bayes)
+			else:
+				print "\tbayes==bayes_mp"
+			if np.any(bayes!=np.exp(log_bayes)):
+				raise StandardError, "bayes!=np.exp(log_bayes)"
+			else:
+				print "\tbayes==np.exp(log_bayes)"
+
+	print "posterior.__call__"
+	to=time.time()
+	posterior_call = posterior_obj()
+	print "\t", time.time()-to
+
+	if opts.check:
+		if np.any(posterior_call!=posterior):
+			raise StandardError, "posterior_call!=posterior"
+		else:
+			print "\tposterior_call==posterior"
+
+        print "writing posterior to file"
+        hp.write_map(posterior_filename, posterior)
+
+	#=========================================
+	# plotting
+	#=========================================
+	if not opts.skip_plots:
+		print "posterior.plot"
+		to=time.time()
+		posterior_obj.plot(posterior_figname, posterior=posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(freq_truth), log_bayes, snr_net_inj), unit="prob/pix", inj=injang, est=None)
+		posterior_obj.plot(logposterior_figname, posterior=np.log10(posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(freq_truth), log_bayes, snr_net_inj), unit="log10(prob/pix)", inj=injang, est=None) #, min=np.max(np.min(np.log10(posterior)), np.max(np.log10(posterior))-log_dynamic_range))
+		print "\t", time.time()-to
+
+		if not opts.skip_diagnostic_plots:
+			print "diagnostic plots"
+			### use log_poserterior_elements computed above
+			for g in xrange(n_gaus):
+				s = variances[g]**0.5
+				d = int(np.log10(s))-1
+				s = "%.3fe%d"%(s * 10**-d, d)
+
+				### mle
+				print "mle %s"%s
+				to=time.time()
+				_mle = np.sum(mle[:,g,:], axis=1) * df ### sum over freqs
+				posterior_obj.plot(diag_figname%("mle",g), posterior=np.exp(_mle), title="mle %s"%s, inj=injang, est=None)
+				posterior_obj.plot(logdiag_figname%("mle",g), posterior=_mle, title="log10( mle %s )"%s, inj=injang, est=None)
+				print "\t", time.time()-to
+
+				### cts
+				print "cts %s"%s
+				to=time.time()
+				_cts = np.sum(cts[:,g,:], axis=1) * df
+				posterior_obj.plot(diag_figname%("cts",g), posterior=np.exp(_cts), title="cts %s"%s, inj=injang, est=None)
+                		posterior_obj.plot(logdiag_figname%("cts",g), posterior=_cts, title="log10( cts %s )"%s, inj=injang, est=None)
+	                	print "\t", time.time()-to
+
+				### det
+				print "det %s"%s
+				to=time.time()
+				_det = np.sum(det[:,g,:], axis=1) * df
+				posterior_obj.plot(diag_figname%("det",g), posterior=np.exp(_det), title="det %s"%s, inj=injang, est=None)
+        		        posterior_obj.plot(logdiag_figname%("det",g), posterior=_det, title="log10( det %s )"%s, inj=injang, est=None)
+	        	        print "\t", time.time()-to
+
+				### mle+cts+det
+				print "mle+cts+det %s"%s
+				to=time.time()
+				posterior_obj.plot(diag_figname%("mle*cts*det",g), posterior=np.exp(_mle+_cts+_det), title="mle*cts*det %s"%s, inj=injang, est=None)
+				posterior_obj.plot(logdiag_figname%("mle*cts*det",g), posterior=_mle+_cts+_det, title="log10( mle*cts*det )", inj=injang, est=None)
+		                print "\t", time.time()-to
+
+	#=========================================
+	# check sanity of results
+	#=========================================
+	print """WRITE TESTS FOR
+        the sanity of these results, not just the fact that they don't throw errors
+                compare F*mle_strain with data in each detector
+	
+	write and test a histogram of the posterior [p(h|theta,phi,data)] for the reconstructed signal weighted by the skymap [p(theta,phi|data)] at that point. Do this at:
+		each detector (broadcast through antenna patterns into data stream)
+		geocenter
+	look at coverage plots for:
+		sky localization
+		frequency moments
+		h_rss
+		else?
+
+	GOOD VISUALIZATION TOOLS MAY BE USEFUL HERE!
+        """
+
+
+#=================================================
+if opts.model_selection:
+
+	import model_selection
+	
+        print "model_selection.log_bayes_cut"
+        to=time.time()
+        lbc_model, lbc_lb = model_selection.log_bayes_cut(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=True)
+        print "\t", time.time()-to
+
+        print "\tn_bins=%d, logBayes=%.3f"%(np.sum(lbc_model), lbc_lb)
+
+        if not opts.skip_mp:
+                print "model_selection.log_bayes_cut_mp"
+		to=time.time()
+                lbc_model_mp, lbc_lb_mp = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=num_proc, max_proc=max_proc, joint_log_bayes=True)
+                print "\t", time.time()-to
+
+        	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(lbc_model_mp), lbc_lb_mp)
+		
+		if not opts.check:
+			del lbc_model_mp, lbc_lb_mp
+
+                if opts.check:
+                        if np.any(lbc_model!=lbc_model_mp):
+                                raise StandardError, "lbc_model!=lbc_model_mp"
+                        else:
+                                print "\tlbc_model==lbc_model_mp"
+                        if lbc_lb!=lbc_lb_mp:
+                                raise StandardError, "lbc_model!=lbc_model_mp"
+                        else:
+                                print "\tlbc_model==lbc_model_mp"
+
+        print "lbc_posterior"
+        to=time.time()
+        lbc_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, lbc_model, normalize=True)
+        print "\t", time.time()-to
+
+        if not opts.skip_plots:
+                print "posterior.plot(log_bayes_cut)"
+                to=time.time()
+                posterior_obj.plot(lbc_posterior_figname, posterior=lbc_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model), lbc_lb,snr_net_inj), unit="prob/pix", inj=injang, est=None)
+                posterior_obj.plot(lbc_logposterior_figname, posterior=np.log10(lbc_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(lbc_model),lbc_lb,snr_net_inj), unit="log10(prob/pix)", inj=injang, est=None)#, min=np.max(np.min(np.log10(lbc_posterior)), np.max(np.log10(lbc_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(lbc_posterior_filename, lbc_posterior)
+
+	print "model_selection.fixed_bandwidth"
+	to=time.time()
+	fb_model, fb_lb = model_selection.fixed_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, n_bins=n_bins)
+	print "\t", time.time()-to
+
+	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(fb_model), fb_lb)
+
+	if not opts.skip_mp:
+		print "model_selection.fixed_bandwidth_mp"
+		to=time.time()
+		fb_model_mp, fb_lb_mp = model_selection.fixed_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, n_bins=n_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		print "\t", time.time()-to
+
+		print "\tn_bins=%d, logBayes=%.3f"%(np.sum(fb_model_mp), fb_lb_mp)
+
+		if not opts.check:
+			del fb_model_mp, fb_lb_mp
+
+		if opts.check:
+			if np.any(fb_model!=fb_model_mp):
+				raise StandardError, "model!=model_mp"
+			else:
+				print "\tmodel==model_mp"
+			if fb_lb!=fb_lb_mp:
+				raise StandardError, "lb!=lb_mp"
+			else:
+				print "\tlb==lb_mp"
+	
+	print "fb_posterior"
+	to=time.time()
+	fb_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, fb_model, normalize=True)
+	print "\t", time.time()-to
+
+        if not opts.skip_plots:
+                print "posterior.plot(fixed_bandwidth)"
+                to=time.time()
+                posterior_obj.plot(fb_posterior_figname, posterior=fb_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(fb_model),fb_lb, snr_net_inj), unit="prob/pix", inj=injang, est=None)
+                posterior_obj.plot(fb_logposterior_figname, posterior=np.log10(fb_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(fb_model),fb_lb, snr_net_inj), unit="log10(prob/pix)", inj=injang, est=None)#, min=np.max(np.min(np.log10(fb_posterior)), np.max(np.log10(fb_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(fb_posterior_filename, fb_posterior)
+
+	print "model_selection.variable_bandwidth"
+	to=time.time()
+	vb_model, vb_lb = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins)
+	print "\t", time.time()-to
+
+	print "\tn_bins=%d, logBayes=%.3f"%(np.sum(vb_model), vb_lb)
+
+	if not opts.skip_mp:
+		print "model_selection.variable_bandwidth_mp"
+		to=time.time()
+		vb_model_mp, vb_lb_mp = model_selection.variable_bandwidth_mp(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
+		print "\t", time.time()-to
+
+		print "\tn_bins=%d, logBayes=%.3f"%(np.sum(vb_model_mp), vb_lb_mp)
+
+		if not opts.check:
+			del vb_model_mp, vb_lb_mp
+	
+		if opts.check:
+			if np.any(vb_model!=vb_model_mp):
+				raise StandardError, "vb_model!=vb_model_mp"
+			else:
+				print "\tvb_model==vb_model_mp"
+			if vb_lb!=vb_lb_mp:
+				raise StandardError, "vb_lb!=vb_lb_mp"
+			else:
+				print "\tvb_lb==vb_lb_mp"
+	print "vb_posterior"	
+	to=time.time()
+        vb_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, vb_model, normalize=True)
+	print "\t", time.time()-to
+
+        if not opts.skip_plots:
+                print "posterior.plot(variable_bandwidth)"
+                to=time.time()
+                posterior_obj.plot(vb_posterior_figname, posterior=vb_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(vb_model),vb_lb,snr_net_inj), unit="prob/pix", inj=injang, est=None)
+                posterior_obj.plot(vb_logposterior_figname, posterior=np.log10(vb_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(vb_model),vb_lb,snr_net_inj), unit="log10(prob/pix)", inj=injang, est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(vb_posterior_filename, vb_posterior)
+	
+	print "model_selection.variable_bandwidth(model_selection.log_bayes_cut)"
+	to=time.time()
+	generous_lbc_model = model_selection.log_bayes_cut(generous_log_bayes_thr, posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, joint_log_bayes=False)
+	stacked_vb_model, stacked_vb_lb = model_selection.variable_bandwidth(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, generous_lbc_model, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins)
+	print "\t", time.time()-to
+
+	print "\tn_bins=%d->%d, logBayes=%.3f"%(np.sum(generous_lbc_model), np.sum(stacked_vb_model), stacked_vb_lb)
+
+	print "stacked_vb_posterior"
+	to=time.time()
+	stacked_vb_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, stacked_vb_model, normalize=True)
+	print "\t", time.time()-to
+
+        if not opts.skip_plots:
+                print "posterior.plot(variable_bandwidth(log_bayes_cut))"
+                to=time.time()
+                posterior_obj.plot(stacked_vb_posterior_figname, posterior=stacked_vb_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(stacked_vb_model),stacked_vb_lb,snr_net_inj), unit="prob/pix", inj=injang, est=None)
+                posterior_obj.plot(stacked_vb_logposterior_figname, posterior=np.log10(stacked_vb_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(stacked_vb_model),stacked_vb_lb,snr_net_inj), unit="log10(prob/pix)", inj=injang, est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(stacked_vb_posterior_filename, stacked_vb_posterior)
+
+	print "setting up fixed_bandwidth models for model_selection.model_average"
+	to=time.time()
+	binNos = np.arange(n_freqs)[freq_truth]
+	n_models = np.sum(freq_truth)-n_bins+1
+	models = np.zeros((n_models, n_freqs),bool)
+	for modelNo in xrange(n_models):
+		models[modelNo][binNos[modelNo:modelNo+n_bins]] = True
+	print "\t", time.time()-to
+
+	print "model_selection.model_average"
+	to=time.time()
+	ma_log_posterior = model_selection.model_average(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, models)
+	ma_posterior = np.exp( ma_log_posterior )
+	print "\t", time.time()-to
+
+	if not opts.skip_plots:
+                print "posterior.plot(fixed_bandwidth model_average)"
+                to=time.time()
+                posterior_obj.plot(ma_posterior_figname, posterior=ma_posterior, title="posterior\n$\\rho_{net}$=%.3f"%(snr_net_inj), unit="prob/pix", inj=injang, est=None)
+                posterior_obj.plot(ma_logposterior_figname, posterior=np.log10(ma_posterior), title="log10( posterior )\n$\\rho_{net}$=%.3f"%(snr_net_inj), unit="log10(prob/pix)", inj=injang, est=None)#, min=np.max(np.min(np.log10(vb_posterior)),np.max(np.log10(vb_posterior))-log_dynamic_range))
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(ma_posterior_filename, ma_posterior)
+
+        print "model_selection.waterfill"
+        to=time.time()
+        wf_model, wf_lb = model_selection.waterfill(posterior_obj, posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, freq_truth, connection=None, max_array_size=max_array_size)
+        print "\t", time.time()-to
+
+        print "\tn_bins=%d, logBayes=%.3f"%(np.sum(wf_model), wf_lb)
+
+        print "wf_posterior"
+        to=time.time()
+        wf_posterior = posterior_obj.posterior(posterior_obj.theta, posterior_obj.phi, log_posterior_elements, n_pol_eff, wf_model, normalize=True)
+        print "\t", time.time()-to
+
+        if not opts.skip_plots:
+                print "posterior.plot(fixed_bandwidth model_average)"
+                to=time.time()
+                posterior_obj.plot(wf_posterior_figname, posterior=wf_posterior, title="posterior\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(wf_model),wf_lb,snr_net_inj), unit="prob/pix", inj=injang, est=None)
+                posterior_obj.plot(wf_logposterior_figname, posterior=np.log10(wf_posterior), title="log10( posterior )\nNo bins=%d\nlogBayes=%.3f\n$\\rho_{net}$=%.3f"%(np.sum(wf_model),wf_lb,snr_net_inj), unit="log10(prob/pix)", inj=injang, est=None)
+                print "\t", time.time()-to
+
+        print "writing posterior to file"
+        hp.write_map(wf_posterior_filename, ma_posterior)
+
+	print """WRITE TESTS FOR
+	remaining model_selection (to be written?)
+
+	plot diagnostic values using the models -> see how these break down
+	"""
+
+
+
