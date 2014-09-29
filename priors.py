@@ -947,7 +947,7 @@ def malmquist_pareto(a, n_freqs, n_pol, variances, break_variance):
         return means, covariances, np.concatenate((np.array([break_amp]),amplitudes))
 
 ###
-def pareto(a, n_freqs, n_pol, variances):
+def pareto(a, n_freqs, n_pol, variances, exact=False):
 	"""
 	computes the required input for a Prior object using the pareto distribution
 		p(h_rss) = h_rss**-a
@@ -963,7 +963,7 @@ def pareto(a, n_freqs, n_pol, variances):
         n_gaus = len(variances)
 
 	### compute amplitudes
-	amplitudes = pareto_amplitudes(a, variances, n_pol=n_pol)
+	amplitudes = pareto_amplitudes(a, variances, n_freqs=n_freqs, n_pol=n_pol, exact=exact)
 
 	### compute covariance in correct array format
 	covariances = np.zeros((n_freqs,n_pol,n_pol,n_gaus),float)
@@ -978,7 +978,7 @@ def pareto(a, n_freqs, n_pol, variances):
 	return means, covariances, amplitudes
 
 ###
-def pareto_amplitudes(a, variances, n_pol=1):
+def pareto_amplitudes(a, variances, n_freqs=1, n_pol=1, exact=False):
 	"""
 	computes the amplitudes corresponding to the supplied variances to optimally reconstruct a pareto distribution with exponent "a"
 	p(x) = x**-a ~ \sum_n C_n * (2*pi*variances[n])**-0.5 * exp( -x**2/(2*variances[n]) )
@@ -1011,13 +1011,26 @@ def pareto_amplitudes(a, variances, n_pol=1):
                 raise ValueError, "bad shape for variances"
         n_gaus = len(variances)
 
+	if not exact: ### make an approximation
+		### REFERENCE THEORY.TEX FOR EXPLANATION FOR WHY THIS IS REASONABLE.
+		### ASSUMES WIDELY SPACED VARIANCES
+		C_n = variances**(-0.5*(a-1)) 
 
-	### REFERENCE THEORY.TEX FOR EXPLANATION FOR WHY THIS IS REASONABLE.
-	### ASSUMES WIDELY SPACED VARIANCES
-	C_n = variances**(-0.5*(a-1)) 
+	else: ### return the exact result
+		M = np.empty((n_gaus,n_gaus),float)
+		for i in xrange(n_gaus):
+			vi = variances[i]
+			M[i,i] = 2**(0.5 - a - 2*n_freqs*n_pol) * vi**(a - 0.5)
+			for j in xrange(i, n_gaus):
+				vj = variances[j]
+				vij = vi*vj/(vi+vj)
+				M[i,j] = M[j,i] = (vi*vj)**(-n_freqs*n_pol) * vij**(2*n_freqs*n_pol + a - 0.5)
+
+		C_n = np.sum(linalg.inv(M)*variances**(0.5*a), axis=0)
+
 	C_n /= np.sum(C_n)
-
 	return C_n
+
 
 	'''
 	### Distribution for normalized univariate kernals:
