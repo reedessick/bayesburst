@@ -3,6 +3,9 @@
 usage = """triangulation.py [--options] detector_name1 detector_name2 detector_name3 ...
 written to compute posteriors over the sky using triangulation and modulation with antenna patterns"""
 
+import sys
+sys.path.append("../")
+
 import utils
 np = utils.np
 pickle = utils.pickle

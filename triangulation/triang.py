@@ -2,6 +2,9 @@
 
 usage = """triang.py is a module that contains basic methods for triangulation, including a TimingNetwork that does most of the heavy lifting"""
 
+import sys
+sys.path.append("../")
+
 import utils
 np = utils.np
 import pdf_estimation as pdfe
