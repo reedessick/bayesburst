@@ -284,7 +284,9 @@ class PSD(object):
 
 	###
 	def update(self, psd, freqs=None):
-		if freqs and psd:
+		if freqs!=None:
+			if len(freqs)!=len(psd):
+				raise ValueError, "len(freqs) != len(psd)"
 			self.freqs = freqs
 			self.psd = psd
 		else:
