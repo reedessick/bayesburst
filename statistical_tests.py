@@ -40,6 +40,8 @@ parser.add_option("", "--zero-noise", default=False, action="store_true")
 parser.add_option("", "--skip-plots", default=False, action="store_true")
 parser.add_option("", "--skip-fits", default=False, action="store_true")
 
+parser.add_option("", "--grid", default=False, action="store_true")
+
 parser.add_option("-o", "--output-dir", default="./", type="string")
 parser.add_option("-t", "--tag", default="", type="string")
 
@@ -178,7 +180,7 @@ if not opts.zero_data:
 	if log:
 		ax.set_yscale("log")
 	ax1.set_ylabel("fraction of events")
-	ax.grid(True, which="both")
+	ax1.grid(opts.grid, which="both")
 	ax.set_xlim(xmin=min_hrss)
 	ax1.set_xlim(xmin=min_hrss)
 	fig.savefig(figname)
@@ -194,7 +196,7 @@ if not opts.zero_data:
 	if log:
 		ax.set_yscale("log")
 	ax1.set_ylabel("fraction of events")
-	ax.grid(True, which="both")
+	ax1.grid(opts.grid, which="both")
 	ax.set_xlim(xmin=min_snr)
 	ax1.set_xlim(xmin=min_snr)
 	fig.savefig(figname)
@@ -427,7 +429,7 @@ if not opts.zero_data:
 	ax.set_xlabel("bayesian confidence level")
 	ax.set_ylabel("probability density")
 	ax1.set_ylabel("fraction of events")
-	ax.grid(True, which="both")
+	ax1.grid(opts.grid, which="both")
 	ax1.plot([0,1],[0,1], 'k-') ### reference line for pp plots
 	ax.set_xlim(xmin=0, xmax=1)
 	ax1.set_xlim(xmin=0, xmax=1)
@@ -442,7 +444,7 @@ if not opts.zero_data:
 	ax.set_xlabel("searched area [deg$^2$]")
 	ax.set_ylabel("probability density")
 	ax1.set_ylabel("fraction of events")
-	ax.grid(True, which="both")
+	ax1.grid(opts.grid, which="both")
 	ax.set_xlim(xmin=pixarea, xmax=4*180**2/np.pi)
 	ax1.set_xlim(xmin=pixarea, xmax=4*180**2/np.pi)
 	fig.savefig(figname)
@@ -456,7 +458,7 @@ if not opts.zero_data:
 	ax.set_xlabel("$\cos(\delta\\theta)$")
 	ax.set_ylabel("probability density")
 	ax1.set_ylabel("fraction of events")
-	ax.grid(True, which="both")
+	ax1.grid(opts.grid, which="both")
 	ax.set_xlim(xmin=1, xmax=-1)
 	ax1.set_xlim(xmin=1, xmax=-1)
 	fig.savefig(figname)
