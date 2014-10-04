@@ -25,9 +25,14 @@ parser = OptionParser(usage=usage)
 
 parser.add_option("", "--hPrior", default=False, action="store_true")
 parser.add_option("", "--malmquist-hPrior", default=False, action="store_true")
+parser.add_option("", "--hPrior_pareto", default=False, action="store_true")
+
 parser.add_option("", "--angPrior", default=False, action="store_true")
 parser.add_option("", "--ap_angPrior", default=False, action="store_true")
+
 parser.add_option("", "--posterior", default=False, action="store_true")
+parser.add_option("", "--dpf", default=False, action="store_true")
+
 parser.add_option("", "--model-selection", default=False, action="store_true")
 
 parser.add_option("", "--num-proc", default=2, type="int")
@@ -53,6 +58,9 @@ if opts.tag:
 	opts.tag = "_"+opts.tag
 
 if opts.model_selection:
+	opts.posterior = True
+
+if opts.dpf:
 	opts.posterior = True
 
 if opts.posterior:
@@ -83,7 +91,7 @@ npts = 1001
 vmin = 10*xmin**2
 vmax = 0.1*xmax**2
 
-n_gaus_per_decade = 5 ### approximate scaling found empirically to make my decomposition work well
+n_gaus_per_decade = 2 ### approximate scaling found empirically to make my decomposition work well
 n_gaus = int(round((np.log10(vmax**0.5)-np.log10(vmin**0.5))*n_gaus_per_decade, 0))
 print "n_gaus :", n_gaus
 variances = np.logspace(np.log10(vmin), np.log10(vmax), n_gaus)
@@ -97,7 +105,9 @@ df = freqs[1]-freqs[0]
 seglen = df**-1
 
 ### set up stuff for angprior
-nside_exp = 5
+nside_exp = 4
+nside = 2**nside_exp
+n_pix = hp.nside2npix(nside)
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
@@ -255,6 +265,17 @@ if opts.hPrior:
 			print "\tdetinvcovariance-detinvcovariance_byhand <= %s*(detinvcovariance+detinvcovariance_byhand)"%str(eps)
 		else:
 			print "\tdetinvcovariance==detinvcovariance_byhand"
+
+	if opts.hPrior_pareto:
+		print "hPrior_pareto"
+		to=time.time()
+		hprior_obj = priors.hPrior_pareto(a, variances, freqs=freqs, n_freqs=n_freqs, n_gaus=n_gaus, n_pol=n_pol, byhand=True)
+		print "\t", time.time()-to
+
+		print "hPrior_pareto.get_amplitudes"
+		to=time.time()
+		amplitudes = hprior_obj.get_amplitudes(freq_truth=freq_truth, n_pol_eff=n_pol)
+		print "\t", time.time()-to
 
         if not opts.skip_plots:
                 print "hPrior.plot"
@@ -661,9 +682,16 @@ if opts.posterior:
 	print "posterior.set_dataB"
 	to=time.time()
 	posterior_obj.set_dataB()
+	print "\t", time.time()-to
 	if opts.check:
 		dataB = posterior_obj.dataB
-	print "\t", time.time()-to
+		dataB_conj = posterior_obj.dataB_conj
+
+		if opts.check:
+			if np.any(dataB!=np.conjugate(dataB_conj)):
+				raise StandardError, "dataB!=conj(dataB_conj)"
+			else:
+				print "\tdataB==conj(dataB_conj)"
 
 	if not opts.skip_mp:
 		print "posterior.set_dataB_mp"
@@ -671,6 +699,7 @@ if opts.posterior:
 		posterior_obj.set_dataB_mp(num_proc=num_proc, max_proc=max_proc)
 		if opts.check:
 			dataB_mp = posterior_obj.dataB
+			dataB_conj_mp = posterior_obj.dataB_conj
 		print "\t", time.time()-to
 
 		if opts.check:
@@ -678,6 +707,374 @@ if opts.posterior:
 				raise StandardError, "dataB!=dataB_mp"
 			else:
 				print "\tdataB==dataB_mp"
+			if np.any(dataB_conj!=dataB_conj_mp):
+				raise StandardError, "dataB_conj!=dataB_conj_mp"
+			else:
+				print "\tdataB_conj==dataB_conj_mp"
+
+	#=========================================
+	# dpf manipulations and validation
+	#=========================================
+	if opts.dpf:
+
+		print "posterior.to_dpf"
+		to = time.time()
+		posterior_obj.to_dpf(byhand=False)
+		print "\t", time.time()-to
+
+		if opts.check:
+			Adpf = posterior_obj.A
+			invAdpf = posterior_obj.invA
+
+			Bdpf = posterior_obj.B
+			dataBdpf = posterior_obj.dataB
+			dataBdpf_conj = posterior_obj.dataB_conj
+		
+			if np.any(dataBdpf!=np.conjugate(dataBdpf_conj)):
+				raise StandardError, "dataBdpf!=conj(dataBdpf_conj)"
+			else:
+				print "\tdataBdpf==conj(dataBdpf_conj)"
+
+			Pdpf = posterior_obj.P
+			invPdpf = posterior_obj.invP
+			detinvPdpf = posterior_obj.detinvP
+
+			detAdpf = np.linalg.det(Adpf)
+			detA = np.linalg.det(A)
+			if np.any(abs(detAdpf - detA) > eps*abs(detAdpf+detA)):
+				raise standardError, "detAdpf != detA"
+			elif np.any(np.linalg.det(Adpf) != np.linalg.det(A)):
+				print "\tdetAdpf - detA <= %s*(detAdpf + detA)"%str(eps)
+			else:
+				print "\tdetAdpf == detA"
+
+			TrA = 0.0
+			TrAdpf = 0.0
+			for x in xrange(n_pol):
+				TrA += A[:,:,x,x]
+				TrAdpf += Adpf[:,:,x,x]
+			if np.any(np.abs(TrA-TrAdpf) > eps*np.abs(TrA+TrAdpf)):
+				raise StandardError, "Tr|A| != Tr|Adpf|"
+			elif np.any(TrA!=TrAdpf):
+				print "\tTrA-TrAdpf <= %s*(TrA+TrAdpf)"%str(eps)
+			else:
+				print "\tTr|A| == Tr|Adpf|"
+
+	                TrinvA = 0.0
+        	        TrinvAdpf = 0.0
+                	for x in xrange(n_pol):
+                        	TrinvA += invA[:,:,x,x]
+	                        TrinvAdpf += invAdpf[:,:,x,x]
+			if np.any(np.abs(TrinvA-TrinvAdpf) > eps*np.abs(TrinvA+TrinvAdpf)):
+				raise StandardError, "Tr|invA| != Tr|invAdpf|"
+        	        if np.any(TrinvA!=TrinvAdpf):
+                	        print "\tTrinvA-TrinvAdpf <= %s*(TrinvA+TrinvAdpf)"%str(eps)
+			else:	               
+        	                print "\tTr|invA| == Tr|invAdpf|"
+	
+			for g in xrange(n_gaus):
+				_detP = np.linalg.det(P[:,:,:,:,g])
+				_detPdpf = np.linalg.det(Pdpf[:,:,:,:,g])
+				if np.any(np.abs(_detP-_detPdpf) > eps*np.abs(_detP+_detPdpf)):
+					raise StandardError, "det|P| != det|Pdpf|"
+			else:
+				print "\tdetP-detPdpf <= %s*(detP+detPdpf)"%str(eps)
+
+			for g in xrange(n_gaus):
+				_detinvP = np.linalg.det(invP[:,:,:,:,g])
+				_detinvPdpf = np.linalg.det(invPdpf[:,:,:,:,g])
+				if np.any(np.abs(_detinvP-_detinvPdpf) > eps*np.abs(_detinvP+_detinvPdpf)):
+					raise StandardError, "det|invP| != det|invPdpf|"
+			else:
+				print "\tdetinvP - detinvPdpf <= %s*(detinvP+detinvPdpf)"%str(eps)
+
+			for g in xrange(n_gaus):
+				TrP = 0.0
+				TrPdpf = 0.0
+				for x in xrange(n_pol):
+					TrP += P[:,:,x,x,g]
+					TrPdpf += Pdpf[:,:,x,x,g]
+				if np.any(np.abs(TrP-TrPdpf) > eps*np.abs(TrP+TrPdpf)):
+					raise StandardError, "TrP!=TrPdpf"
+			else:
+				print "\tTrP-TrPdfp <= %s*(TrP+TrPdpf)"%str(eps)
+
+	                for g in xrange(n_gaus):
+        	                TrinvP = 0.0
+                	        TrinvPdpf = 0.0
+                        	for x in xrange(n_pol):
+                                	TrinvP += invP[:,:,x,x,g]
+	                                TrinvPdpf += invPdpf[:,:,x,x,g]
+        	                if np.any(np.abs(TrinvP-TrinvPdpf) > eps*np.abs(TrinvP+TrinvPdpf)):
+                	                raise StandardError, "TrinvP!=TrinvPdpf"
+	                else:
+        	                print "\tTrinvP-TrinvPdpf <= %s*(TrinvP+TrinvPdpf)"%str(eps)
+
+			BAB = np.zeros((n_pix, n_freqs, n_ifo, n_ifo), complex)
+			BABdpf = np.zeros_like(BAB, complex)
+			for x in xrange(n_ifo):
+				for y in xrange(n_ifo):
+					for z in xrange(n_pol):
+						BAB[:,:,x,y] += np.conjugate(B)[:,:,z,x] * np.sum( A[:,:,z,:] * B[:,:,:,y], axis=-1)
+						BABdpf[:,:,x,y] += np.conjugate(Bdpf)[:,:,z,x] * np.sum( Adpf[:,:,z,:] * Bdpf[:,:,:,y], axis=-1)
+			if np.any(np.abs(BAB-BABdpf) > eps*np.abs(BAB+BABdpf)):
+				raise StandardError, "BAB != BABdpf"
+			elif np.any(BAB!=BABdpf):
+				print "\tBAB-BABdpf <= %s*(BAB+BABdpf)"%str(eps)
+			else:
+				print "\tBAB == BABdpf"
+
+			dBABd = np.zeros((n_pix, n_freqs),complex)
+			dBABddpf = np.zeros_like(dBABd, complex)
+			for x in xrange(n_pol):
+				dBABd += dataB_conj[:,:,x] * np.sum(A[:,:,x,:] * dataB, axis=-1)
+				dBABddpf += dataBdpf_conj[:,:,x] * np.sum(Adpf[:,:,x,:] * dataBdpf, axis=-1)
+			if np.any(np.abs(dBABd-dBABddpf) > eps*np.abs(dBABd+dBABddpf)):
+				raise StandardError, "dBABd != dBABddpf"
+			elif np.any(dBABd != dBABddpf):
+				print "\tdBABd-dBABddpf <= %s*(dBABd+dBABddpf)"%str(eps)
+			else:
+				print "\tdBABd == dBABddpf"
+
+			for g in xrange(n_ifo):
+				BinvPB = np.zeros_like(invP[:,:,:,:,g], complex)
+				BinvPBdpf = np.zeros_like(BinvPB, complex)
+				for x in xrange(n_ifo):
+	                                for y in xrange(n_ifo):
+						for z in xrange(n_pol):
+			                                BinvPB[:,:,x,y] += np.conjugate(B)[:,:,z,x] * np.sum(invP[:,:,z,:,g] * B[:,:,:,y], axis=-1)
+        	                                	BinvPBdpf[:,:,x,y] += np.conjugate(Bdpf)[:,:,z,x] * np.sum(invPdpf[:,:,z,:,g] * Bdpf[:,:,:,y], axis=-1)
+				if np.any(np.abs(BinvPB-BinvPBdpf) > eps*np.abs(BinvPB+BinvPBdpf)):
+        	                        raise StandardError, "BinvPB != BinvPBdpf"
+	                        elif np.any(BinvPB != BinvPBdpf):
+					print "\tBinvPB - BinvPBdpf <= %s*(BinvPB+BinvPBdpf)"%str(eps)
+                	        else:
+                        	        print "\tBinvPB == BinvPBdpf"
+
+				dBinvPBd = np.zeros((n_pix, n_freqs), complex)
+				dBinvPBddpf = np.zeros_like(dBinvPBd, complex)
+				for x in xrange(n_pol):
+		                        dBinvPBd += dataB_conj[:,:,x] * np.sum(invP[:,:,x,:,g] * dataB, axis=-1)
+        		                dBinvPBddpf += dataBdpf_conj[:,:,x] * np.sum(invPdpf[:,:,x,:,g] * dataBdpf, axis=-1)
+				if np.any(np.abs(dBinvPBd-dBinvPBddpf) > eps*np.abs(dBinvPBd+dBinvPBddpf)):
+                        	        raise StandardError, "dBinvPBd != dBinvPBddpf"
+                	        elif np.any(dBinvPBd != dBinvPBddpf):
+					print "\tdBinvPBd - dBinvPBddpf <= %s*(dBinvPBd+dBinvPBddpf)"%str(eps)
+	                        else:
+        	                        print "\tdBinvPBd == dBinvPBddpf"
+
+		###
+		print "posterior.from_dpf"
+		to = time.time()
+		posterior_obj.from_dpf()
+		print "\t", time.time()-to
+
+		if opts.check:
+			Afrom_dpf = posterior_obj.A
+			invAfrom_dpf = posterior_obj.invA
+
+			Pfrom_dpf = posterior_obj.P
+			invPfrom_dpf = posterior_obj.invP
+			detinvPfrom_dpf = posterior_obj.detinvP
+			
+			Bfrom_dpf = posterior_obj.B
+			dataBfrom_dpf = posterior_obj.dataB
+
+			if np.any(np.abs(A-Afrom_dpf) > eps*np.abs(A+Afrom_dpf)):
+				raise StandardError, "A != Afrom_dpf"
+			elif np.any(A!=Afrom_dpf):
+				print "\tA-Afrom_dpf <= %s*(A+Afrom_dpf)"%str(eps)
+			else:
+				print "\tA==Afrom_dpf"
+	
+                        if np.any(np.abs(invA-invAfrom_dpf) > eps*np.abs(invA+invAfrom_dpf)):
+                                raise StandardError, "A != Afrom_dpf"
+                        elif np.any(invA!=invAfrom_dpf):
+                                print "\tinvA-invAfrom_dpf <= %s*(invA+invAfrom_dpf)"%str(eps)
+			else:
+				print "\tinvA==invAfrom_dpf"
+
+                        if np.any(np.abs(P-Pfrom_dpf) > eps*np.abs(P+Pfrom_dpf)):
+                                raise StandardError, "P != Pfrom_dpf"
+                        elif np.any(P!=Pfrom_dpf):
+                                print "\tP-Pfrom_dpf <= %s*(P+Pfrom_dpf)"%str(eps)
+			else:
+				print "\tP==Pfrom_dpf"
+		
+                        if np.any(np.abs(invP-invPfrom_dpf) > eps*np.abs(invP+invPfrom_dpf)):
+                                raise StandardError, "invP != invPfrom_dpf"
+                        elif np.any(invP!=invPfrom_dpf):
+                                print "\tinvP-invPfrom_dpf <= %s*(invP+invPfrom_dpf)"%str(eps)
+			else:
+				print "\tinvP==invPfrom_dpf"
+
+                        if np.any(np.abs(detinvP-detinvPfrom_dpf) > eps*np.abs(detinvP+detinvPfrom_dpf)):
+                                raise StandardError, "invP != invPfrom_dpf"
+                        elif np.any(detinvP!=detinvPfrom_dpf):
+                                print "\tdetinvP-detinvPfrom_dpf <= %s*(detinvP+detinvPfrom_dpf)"%str(eps)
+			else:
+				print "\tdetinvP==detinvPfrom_dpf"
+
+			if np.any(np.abs(B-Bfrom_dpf) > eps*np.abs(B+Bfrom_dpf)):
+				raise StandardError, "B != Bfrom_dpf"
+			elif np.any(B!=Bfrom_dpf):
+				print "\tB-Bfrom_dpf <= %s*(B+Bfrom_dpf)"
+			else:
+				print "\tB == Bfrom_dpf"
+
+			if np.any(np.abs(dataB-dataBfrom_dpf) > eps*np.abs(dataB+dataBfrom_dpf)):
+				raise StandardError, "dataB != dataBfrom_dpf"
+			elif np.any(dataB != dataBfrom_dpf):
+				print "\tdataB-dataBfrom_dpf <= %s*(dataB+dataBfrom_dpf)"
+			else:
+				print "\tdataB == dataBfrom_dpf"
+
+		###
+		print "posterior_obj.to_dpf(byhand)"
+		to = time.time()
+		posterior_obj.to_dpf(byhand=True)
+		print "\t", time.time()-to
+
+		if opts.check:
+			Adpf_bh = posterior_obj.A
+                        invAdpf_bh = posterior_obj.invA
+
+                        Bdpf_bh = posterior_obj.B
+                        dataBdpf_bh = posterior_obj.dataB
+                        dataBdpf_bh_conj = posterior_obj.dataB_conj
+
+                        if np.any(dataBdpf_bh!=np.conjugate(dataBdpf_bh_conj)):
+                                raise StandardError, "dataBdpf_bh!=conj(dataBdpf_bh_conj)"
+                        else:
+                                print "\tdataBdpf_bh==conj(dataBdpf_bh_conj)"
+
+                        Pdpf_bh = posterior_obj.P
+                        invPdpf_bh = posterior_obj.invP
+                        detinvPdpf_bh = posterior_obj.detinvP
+
+                        detAdpf_bh = np.linalg.det(Adpf)
+                        detA_bh = np.linalg.det(A)
+                        if np.any(abs(detAdpf - detAdpf_bh) > eps*abs(detAdpf+detAdpf_bh)):
+                                raise standardError, "detAdpf != detAdpf_bh"
+                        elif np.any(np.linalg.det(Adpf) != np.linalg.det(Adpf_bh)):
+                                print "\tdetAdpf - detAdpf_bh <= %s*(detAdpf + detAdpf_bh)"%str(eps)
+                        else:
+                                print "\tdetAdpf == detA"
+
+                        TrAdpf_bh = 0.0
+                        TrAdpf = 0.0
+                        for x in xrange(n_pol):
+                                TrAdpf_bh += Adpf_bh[:,:,x,x]
+                                TrAdpf += Adpf[:,:,x,x]
+                        if np.any(np.abs(TrAdpf_bh-TrAdpf) > eps*np.abs(TrAdpf_bh+TrAdpf)):
+                                raise StandardError, "Tr|Adpf_bh| != Tr|Adpf|"
+                        elif np.any(TrAdpf_bh!=TrAdpf):
+                                print "\tTrAdpf_bh-TrAdpf <= %s*(TrAdpf_bh+TrAdpf)"%str(eps)
+                        else:
+                                print "\tTr|Adpf_bh| == Tr|Adpf|"
+
+                        TrinvAdpf_bh = 0.0
+                        TrinvAdpf = 0.0
+                        for x in xrange(n_pol):
+                                TrinvAdpf_bh += invAdpf_bh[:,:,x,x]
+                                TrinvAdpf += invAdpf[:,:,x,x]
+                        if np.any(np.abs(TrinvAdpf_bh-TrinvAdpf) > eps*np.abs(TrinvAdpf_bh+TrinvAdpf)):
+                                raise StandardError, "Tr|invAdpf_bh| != Tr|invAdpf|"
+                        if np.any(TrinvAdpf_bh!=TrinvAdpf):
+                                print "\tTrinvAdpf_bh-TrinvAdpf <= %s*(TrinvAdpf_bh+TrinvAdpf)"%str(eps)
+                        else:
+                                print "\tTr|invAdpf_bh| == Tr|invAdpf|"
+
+                        for g in xrange(n_gaus):
+                                _detPdpf_bh = np.linalg.det(Pdpf_bh[:,:,:,:,g])
+                                _detPdpf = np.linalg.det(Pdpf[:,:,:,:,g])
+                                if np.any(np.abs(_detPdpf_bh-_detPdpf) > eps*np.abs(_detPdpf_bh+_detPdpf)):
+                                        raise StandardError, "det|Pdpf_bh| != det|Pdpf|"
+                        else:
+                                print "\tdetPdpf_bh-detPdpf <= %s*(detPdpf_bh+detPdpf)"%str(eps)
+
+                        for g in xrange(n_gaus):
+                                _detinvPdpf_bh = np.linalg.det(invPdpf_bh[:,:,:,:,g])
+                                _detinvPdpf = np.linalg.det(invPdpf[:,:,:,:,g])
+                                if np.any(np.abs(_detinvPdpf_bh-_detinvPdpf) > eps*np.abs(_detinvPdpf_bh+_detinvPdpf)):
+                                        raise StandardError, "det|invPdpf_bh| != det|invPdpf|"
+                        else:
+                                print "\tdetinvPdpf_bh - detinvPdpf <= %s*(detinvPdpf_bh+detinvPdpf)"%str(eps)
+
+                        for g in xrange(n_gaus):
+                                TrPdpf_bh = 0.0
+                                TrPdpf = 0.0
+                                for x in xrange(n_pol):
+                                        TrPdpf_bh += Pdpf_bh[:,:,x,x,g]
+                                        TrPdpf += Pdpf[:,:,x,x,g]
+                                if np.any(np.abs(TrPdpf_bh-TrPdpf) > eps*np.abs(TrPdpf_bh+TrPdpf)):
+                                        raise StandardError, "TrPdpf_bh!=TrPdpf"
+                        else:
+                                print "\tTrPdpf_bh-TrPdfp <= %s*(TrPdpf_bh+TrPdpf)"%str(eps)
+
+                        for g in xrange(n_gaus):
+                                TrinvPdpf_bh = 0.0
+                                TrinvPdpf = 0.0
+                                for x in xrange(n_pol):
+                                        TrinvPdpf_bh += invPdpf_bh[:,:,x,x,g]
+                                        TrinvPdpf += invPdpf[:,:,x,x,g]
+                                if np.any(np.abs(TrinvPdpf_bh-TrinvPdpf) > eps*np.abs(TrinvPdpf_bh+TrinvPdpf)):
+                                        raise StandardError, "TrinvPdpf_bh!=TrinvPdpf"
+                        else:
+                                print "\tTrinvPdpf_bh-TrinvPdpf <= %s*(TrinvPdpf_bh+TrinvPdpf)"%str(eps)
+
+                        BABdpf_bh = np.zeros((n_pix, n_freqs, n_ifo, n_ifo), complex)
+                        BABdpf = np.zeros_like(BABdpf_bh, complex)
+                        for x in xrange(n_ifo):
+                                for y in xrange(n_ifo):
+                                        for z in xrange(n_pol):
+                                                BABdpf_bh[:,:,x,y] += np.conjugate(Bdpf_bh)[:,:,z,x] * np.sum( Adpf_bh[:,:,z,:] * Bdpf_bh[:,:,:,y], axis=-1)
+                                                BABdpf[:,:,x,y] += np.conjugate(Bdpf)[:,:,z,x] * np.sum( Adpf[:,:,z,:] * Bdpf[:,:,:,y], axis=-1)
+                        if np.any(np.abs(BABdpf_bh-BABdpf) > eps*np.abs(BABdpf_bh+BABdpf)):
+                                raise StandardError, "BABdpf_bh != BABdpf"
+                        elif np.any(BABdpf_bh!=BABdpf):
+                                print "\tBABdpf_bh-BABdpf <= %s*(BABdpf_bh+BABdpf)"%str(eps)
+                        else:
+                                print "\tBABdpf_bh == BABdpf"
+
+                        dBABddpf_bh = np.zeros((n_pix, n_freqs),complex)
+                        dBABddpf = np.zeros_like(dBABddpf_bh, complex)
+                        for x in xrange(n_pol):
+                                dBABddpf_bh += dataBdpf_bh_conj[:,:,x] * np.sum(Adpf_bh[:,:,x,:] * dataBdpf_bh, axis=-1)
+                                dBABddpf += dataBdpf_conj[:,:,x] * np.sum(Adpf[:,:,x,:] * dataBdpf, axis=-1)
+                        if np.any(np.abs(dBABddpf_bh-dBABddpf) > eps*np.abs(dBABddpf_bh+dBABddpf)):
+                                raise StandardError, "dBABddpf_bh != dBABddpf"
+                        elif np.any(dBABddpf_bh != dBABddpf):
+                                print "\tdBABddpf_bh-dBABddpf <= %s*(dBABddpf_bh+dBABddpf)"%str(eps)
+                        else:
+                                print "\tdBABddpf_bh == dBABddpf"
+
+                        for g in xrange(n_ifo):
+                                BinvPBdpf_bh = np.zeros_like(invPdpf_bh[:,:,:,:,g], complex)
+                                BinvPBdpf = np.zeros_like(BinvPBdpf_bh, complex)
+                                for x in xrange(n_ifo):
+                                        for y in xrange(n_ifo):
+                                                for z in xrange(n_pol):
+                                                        BinvPBdpf_bh[:,:,x,y] += np.conjugate(Bdpf_bh)[:,:,z,x] * np.sum(invPdpf_bh[:,:,z,:,g] * Bdpf_bh[:,:,:,y], axis=-1)
+                                                        BinvPBdpf[:,:,x,y] += np.conjugate(Bdpf)[:,:,z,x] * np.sum(invPdpf[:,:,z,:,g] * Bdpf[:,:,:,y], axis=-1)
+                                if np.any(np.abs(BinvPBdpf_bh-BinvPBdpf) > eps*np.abs(BinvPBdpf_bh+BinvPBdpf)):
+                                        raise StandardError, "BinvPBdpf_bh != BinvPBdpf"
+                                elif np.any(BinvPBdpf_bh != BinvPBdpf):
+                                        print "\tBinvPBdpf_bh - BinvPBdpf <= %s*(BinvPBdpf_bh+BinvPBdpf)"%str(eps)
+                                else:
+                                        print "\tBinvPBdpf_bh == BinvPBdpf"
+
+                                dBinvPBddpf_bh = np.zeros((n_pix, n_freqs), complex)
+                                dBinvPBddpf = np.zeros_like(dBinvPBddpf_bh, complex)
+                                for x in xrange(n_pol):
+                                        dBinvPBddpf_bh += dataBdpf_bh_conj[:,:,x] * np.sum(invPdpf_bh[:,:,x,:,g] * dataBdpf_bh, axis=-1)
+                                        dBinvPBddpf += dataBdpf_conj[:,:,x] * np.sum(invPdpf[:,:,x,:,g] * dataBdpf, axis=-1)
+                                if np.any(np.abs(dBinvPBddpf_bh-dBinvPBddpf) > eps*np.abs(dBinvPBddpf_bh+dBinvPBddpf)):
+                                        raise StandardError, "dBinvPBddpf_bh != dBinvPBddpf"
+                                elif np.any(dBinvPBddpf_bh != dBinvPBddpf):
+                                        print "\tdBinvPBddpf_bh - dBinvPBddpf <= %s*(dBinvPBddpf_bh+dBinvPBddpf)"%str(eps)
+                                else:
+                                        print "\tdBinvPBddpf_bh == dBinvPBddpf"
 
 	#================================================
 	# pickling to save
@@ -693,14 +1090,15 @@ if opts.posterior:
 	#================================================
 	# analysis routines that do no store data within the object
 	#================================================
-	print "posterior.n_pol_eff()"
-	to=time.time()
-	posterior_obj.n_pol_eff(posterior_obj.theta, posterior_obj.phi)
-	print "\t", time.time()-to
+#	print "posterior.n_pol_eff()"
+#	to=time.time()
+#	posterior_obj.n_pol_eff(posterior_obj.theta, posterior_obj.phi)
+#	print "\t", time.time()-to
 
 	print "posterior.mle_strain"
 	to=time.time()
-	mle_strain = posterior_obj.mle_strain(posterior_obj.theta, posterior_obj.phi, psi=0.0, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+#	mle_strain = posterior_obj.mle_strain(posterior_obj.theta, posterior_obj.phi, psi=0.0, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+	mle_strain = posterior_obj.mle_strain(posterior_obj.theta, posterior_obj.phi, psi=0.0, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
 	if not opts.check:
 		del mle_strain
 	print "\t", time.time()-to
@@ -708,7 +1106,8 @@ if opts.posterior:
 	if not opts.skip_mp:
 		print "posterior.mle_strain_mp"
 		to=time.time()
-		mle_strain_mp = posterior_obj.mle_strain_mp(posterior_obj.theta, posterior_obj.phi, 0.0, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+#		mle_strain_mp = posterior_obj.mle_strain_mp(posterior_obj.theta, posterior_obj.phi, 0.0, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, n_pol_eff=None, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
+		mle_strain_mp = posterior_obj.mle_strain_mp(posterior_obj.theta, posterior_obj.phi, 0.0, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size, invA_dataB=(posterior_obj.invA, posterior_obj.dataB))
 		if not opts.check:
 			del mle_strain_mp
 		print "\t", time.time()-to
@@ -786,6 +1185,8 @@ if opts.posterior:
 			else:
 				print "\tlog_posterior_elements==mle+cts+det"
 
+
+	n_pol_eff = n_pol_eff[0] ### we only support integer n_pol_eff right now...
 
 	print "posterior.log_posterior"
 	to=time.time()
