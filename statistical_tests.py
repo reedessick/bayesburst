@@ -71,7 +71,8 @@ xmax = 1e-19
 vmin = 10*xmin**2
 vmax = 0.1*xmax**2
 
-n_gaus_per_decade = 5 ### approximate scaling found empirically to make my decomposition work well
+#n_gaus_per_decade = 5 ### approximate scaling found empirically to make my decomposition work well
+n_gaus_per_decade = 3 ### approximate scaling found empirically to make my decomposition work well
 #n_gaus_per_decade = 2 ### approximate scaling found empirically to make my decomposition work well
 n_gaus = int(round((np.log10(vmax**0.5)-np.log10(vmin**0.5))*n_gaus_per_decade, 0))
 print "n_gaus :", n_gaus
@@ -119,8 +120,8 @@ pixarea = hp.nside2pixarea(nside, degrees=True)
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+#network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
 
 n_ifo = len(network.detectors)
 
@@ -134,7 +135,7 @@ log_bayes_thr = 0
 n_bins = 7
 
 min_n_bins = 1
-max_n_bins = 15
+max_n_bins = 40
 dn_bins = 1
 
 ### plotting options
@@ -154,7 +155,8 @@ tau=0.010
 #tau=0.100
 q=2**0.5*np.pi*fo*tau ### the sine-gaussian's q, for reference
 
-min_snr = 15
+#min_snr = 10
+min_snr = 10
 min_hrss = 6e-24
 
 waveform_func = injections.sinegaussian_f
@@ -181,6 +183,7 @@ if not opts.zero_data:
 		ax.set_yscale("log")
 	ax1.set_ylabel("fraction of events")
 	ax1.grid(opts.grid, which="both")
+	ax.xaxis.grid(True, which="both")
 	ax.set_xlim(xmin=min_hrss)
 	ax1.set_xlim(xmin=min_hrss)
 	fig.savefig(figname)
@@ -197,6 +200,7 @@ if not opts.zero_data:
 		ax.set_yscale("log")
 	ax1.set_ylabel("fraction of events")
 	ax1.grid(opts.grid, which="both")
+	ax.xaxis.grid(True, which="both")
 	ax.set_xlim(xmin=min_snr)
 	ax1.set_xlim(xmin=min_snr)
 	fig.savefig(figname)
@@ -329,6 +333,8 @@ for inj_id in xrange(num_inj):
 	log_posterior_elements, n_pol_eff = posterior_obj.log_posterior_elements_mp(posterior_obj.theta, posterior_obj.phi, psi=0.0, invP_dataB=(posterior_obj.invP, posterior_obj.detinvP, posterior_obj.dataB, posterior_obj.dataB_conj), A_invA=(posterior_obj.A, posterior_obj.invA), diagnostic=False, num_proc=num_proc, max_proc=max_proc, max_array_size=max_array_size)
 	print "\t\t", time.time()-to
 
+	n_pol_eff = n_pol_eff[0] ### currently only support a integer n_pol_eff
+
 #	print "\tlog_bayes_cut_mp"
 #	print "\tvariable_bandwidth(log_bayes_cut_mp)"
 #	print "\tvariable_bandwidth_mp"
@@ -430,6 +436,7 @@ if not opts.zero_data:
 	ax.set_ylabel("probability density")
 	ax1.set_ylabel("fraction of events")
 	ax1.grid(opts.grid, which="both")
+	ax.xaxis.grid(True, which="both")
 	ax1.plot([0,1],[0,1], 'k-') ### reference line for pp plots
 	ax.set_xlim(xmin=0, xmax=1)
 	ax1.set_xlim(xmin=0, xmax=1)
@@ -445,6 +452,7 @@ if not opts.zero_data:
 	ax.set_ylabel("probability density")
 	ax1.set_ylabel("fraction of events")
 	ax1.grid(opts.grid, which="both")
+	ax.xaxis.grid(True, which="both")
 	ax.set_xlim(xmin=pixarea, xmax=4*180**2/np.pi)
 	ax1.set_xlim(xmin=pixarea, xmax=4*180**2/np.pi)
 	fig.savefig(figname)
@@ -459,6 +467,7 @@ if not opts.zero_data:
 	ax.set_ylabel("probability density")
 	ax1.set_ylabel("fraction of events")
 	ax1.grid(opts.grid, which="both")
+	ax.xaxis.grid(True, which="both")
 	ax.set_xlim(xmin=1, xmax=-1)
 	ax1.set_xlim(xmin=1, xmax=-1)
 	fig.savefig(figname)
