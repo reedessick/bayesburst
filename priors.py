@@ -209,6 +209,13 @@ class hPrior(object):
 			self.n_gaus = n_gaus
 
 	###
+	def get_amplitudes(self, **kwargs):
+		"""
+		simply returns self.amplitudes. Only hear to allow backwards compatibility with child classes that will do more complicated things (via **kwargs)
+		"""
+		return self.amplitudes
+
+	###
 	def lognorm(self, freq_truth):
 		"""
 		computes the proper normalization for this prior assuming a model (freq_truth)
@@ -336,6 +343,46 @@ class hPrior(object):
 	No. polarizations =%d
 	No. gaussians =%d"""%(np.min(self.freqs), np.max(self.freqs), self.n_freqs, self.n_pol, self.n_gaus)
 		return s
+
+#=================================================
+class hPrior_pareto(hPrior):
+	"""
+	an extension of hPrior that is built around a pareto decomposition
+	automatically finds the best amplitudes, etc
+	"""
+
+	###
+	def __init__(self, a, variances, freqs=None, n_freqs=1, n_gaus=1, n_pol=2, byhand=False):
+		self.a = a
+		self.variances = variances
+		means, covariances, amplitudes = pareto(a, n_freqs, n_pol, variances, exact=False)
+		super(hPrior_pareto, self).__init__(freqs=freqs, means=means, covariance=covariances, amplitudes=amplitudes, n_freqs=n_freqs, n_gaus=n_gaus, n_pol=n_pol, byhand=False)
+
+	###
+	def get_amplitudes(self, freq_truth=np.array([True]), n_pol_eff=2):
+		"""
+		finds the pareto ampltidues using n_freqs, n_pol
+		this method always finds the exact decomposition for the specified freq_truth and n_pol_eff
+			if that behavior is not desired, then you should use the base hPrior object and reset amplitudes by hand
+		"""
+		n_freqs = np.sum(freq_truth)
+
+		return pareto_amplitudes(self.a, self.variances, n_freqs=n_freqs, n_pol=n_pol_eff, exact=True)
+
+	###
+	def __repr__(self):
+		return self.__str__()
+
+	###
+	def __str__(self):
+		s = """priors.hPrior_pareto object
+	a = %.3f
+        min{freqs}=%.5f
+        max{freqs}=%.5f
+        No. freqs =%d
+        No. polarizations =%d
+        No. gaussians =%d"""%(self.a, np.min(self.freqs), np.max(self.freqs), self.n_freqs, self.n_pol, self.n_gaus)
+                return s
 
 #=================================================
 # prior on sky location
@@ -1020,12 +1067,18 @@ def pareto_amplitudes(a, variances, n_freqs=1, n_pol=1, exact=False):
 		M = np.empty((n_gaus,n_gaus),float)
 		for i in xrange(n_gaus):
 			vi = variances[i]
-			M[i,i] = 2**(0.5 - a - 2*n_freqs*n_pol) * vi**(a - 0.5)
-			for j in xrange(i, n_gaus):
+#			M[i,i] = 2**(0.5 - a - 2*n_freqs*n_pol) * vi**(a - 0.5)
+			logvi = np.log(vi)
+			M[i,i] = (0.5 - a - 2*n_freqs*n_pol)*np.log(2) + (a-0.5)*logvi ### we deal with logs because it is more accurate
+			for j in xrange(i+1, n_gaus):
 				vj = variances[j]
 				vij = vi*vj/(vi+vj)
-				M[i,j] = M[j,i] = (vi*vj)**(-n_freqs*n_pol) * vij**(2*n_freqs*n_pol + a - 0.5)
 
+#				M[i,j] = M[j,i] = (vij**2/(vi*vj))**(n_freqs*n_pol) * vij**(a-0.5) ### variances are small enough that this is required for off-diagonal terms to be finite
+				logvj = np.log(vj)
+				M[i,j] = M[j,i] = (n_freqs*n_pol*2 + a - 0.5)*np.log(vij) - n_freqs*n_pol*(logvi + logvj)
+
+		M = np.exp( M - np.max(M) ) ### remove common factor because it won't influence C_n and may improve accuracy
 		C_n = np.sum(linalg.inv(M)*variances**(0.5*a), axis=0)
 
 	C_n /= np.sum(C_n)
