@@ -20,11 +20,11 @@ detectors = {}
 default_psd = utils.PSD(np.array([0]), np.array([1]), kind="linear")
 
 ### design psd's
-ligo_design_psd_file = path+'PSDs/f_baseline.txt'
+ligo_design_psd_file = path+'PSDs/aLIGO_design.txt'
 ligo_design_psd_dat = np.genfromtxt(ligo_design_psd_file)
 ligo_design_psd = utils.PSD(ligo_design_psd_dat[:,0], ligo_design_psd_dat[:,1]**2, kind="linear")
 
-virgo_design_psd_file = path+'PSDs/f_AVirgoBaseline.txt'
+virgo_design_psd_file = path+'PSDs/aVirgo_design.txt'
 virgo_design_psd_dat = np.genfromtxt(virgo_design_psd_file)
 virgo_design_psd = utils.PSD(virgo_design_psd_dat[:,0], virgo_design_psd_dat[:,1]**2, kind="linear")
 
