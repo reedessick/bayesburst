@@ -730,10 +730,182 @@ class Network(object):
                 else:
                         return a, b
 
+	###
+	def A_dpf(self, theta, phi, A=None, no_psd=False, byhand=False):
+		"""computes A in the dominant polarization frame. If A is supplied, it converts A to the dominant polarization frame"""
+		if A==None:
+			A = self.A(theta, phi, 0.0, no_psd=no_psd)
+		if byhand:
+			a = A[:,:,0,0]
+			b = A[:,:,0,1]
+			c = A[:,:,1,1]
+			dpfA = np.zeros_like(A, float)
+			x = ((a-c)**2 + 4*b**2)**0.5
+			y = a+c
+			dpfA[:,:,0,0] = 0.5*(y + x)
+			dpfA[:,:,1,1] = 0.5*(y - x)
+			return dpfA
+		else:
+			dpfA=np.zeros_like(A, float)
+			vals = linalg.eigvals(A)[:,:,::-1] ### order by decreasing eigenvalue
+			for i in xrange(self.Np):
+				dpfA[:,:,i,i] = vals[:,:,i]
+			return dpfA
 
-	################################################################################
-	### things below here are a bit shakey or have not been written
-	################################################################################
+	###
+	def Aii_dpf(self, i, theta, phi, A=None, no_psd=False, byhand=False):
+		"""computes a single component of A in the dominant polarization frame. If A is supplied, it converts to the dominant polarizatoin frame"""
+		if A==None:
+			A = self.A(theta, phi, 0.0, no_psd=no_psd)
+		if byhand:
+			a = A[:,:,0,0]
+                        b = A[:,:,0,1]
+                        c = A[:,:,1,1]
+                        dpfA = np.zeros_like(A, float)
+                        x = ((a-c)**2 + 4*b**2)**0.5
+                        y = a+c
+			print i
+			return 0.5*(y + (-1)**i * x)
+		else:
+			vals = linalg.eigvals(A)[:,:,::-1] ### order by decreasing eigenvalue
+			return vals[:,:,i]
+
+        ###
+        def AB_dpf(self, theta, phi, AB=None, no_psd=False, byhand=False):
+                """ computes A and B in the dominant polarization frame """
+                if AB==None:
+			A, B = self.AB(theta, phi, psi=0.0, no_psd=no_psd)
+		else:
+			A, B = AB
+		if byhand:
+			a = A[:,:,0,0]
+			b = A[:,:,0,1]
+			c = A[:,:,1,1]
+			
+			x = ((a-c)**2 + 4*b**2)**0.5
+                        y = a+c
+			z = c-a
+			s0 = 0.5*(y + x)
+			s1 = 0.5*(y - x)
+
+			y0 = (1 + 4*b**2/(z+x)**2)**-0.5
+			x0 = 2*y0*b/(z+x)
+
+			y1 = (1 + 4*b**2/(z-x)**2)**-0.5
+			x1 = 2*y1*b/(z-x)
+
+			dpfA = np.zeros_like(A, float)
+			dpfA[:,:,0,0] = s0
+                        dpfA[:,:,1,1] = s1
+
+			dpfB = np.zeros_like(B, complex)
+			dpfB[:,:,0,:] = B[:,:,0,:]*x0 + B[:,:,1,:]*y0
+			dpfB[:,:,1,:] = B[:,:,0,:]*x1 + B[:,:,1,:]*y1
+			
+			vecs = np.empty_like(A, float)
+			vecs[:,:,0,0] = x0
+			vecs[:,:,0,1] = x1
+			vecs[:,:,1,0] = y0
+			vecs[:,:,1,1] = y1
+
+			return dpfA, dpfB, vecs
+		else:
+			dpfA=np.zeros_like(A, float)
+			dpfB=np.zeros_like(B, complex)
+
+                        vals, vecs = linalg.eig(A)
+			vals = vals[:,:,::-1] ### order by decreasing eigenvalue
+			vecs = vecs[:,:,:,::-1] ### change order as well
+
+			n_ifo = np.shape(B)[-1]
+                        for i in xrange(self.Np):
+                                dpfA[:,:,i,i] = vals[:,:,i]
+				for j in xrange(n_ifo):
+					dpfB[:,:,i,j] = np.sum( np.conjugate(vecs[:,:,:,i])*B[:,:,:,j], axis=-1 )
+                        return dpfA, dpfB, vecs
+
+	###
+	def B_dpf(self, theta, phi, AB=None, no_psd=False, byhand=False):
+		"""computes B in the dominant polarization frame. If A_B=(A,B) is supplied, we use it to define the dominant polarization frame transformation"""
+		if AB==None:
+			A, B = self.AB(theta, phi, psi=0.0, no_psd=no_psd)
+		else:
+			A, B = AB
+		if byhand:
+                        a = A[:,:,0,0]
+                        b = A[:,:,0,1]
+                        c = A[:,:,1,1]
+
+                        x = ((a-c)**2 + 4*b**2)**0.5
+                        y = a+c
+                        z = c-a
+                        s0 = 0.5*(y + x)
+                        s1 = 0.5*(y - x)
+
+                        y0 = (1 + 4*b**2/(z+x)**2)**-0.5
+                        x0 = 2*y0*b/(z+x)
+
+                        y1 = (1 + 4*b**2/(z-x)**2)**-0.5
+                        x1 = 2*y1*b/(z-x)
+
+                        dpfB = np.zeros_like(B, complex)
+                        dpfB[:,:,0,:] = B[:,:,0,:]*x0 + B[:,:,1,:]*y0
+                        dpfB[:,:,1,:] = B[:,:,0,:]*x1 + B[:,:,1,:]*y1
+
+                        vecs = np.empty_like(A, float)
+                        vecs[:,:,0,0] = x0
+                        vecs[:,:,0,1] = x1
+                        vecs[:,:,1,0] = y0
+                        vecs[:,:,1,1] = y1
+
+                        return dpfB, vecs
+
+		else:
+                        dpfB=np.zeros_like(B, complex)
+
+                        vals, vecs = linalg.eig(A)
+                        vecs = vecs[:,:,:,::-1] ### change order to decreasing eigval
+
+                        n_ifo = np.shape(B)[-1]
+                        for i in xrange(self.Np):
+                                for j in xrange(n_ifo):
+                                        dpfB[:,:,i,j] = np.sum( np.conjugate(vecs[:,:,:,i])*B[:,:,:,j], axis=-1)
+                        return dpfB, vecs
+
+	###
+	def Bni_dpf(self, name, i, theta, phi, AB=None, no_psd=False, byhand=False):
+		"""computes a single component of B in the dominant polarization frame. If A_B=(A,B) is supplied, we use it to define the dominant polarization frame"""
+		if AB==None:
+			A, B = self.AB(theta, phi, psi=0.0, no_psd=no_psd)
+		else:
+			A, B = AB
+		det_ind = dict((n,ind) for ind,n in enumerate(self.detector_name_list()))[name]
+
+                if byhand:
+                        a = A[:,:,0,0]
+                        b = A[:,:,0,1]
+                        c = A[:,:,1,1]
+
+                        x = ((a-c)**2 + 4*b**2)**0.5
+                        y = a+c
+                        z = c-a
+                        s0 = 0.5*(y + x)
+                        s1 = 0.5*(y - x)
+
+			if i==0:
+	                        y = (1 + 4*b**2/(z+x)**2)**-0.5
+        	                x = y0*b/(z+x)
+			else:
+	                        y = (1 + 4*b**2/(z-x)**2)**-0.5
+        	                x = y1*b/(z-x)
+
+                        return B[:,:,0,det_ind]*x + B[:,:,1,det_ind]*y
+                else:
+			return self.B_dpf(theta, phi, AB=(A,B), no_psd=no_psd, byhand=byhand)[:,:,i,det_ind]
+
+	#####################################################################################
+	### not sure the following functionality will every be used... consider removing it?
+	######################################################################################
 
         ###
         def rank(self, A, tol=1e-10):
@@ -759,35 +931,6 @@ class Network(object):
                 """wrappter for numpy.linalg.eig that computes the eigenvalues and eigenvectors of A"""
                 raise StandardError, "need to figure out how to best sort the eigenvalues and the associated eigenvectors"
                 return linalg.eig(A)
-
-	###
-	def A_dpf(self, theta, phi, A=None, no_psd=False):
-		"""computes A in the dominant polarization frame. If A is supplied, it converts A to the dominant polarization frame"""
-		if not A:
-			A = self.A(theta, phi, 0.0, no_psd=no_psd)
-		return self.eigvals(A)
-
-	###
-	def Aii_dpf(self, i, theta, phi, A=None, no_psd=False):
-		"""computes a single component of A in the dominant polarization frame. If A is supplied, it converts to the dominant polarizatoin frame"""
-		if not A:
-			A = self.A(theta, phi, 0.0, no_psd=no_psd)
-		return self.eigvals(A)[i,i]
-
-	###
-	def B_dpf(self, theta, phi, A_B=None, no_psd=False):
-		"""computes B in the dominant polarization frame. If A_B=(A,B) is supplied, we use it to define the dominant polarization frame transformation"""
-		raise StandardError, "write me!"
-
-	###
-	def Bni(self, name, i, theta, phi, A_B=None, no_psd=False):
-		"""computes a single component of B in the dominant polarization frame. If A_B=(A,B) is supplied, we use it to define the dominant polarization frame"""
-		raise StandardError, "write me!"
-
-	###
-	def AB_dpf(self, theta, phi, A_B=None, no_psd=False):
-		""" computes A and B in the dominant polarization frame """
-		raise StandardError, "write me!"
 
 #=================================================
 #
