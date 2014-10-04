@@ -9,6 +9,8 @@ plt.rcParams.update({"text.usetex":True})
 import numpy as np
 import healpy as hp
 
+import injections
+
 #=================================================
 # General purpose plotting functions
 #=================================================
@@ -130,6 +132,85 @@ def square(ax, ax_right=None, ax_top=None):
 #=================================================
 # plotting functions for specific data types
 #=================================================
+
+###
+def project(network, freqs, h, theta, phi, psi, data, figtuple=None, dh=None, units="$1/\sqrt{\mathrm{Hz}}$"):
+	"""
+	projects the strain "h" onto the network and overlays it with "data" at each detector
+	if supplied, "dh" is the upper/lower bounds for h and will be shaded on the plots
+	"""
+	n_ifo = len(network)
+	n_freqs = len(freqs)
+
+	n_axs = n_ifo+1
+	if figtuple:
+		fig, axs = figtuple
+		if len(axs) != n_axs:
+			raise ValueError, "inconsistent number of ifos between network and figtuples"
+
+	if np.shape(data) != (n_freqs, n_ifo):
+		raise ValueError, "bad shape for data"
+
+	if np.shape(h) != (n_freqs):
+		raise ValueError, "bad shape for h"
+
+	if dh!=None and np.shape(dh) != (n_freqs, 2):
+		raise ValueError, "bad shape for dh"
+
+	fig = plt.figure()
+	axs = []
+	
+	iax = 1
+	### geocenter h
+	ax = plt.subplot(n_ax, 1, iax)
+	ax.plot(freqs, h.real, color="b", label="$\mathbb{R}\{h\}$")
+	if np.any(h.imag):
+		ax.plot(freqs, h.imag, color="r", label="$\mathrm{I}\{h\}$")
+	if dh!=None:
+		ax.fill_between(freqs, dh[:,0].real, dh[:,1].real, color="b", alpha=0.25)
+		if np.any(dh.imag):
+			ax.fill_between(freqs, dh[:,0].imag, dh[:,1].imag, color="r", alpha=0.25)
+
+	axs.append( ax )
+	iax+=1	
+
+	### inject h into the network
+	inj = injections.inject(network, h, theta, phi, psi=psi)
+	if dh != None:
+		dinj0 = np.transpose(injections.inject(network, dh[:,0], theta, phi, psi=psi))
+		dinj1 = np.transpose(injections.inject(network, dh[:,1], theta, phi, psi=psi))
+	else:
+		dinj0 = dinj1 = [None]*n_ifo
+	
+	### iterate and plot
+	for (name, i, di0, di1, d) in zip(network.detector_name_list, np.transpose(inj), dinj0, dinj1, np.transpose(data)):
+		ax = plt.subplot(n_ax, 1, iax)
+
+		ax.plot(freqs, i.real, color="b", label="$\mathbb{R}\{F*h\}$")
+		if np.any(i.imag):
+			ax.plot(freqs, i.imag, color="r", label="$\mathbb{I}\{F*h\}$")
+
+		if di0!=None:
+			ax.fill_between(freqs, di0, di1, color="b", alpha=0.25)
+			if np.any(di0.imag):
+				ax.fill_between(freqs, di0, di1, color="r", alpha=0.25)
+
+		ax.plot(freqs, d.real, color="c", label="$\mathbb{R}{d_{\mathrm{%s}}}$"%name)
+		if np.any(d.imag):
+			ax.plot(freqs, d.imag, color="m", label="$\mathbb{I}{d_{\mathrm{%s}}}"%name)
+
+		ax.set_ylabel("data from %s [%s]"%(name, units))
+
+		axs.append( ax )
+		iax += 1
+
+	return (fig, axs)
+
+
+
+
+
+
 ### WRITE ME
 
 """
