@@ -167,6 +167,73 @@ def load_toacache(filename):
 	file_obj.close()
 	return toacache
 
+###
+def files_from_cache(cache, start, stop, suffix=".gwf"):
+	"""
+	selects files from a cache file
+	files must have some overlap with [start, stop] to be included
+	"""
+	files = []
+	file_obj = open(cache, "r")
+	for line in file_obj:
+		line = line.strip()
+		s, d = [float(l) for l in line.strip(suffix).split("-")[-2:]]
+		if (s+d >= start) and (s < stop):
+			files.append( line )
+	file_obj.close()
+
+	return files
+
+#========================
+# fft and psd utilities
+#========================
+def dft(vec, dt=1.0):
+	"""
+	computes the DFT of vec
+	"""
+	N = len(vec)
+
+	dft_vec = np.fft.fft(vec) / N
+	freqs = np.fft.fftfreq(N, d=dt)
+
+	return np.fft.fftshift(dft_vec), np.fft.fftshift(freqs)
+
+###
+def idft(dft_vec, dt=1.0):
+	"""
+	computes the inverse DFT of vec
+	"""
+	N = len(dft_vec)
+
+	vec = np.fft.ifft( np.fft.ifftshift(dft_vec * N) )
+	time = np.arange(0, N*dt, dt)
+
+	return vec, time
+
+###
+def estimate_psd(vec, num_segs=1, overlap=0, dt=None):
+	"""
+	estimates the PSD using a DFT
+	divides vec into "num_segs" with "overlap" shared entries between neighbors
+	returns the average PSD from these samples
+	"""
+	N = len(vec)
+	if overlap > N - num_segs:
+		raise ValueError, "overlap is too big!"
+
+	n = (N + (num_segs-1)*overlap) / N ### number of elements per segment
+
+	### compute dfts for each segment separately
+	psds = np.empty((n, num_segs), float)
+	for segNo in xrange(num_segs):
+		start = segNo*(n-overlap)
+		psds[:,segNo], freqs = dft(vec[start:start+n], dt=dt)
+	
+	### average
+	mean_psd = np.sum(psds.real**2 + psds.imag**2, axis=1) / num_segs
+
+	return mean_psd, freqs
+
 #========================
 # timing utilities
 #========================
