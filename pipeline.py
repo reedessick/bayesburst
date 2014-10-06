@@ -28,6 +28,8 @@ parser.add_option("-g", "--gps", default=0, type="float", help="central time of 
 parser.add_option("-x", "--xmlfilename", default=False, type="float", help="an injection xml file")
 parser.add_option("-i", "--sim-id", default=False, type="int", help="the injection id in the xml file")
 
+parser.add_option("-d", "--diagnostics", default=False, action="store_true", help="output some diagnostic data to check the pipeline's functionality")
+
 parser.add_option("-o", "--output-dir", default="./", type="string")
 parser.add_option("-t", "--tag", default="", type="string")
 
@@ -196,6 +198,22 @@ if opts.time:
 	print "\t", time.time()-to
 
 freq_truth = np.ones_like(freqs, bool) ### put this here in case we want to throw out lines, etc
+
+### dump psd's to numpy arrays if requested
+if opts.diagnostics:
+	for ifo in ifos:
+		psd_filename = "%s/%s-PSD%s_%d.pkl"%(opts.output_dir, ifo, opts.tag, int(opts.gps))
+		if opts.verbose:
+			print "writing %s PSD to %s"%(ifo, psd_filename)
+			if opts.time:
+				to = time.time()
+		psd_obj = network.detectors[ifo].get_psd()
+		file_obj = open(psd_filename, "w")
+		pickle.dump(psd_obj.get_freqs(), file_obj)
+		pickle.dump(psd_obj.get_psd(), file_obj)
+		file_obj.close()
+		if opts.time:
+			print "\t", time.time()-to
 
 #=================================================
 ### build angprior
@@ -372,6 +390,19 @@ else:
 	if opts.verbose:
 		print "no noise generation specified. zero-ing noise"
 	noise = np.zeros((n_freqs, n_ifo), complex)
+
+### dump noise to file
+if opts.diagnostics:
+	noise_filename = "%s/noise%s_%d.pkl"%(opts.output_dir, opts.tag, int(opts.gps))
+	if opts.verbose:
+		print "writing noise to %s"%noise_filename
+		if opts.time:
+			to = time.time()
+	file_obj = open(noise_filename, "w")
+	pickle.dump(noise, file_obj)
+	file_obj.close()
+	if opts.time:
+		print "\t", time.time()-to
 
 #=================================================
 ### load injection
@@ -564,6 +595,19 @@ if config.has_option("injection","factor"): ### mdc factor for injection
 	if opts.verbose:
 		print "applying mdc factor =", factor
 	inj *= factor
+
+### dump injection to file
+if opts.diagnostics:
+	inj_filename = "%s/injections%s_%d.pkl"%(opts.output_dir, opts.tag, int(opts.gps))
+        if opts.verbose:
+                print "writing injections to %s"%inj_filename
+                if opts.time:
+                        to = time.time()
+        file_obj = open(noise_filename, "w")
+        pickle.dump(inj, file_obj)
+        file_obj.close()
+        if opts.time:
+                print "\t", time.time()-to
 
 #=================================================
 ### set data, dataB
