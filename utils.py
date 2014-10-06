@@ -735,6 +735,13 @@ class Network(object):
 		"""computes A in the dominant polarization frame. If A is supplied, it converts A to the dominant polarization frame"""
 		if A==None:
 			A = self.A(theta, phi, 0.0, no_psd=no_psd)
+
+		if no_psd:
+			npix, npol, npol = np.shape(A)
+			a = np.empty((npix, 1, npol, npol), float)
+			a[:,0,:,:] = A
+			A = a
+
 		if byhand:
 			a = A[:,:,0,0]
 			b = A[:,:,0,1]
@@ -744,12 +751,15 @@ class Network(object):
 			y = a+c
 			dpfA[:,:,0,0] = 0.5*(y + x)
 			dpfA[:,:,1,1] = 0.5*(y - x)
-			return dpfA
 		else:
 			dpfA=np.zeros_like(A, float)
 			vals = linalg.eigvals(A)[:,:,::-1] ### order by decreasing eigenvalue
 			for i in xrange(self.Np):
 				dpfA[:,:,i,i] = vals[:,:,i]
+
+		if no_psd:
+			return dpfA[:,0,:,:]
+		else:
 			return dpfA
 
 	###
@@ -757,6 +767,12 @@ class Network(object):
 		"""computes a single component of A in the dominant polarization frame. If A is supplied, it converts to the dominant polarizatoin frame"""
 		if A==None:
 			A = self.A(theta, phi, 0.0, no_psd=no_psd)
+
+		if no_psd:
+			npix, npol, npol = np.shape(A)
+			a = np.empty((npix,1,npol,npol),float)
+			a[:,0,:,:] = A
+			A = a
 		if byhand:
 			a = A[:,:,0,0]
                         b = A[:,:,0,1]
@@ -764,11 +780,16 @@ class Network(object):
                         dpfA = np.zeros_like(A, float)
                         x = ((a-c)**2 + 4*b**2)**0.5
                         y = a+c
-			print i
-			return 0.5*(y + (-1)**i * x)
+			if no_psd:
+				return 0.5*(y[:,0] + (-1)**i * x[:,0])
+			else:
+				return 0.5*(y + (-1)**i * x)
 		else:
 			vals = linalg.eigvals(A)[:,:,::-1] ### order by decreasing eigenvalue
-			return vals[:,:,i]
+			if no_psd:
+				return vals[:,0,i]
+			else:
+				return vals[:,:,i]
 
         ###
         def AB_dpf(self, theta, phi, AB=None, no_psd=False, byhand=False):
@@ -777,6 +798,18 @@ class Network(object):
 			A, B = self.AB(theta, phi, psi=0.0, no_psd=no_psd)
 		else:
 			A, B = AB
+
+		if no_psd:
+			npix, npol, npol = np.shape(A)
+			a = np.empty((npix, 1, npol, npol), float)
+			a[:,0,:,:] = A
+			A = a
+
+			npix, pol, nifo = np.shape(B)
+			b = np.empty((npix, 1, npol, nifo), complex)
+			b[:,0,:,:] = B
+			B = b
+
 		if byhand:
 			a = A[:,:,0,0]
 			b = A[:,:,0,1]
@@ -808,7 +841,10 @@ class Network(object):
 			vecs[:,:,1,0] = y0
 			vecs[:,:,1,1] = y1
 
-			return dpfA, dpfB, vecs
+			if no_psd:
+				return dpfA[:,0,:,:], dpfB[:,0,:,:], vecs[:,0,:,:]
+			else:
+				return dpfA, dpfB, vecs
 		else:
 			dpfA=np.zeros_like(A, float)
 			dpfB=np.zeros_like(B, complex)
@@ -822,7 +858,11 @@ class Network(object):
                                 dpfA[:,:,i,i] = vals[:,:,i]
 				for j in xrange(n_ifo):
 					dpfB[:,:,i,j] = np.sum( np.conjugate(vecs[:,:,:,i])*B[:,:,:,j], axis=-1 )
-                        return dpfA, dpfB, vecs
+
+			if no_psd:
+				return dpfA[:,0,:,:], dpfB[:,0,:,:], vecs[:,0,:,:]
+			else:
+	                        return dpfA, dpfB, vecs
 
 	###
 	def B_dpf(self, theta, phi, AB=None, no_psd=False, byhand=False):
@@ -831,6 +871,18 @@ class Network(object):
 			A, B = self.AB(theta, phi, psi=0.0, no_psd=no_psd)
 		else:
 			A, B = AB
+
+                if no_psd:
+                        npix, npol, npol = np.shape(A)
+                        a = np.empty((npix, 1, npol, npol), float)
+                        a[:,0,:,:] = A
+                        A = a
+
+                        npix, pol, nifo = np.shape(B)
+                        b = np.empty((npix, 1, npol, nifo), complex)
+                        b[:,0,:,:] = B
+                        B = b
+
 		if byhand:
                         a = A[:,:,0,0]
                         b = A[:,:,0,1]
@@ -858,7 +910,10 @@ class Network(object):
                         vecs[:,:,1,0] = y0
                         vecs[:,:,1,1] = y1
 
-                        return dpfB, vecs
+			if no_psd:
+				return dpfB[:,0,:,:], vecs[:,0,:,:]
+			else:
+	                        return dpfB, vecs
 
 		else:
                         dpfB=np.zeros_like(B, complex)
@@ -870,7 +925,11 @@ class Network(object):
                         for i in xrange(self.Np):
                                 for j in xrange(n_ifo):
                                         dpfB[:,:,i,j] = np.sum( np.conjugate(vecs[:,:,:,i])*B[:,:,:,j], axis=-1)
-                        return dpfB, vecs
+
+			if no_psd:
+				return dpfB[:,0,:,:], vecs[:,0,:,:]
+			else:
+	                        return dpfB, vecs
 
 	###
 	def Bni_dpf(self, name, i, theta, phi, AB=None, no_psd=False, byhand=False):
@@ -879,6 +938,18 @@ class Network(object):
 			A, B = self.AB(theta, phi, psi=0.0, no_psd=no_psd)
 		else:
 			A, B = AB
+
+                if no_psd:
+                        npix, npol, npol = np.shape(A)
+                        a = np.empty((npix, 1, npol, npol), float)
+                        a[:,0,:,:] = A
+                        A = a
+
+                        npix, pol, nifo = np.shape(B)
+                        b = np.empty((npix, 1, npol, nifo), complex)
+                        b[:,0,:,:] = B
+                        B = b
+
 		det_ind = dict((n,ind) for ind,n in enumerate(self.detector_name_list()))[name]
 
                 if byhand:
@@ -899,9 +970,23 @@ class Network(object):
 	                        y = (1 + 4*b**2/(z-x)**2)**-0.5
         	                x = y1*b/(z-x)
 
-                        return B[:,:,0,det_ind]*x + B[:,:,1,det_ind]*y
+			if no_psd:
+				return B[:,0,0,det_ind]* + B[:,0,1,det_ind]*y
+			else:
+	                        return B[:,:,0,det_ind]*x + B[:,:,1,det_ind]*y
                 else:
-			return self.B_dpf(theta, phi, AB=(A,B), no_psd=no_psd, byhand=byhand)[:,:,i,det_ind]
+			if no_psd:
+				return self.B_dpf(theta, phi, AB=(A,B), no_psd=no_psd, byhand=byhand)[:,i,det_ind]
+			else:
+				return self.B_dpf(theta, phi, AB=(A,B), no_psd=no_psd, byhand=byhand)[:,:,i,det_ind]
+
+
+
+
+
+
+
+
 
 	#####################################################################################
 	### not sure the following functionality will every be used... consider removing it?
