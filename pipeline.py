@@ -112,8 +112,85 @@ if config.has_option("psd_estimation","cache"):
 			print "\treading PSD for %s from %s"%(ifo, psd_filename)
 		psd_freqs, asd = np.transpose(np.loadtxt(psd_filename)) ### read in the psd from file
 		network.detectors[ifo].set_psd(asd**2, freqs=psd_freqs) ### update the detector
+
+elif config.has_option("noise","cache"): ### estimate PSD's from noise frames
+	noise_cache = eval(config.get("noise","cache"))
+	noise_chans = eval(config.get("noise","channels"))
+
+	### pull out parameters for PSD estimation
+	fs = config.getloat("psd_estimation","fs")
+	seglen= config.getfloat("psd_estimation","win")
+	overlap = config.getfloat("psd_estimation","overlap")
+	if overlap >= seglen:
+		raise ValueError, "overlap must be less than seglen in psd_estimation"
+	num_segs = config.getint("psd_estimation","num_segs")
+	
+	dur = (num_segs*seglen - (num_segs-1)*overlap) ### amount of time used for PSD estimation
+
+	from pylal import Fr
+	for ifo in ifos:
+
+		ifo_chan = noise_chans[ifo]
+		ifo_cache = noise_cache[ifo]
+		if opts.verbose: 
+			print "reading %s frames from %s with channel=%s"%(ifo, ifo_cache, ifo_chan)
+			if opts.time:
+				to = time.time()
+		### find relevant files
+		frames = utils.files_from_cache(ifo_cache, opts.gps-dur, opts.gps)
+
+		if opts.time:
+			print "\t", time.time()-to
+
+		### read vectors from files
+		### FIXME: we assume data is continuous, which may not be the case!
+		### we also assume that data is sampled at a constant rate
+		vecs = []
+		dt = 0
+		for frame in frames:
+			if opts.verbose:
+				print "\t", frame
+				if opts.time:
+					to = time.time()
+			vec, gpstart, _, dt, _, _ = Fr.getvect1d(frame, ifo_chan, start=opts.gps-dur, stop=opts.gps)
+			if opts.time:
+				print "\t\t", time.time()-to
+			vecs.append( vec )
+		vec = np.concatenate(vecs)
+		N = len(vec)
+
+		### downsample data to fs?
+		_dt = 1.0/fs
+		if dt > _dt:
+			raise ValueError, "cannot upsample data to higher sampling frequency: dt=%f -> dt=%f"%(dt, _dt)
+		elif dt < _dt:
+			if opts.verbose:
+				print "downsampling time-domain data via interpolation : dt=%f -> dt=%f"%(dt, _dt)
+				if opts.time:
+					to = time.time()
+			vec = np.interp( np.arange(0, N*dt, _dt), np.arange(0, N*dt, dt), vec)
+			dt = _dt
+			if opts.time:
+				print "\t", time.time()-to
+			
+		### check that we have all the data we expect
+		if len(vec)*dt != dur:
+			raise ValueError, "len(vec)*dt = %f != %f = duration"%(len(vec)*dt, dur)
+
+		### estimate psd
+		if opts.verbose:
+			print "estimating PSD with %d segments"%num_segs
+			if opts.time:
+				to = time.time()
+		psd, psd_freqs = utils.estimate_psd(vec, num_segs=num_segs, overlap=overlap/dt, dt=dt)
+		if opts.time:
+			print "\t", time.time()-to
+
+		### update network object
+		network.detectors[ifo].set_psd(psd, freqs=psd_freqs)
+
 else:
-	raise StandardError, "don't know how to estimate psd's yet, so we must have a cache..."
+	raise StandardError, "could not estimate PSDs. Please either supply a cache of ascii files or a cache of noise frames in the configuration file."
 
 if opts.time:
 	print "\t", time.time()-to
@@ -226,18 +303,75 @@ elif config.has_option("noise","gaussian"):
 		print "\t", time.time()-to
 
 elif config.has_option("noise", "cache"):
-        ### read noise from frames?
+	noise = np.empty((n_freqs, n_ifo), complex)
+
+        noise_cache = eval(config.get("noise","cache"))
+        noise_chans = eval(config.get("noise","channels"))
+
+        ### pull out parameters for PSD estimation
+        fs = config.getloat("fft","fs")
+        seglen= config.getfloat("fft","win")
+
+        from pylal import Fr
+        for ifo_ind, ifo in enumerate(ifos):
+
+                ifo_chan = noise_chans[ifo]
+                ifo_cache = noise_cache[ifo]
+                if opts.verbose:
+                        print "reading %s frames from %s with channel=%s"%(ifo, ifo_cache, ifo_chan)
+                        if opts.time:
+                                to = time.time()
+                ### find relevant files
+                frames = utils.files_from_cache(ifo_cache, opts.gps-dur, opts.gps)
+
+                if opts.time:
+                        print "\t", time.time()-to
+
+                ### read vectors from files
+                ### FIXME: we assume data is continuous, which may not be the case!
+                ### we also assume that data is sampled at a constant rate
+                vecs = []
+                dt = 0
+                for frame in frames:
+                        if opts.verbose:
+                                print "\t", frame
+                                if opts.time:
+                                        to = time.time()
+                        vec, gpstart, _, dt, _, _ = Fr.getvect1d(frame, ifo_chan, start=opts.gps, stop=opts.gps+seglen)
+                        if opts.time:
+                                print "\t\t", time.time()-to
+                        vecs.append( vec )
+                vec = np.concatenate(vecs)
+                N = len(vec)
+
+                ### downsample data to fs?
+                _dt = 1.0/fs
+                if dt > _dt:
+                        raise ValueError, "cannot upsample data to higher sampling frequency: dt=%f -> dt=%f"%(dt, _dt)
+                elif dt < _dt:
+                        if opts.verbose:
+                                print "downsampling time-domain data via interpolation : dt=%f -> dt=%f"%(dt, _dt)
+                                if opts.time:
+                                        to = time.time()
+                        vec = np.interp( np.arange(0, N*dt, _dt), np.arange(0, N*dt, dt), vec)
+                        dt = _dt
+                        if opts.time:
+                                print "\t", time.time()-to
+
+                ### check that we have all the data we expect
+                if len(vec)*dt != seglen:
+                        raise ValueError, "len(vec)*dt = %f != %f = duration"%(len(vec)*dt, seglen)
+
+		### store noise
+		dft_vec, dft_freqs = utils.dft(vec, dt=dt)
+		if dft_freqs != freqs:
+			raise ValueError, "frequencies from utils.dft do not agree with freqs defined by hand"
+		noise[:,ifo_ind] = dft_vec * np.exp(2j*np.pi*opts.gps*freqs) ### add phase shift for start time
+
+else:
 	if opts.verbose:
-		print "\treading noise from file"
-		if opts.time:
-			to=time.time()
-
-	noise_cache = eval(config.get("noise","cache"))
-
-        raise StandardError, "don't know how to read noise from frames yet..."
-
-	if opts.time:
-		print "\t", time.time()-to
+		print "no noise generation specified. zero-ing noise"
+	noise = np.zeros((n_freqs, n_ifo), complex)
 
 #=================================================
 ### load injection
@@ -282,18 +416,70 @@ elif config.has_option("injection","dummy"): ### inject a dummy signal that's co
 		print "\t", time.time()-to
 
 elif config.has_option("injection","cache"): ### read injection frame
+        inj = np.empty((n_freqs, n_ifo), complex)
 
-	if opts.verbose:
-		print "\treading injections from file"
-		if opts.time:
-			to=time.time()
+        inj_cache = eval(config.get("noise","cache"))
+        inj_chans = eval(config.get("noise","channels"))
 
-	inj_cache = eval(config.get("injections","cache"))
+        ### pull out parameters for PSD estimation
+        fs = config.getloat("fft","fs")
+        seglen= config.getfloat("fft","win")
 
-	raise StandardError, "don't know how to read from frames yet..."
+        from pylal import Fr
+        for ifo_ind, ifo in enumerate(ifos):
 
-	if opts.time:
-		print "\t", time.time()
+                ifo_chan = inj_chans[ifo]
+                ifo_cache = inj_cache[ifo]
+                if opts.verbose:
+                        print "reading %s frames from %s with channel=%s"%(ifo, ifo_cache, ifo_chan)
+                        if opts.time:
+                                to = time.time()
+                ### find relevant files
+                frames = utils.files_from_cache(ifo_cache, opts.gps-dur, opts.gps)
+
+                if opts.time:
+                        print "\t", time.time()-to
+
+                ### read vectors from files
+                ### FIXME: we assume data is continuous, which may not be the case!
+                ### we also assume that data is sampled at a constant rate
+                vecs = []
+                dt = 0
+                for frame in frames:
+                        if opts.verbose:
+                                print "\t", frame
+                                if opts.time:
+                                        to = time.time()
+                        vec, gpstart, _, dt, _, _ = Fr.getvect1d(frame, ifo_chan, start=opts.gps, stop=opts.gps+seglen)
+                        if opts.time:
+                                print "\t\t", time.time()-to
+                        vecs.append( vec )
+                vec = np.concatenate(vecs)
+                N = len(vec)
+
+                ### downsample data to fs?
+                _dt = 1.0/fs
+                if dt > _dt:
+                        raise ValueError, "cannot upsample data to higher sampling frequency: dt=%f -> dt=%f"%(dt, _dt)
+                elif dt < _dt:
+                        if opts.verbose:
+                                print "downsampling time-domain data via interpolation : dt=%f -> dt=%f"%(dt, _dt)
+                                if opts.time:
+                                        to = time.time()
+                        vec = np.interp( np.arange(0, N*dt, _dt), np.arange(0, N*dt, dt), vec)
+                        dt = _dt
+                        if opts.time:
+                                print "\t", time.time()-to
+
+                ### check that we have all the data we expect
+                if len(vec)*dt != seglen:
+                        raise ValueError, "len(vec)*dt = %f != %f = duration"%(len(vec)*dt, seglen)
+
+                ### store noise
+                dft_vec, dft_freqs = utils.dft(vec, dt=dt)
+                if dft_freqs != freqs:
+                        raise ValueError, "frequencies from utils.dft do not agree with freqs defined by hand"
+                inj[:,ifo_ind] = dft_vec * np.exp(2j*np.pi*opts.gps*freqs) ### add phase shift for start time
 
 elif opts.xmlfilename: ### read injection from xmlfile
 	if opts.sim_id==None:
