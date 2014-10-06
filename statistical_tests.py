@@ -27,6 +27,8 @@ parser = OptionParser(usage=usage)
 
 parser.add_option("", "-v", "--verbose", default=False, action="store_true")
 
+parser.add_option("", "--network", default="HL", type="string", help="which network to run")
+
 parser.add_option("-n", "--num-inj", default=100, type="int")
 parser.add_option("-N", "--max-trials", default=np.infty, type="float")
 
@@ -120,8 +122,16 @@ pixarea = hp.nside2pixarea(nside, degrees=True)
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+if opts.network == "HL":
+	network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+elif opts.network == "HV":
+	network = utils.Network([detector_cache.LHO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+elif opts.network == "LV":
+	network = utils.Network([detector_cache.Virgo, detector_cache.LLO], freqs=freqs, Np=n_pol)
+elif opts.network == "HLV":
+	network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+else:
+	raise ValueError, "--network=%s not understood"%opts.network
 
 n_ifo = len(network.detectors)
 
@@ -272,6 +282,8 @@ import model_selection
 import stats
 
 fitsnames = []
+models = []
+log_bayes = []
 
 if not opts.zero_data:
 	p_value = np.empty((num_inj,),float)
@@ -362,6 +374,9 @@ for inj_id in xrange(num_inj):
 	print "\thrss=",hrss
 	print "\tsnr=",snr_net
 	print ""
+
+	models.append( model )
+	log_bayes.append( lb )
 
 	print "\tlog_posterior"
 	to=time.time()
@@ -474,6 +489,36 @@ if not opts.zero_data:
 	print "\t", time.time()-to
 	vis.plt.close(fig)
 
+#=================================================
+# save pointers into a file
+#=================================================
+filename = "%s/injection-params%s.pkl"%(opts.output_dir, opts.tag)
+
+if opts.verbose:
+	print "dumping parameters into ", filename
+
+import pickle
+file_obj = open(filename, "w")
+
+pickle.dump(models, file_obj)
+pickle.dump(log_bayes, file_obj)
+
+if not opts.skip_fits:
+	pickle.dump(fitsnames, file_obj)
+
+if not opts.zero_data:
+	pickle.dump(waveform_args, file_obj)
+
+	pickle.dump(theta_inj, file_obj)
+	pickle.dump(phi_inj, file_obj)
+	pickle.dump(psi_inj, file_obj)
+
+	pickle.dump(hrss_inj, file_obj)
+	pickle.dump(snrs_inj, file_obj)
+
+file_obj.close()
+
+#===================================================================================================
 
 print """WRITE:
 	coverage plots:
