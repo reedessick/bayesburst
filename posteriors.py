@@ -1094,7 +1094,7 @@ class Posterior(object):
 #			n_pol_eff = np.max(n_pol_eff)
 		n_pol_eff = self.n_pol
 
-		### check invA_B
+		### check invA_dataB
 		if invA_dataB:
 			invA, dataB = invA_dataB
 			if n_pix == 1:
@@ -1102,10 +1102,10 @@ class Posterior(object):
 					invA = np.array([invA])
 				else:
 					raise ValueError, "bad shape for invA"
-				if len(np.shape(B)) == 3:
-					B = np.array([B])
+				if len(np.shape(dataB)) == 2:
+					dataB = np.array([dataB])
 				else:
-					raise ValueError, "bad shape for B"
+					raise ValueError, "bad shape for dataB"
 
 			n_pix, n_freqs, n_pol, invA = self.check_A(invA, n_pix, n_pol_eff)
 			n_pix, n_freqs, n_pol, dataB = self.check_dataB(dataB, n_pix, n_pol_eff)
