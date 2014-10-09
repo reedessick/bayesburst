@@ -141,40 +141,42 @@ def project(network, freqs, h, theta, phi, psi, data, figtuple=None, dh=None, un
 	n_ifo = len(network)
 	n_freqs = len(freqs)
 
-	n_axs = n_ifo+1
+        n_f, n_pol = np.shape(h)
+        if n_f != (n_freqs):
+                raise ValueError, "bad shape for h"
+
+        if (dh!=None) and (np.shape(dh) != (n_freqs, n_pol, 2)):
+                raise ValueError, "bad shape for dh"
+
+	if np.shape(data) != (n_freqs, n_ifo):
+                raise ValueError, "bad shape for data"
+
+	n_axs = n_ifo+n_pol
 	if figtuple:
 		fig, axs = figtuple
 		if len(axs) != n_axs:
 			raise ValueError, "inconsistent number of ifos between network and figtuples"
 	else:
 		fig = plt.figure()
-		axs = [plt.subplot(n_ifo+1,1,i+1) for i in xrange(n_ifo+1)]
+		axs = [plt.subplot(n_axs,1,i+1) for i in xrange(n_axs)]
 		figtuple = (fig, axs)
 
-	if np.shape(data) != (n_freqs, n_ifo):
-		raise ValueError, "bad shape for data"
-
-	if np.shape(h) != (n_freqs):
-		raise ValueError, "bad shape for h"
-
-	if dh!=None and np.shape(dh) != (n_freqs, 2):
-		raise ValueError, "bad shape for dh"
-
-	fig = plt.figure()
-	axs = []
-	
 	iax = 0
 	### geocenter h
-	ax = axs[iax]
-	ax.plot(freqs, h.real, color="b", label="$\mathrm{Real}\{h\}$")
-	if np.any(h.imag):
-		ax.plot(freqs, h.imag, color="r", label="$\mathrm{Imag}\{h\}$")
-	if dh!=None:
-		ax.fill_between(freqs, dh[:,0].real, dh[:,1].real, color="b", alpha=0.25)
-		if np.any(dh.imag):
-			ax.fill_between(freqs, dh[:,0].imag, dh[:,1].imag, color="r", alpha=0.25)
+	for pol in xrange(n_pol):
+		ax = axs[iax]
 
-	iax+=1	
+		ax.plot(freqs, h[:,pol].real, color="b", label="$\mathrm{Real}\{h_%d\}$"%pol)
+		if np.any(h.imag):
+			ax.plot(freqs, h[:,pol].imag, color="r", label="$\mathrm{Imag}\{h_%d\}$"%pol)
+		if dh!=None:
+			ax.fill_between(freqs, dh[:,pol,0].real, dh[:,pol,1].real, color="b", alpha=0.25)
+			if np.any(dh.imag):
+				ax.fill_between(freqs, dh[:,pol,0].imag, dh[:,pol,1].imag, color="r", alpha=0.25)
+
+		ax.set_ylabel("$h_%d$ [%s]"%(pol, units))
+
+		iax+=1	
 
 	### inject h into the network
 	inj = injections.inject(network, h, theta, phi, psi=psi)
@@ -185,8 +187,12 @@ def project(network, freqs, h, theta, phi, psi, data, figtuple=None, dh=None, un
 		dinj0 = dinj1 = [None]*n_ifo
 	
 	### iterate and plot
-	for (name, i, di0, di1, d) in zip(network.detector_name_list, np.transpose(inj), dinj0, dinj1, np.transpose(data)):
+	for (name, i, di0, di1, d) in zip(network.detector_names_list(), np.transpose(inj), dinj0, dinj1, np.transpose(data)):
 		ax = axs[iax]
+
+                ax.plot(freqs, d.real, color="c", label="$\mathrm{Real}{d_{\mathrm{%s}}}$"%name)
+                if np.any(d.imag):
+                        ax.plot(freqs, d.imag, color="m", label="$\mathrm{Imag}{d_{\mathrm{%s}}}$"%name)
 
 		ax.plot(freqs, i.real, color="b", label="$\mathrm{Real}\{F*h\}$")
 		if np.any(i.imag):
@@ -196,12 +202,6 @@ def project(network, freqs, h, theta, phi, psi, data, figtuple=None, dh=None, un
 			ax.fill_between(freqs, di0, di1, color="b", alpha=0.25)
 			if np.any(di0.imag):
 				ax.fill_between(freqs, di0, di1, color="r", alpha=0.25)
-
-		ax.plot(freqs, d.real, color="c", label="$\mathrm{Real}{d_{\mathrm{%s}}}$"%name)
-		if np.any(d.imag):
-			ax.plot(freqs, d.imag, color="m", label="$\mathrm{Imag}{d_{\mathrm{%s}}}"%name)
-
-		ax.set_ylabel("data from %s [%s]"%(name, units))
 
 		iax += 1
 
@@ -266,6 +266,17 @@ def ascii_psd(filename, figtuple=None, color="b", label=None):
 	ax.plot(freq, psd, color=color, label=label)
 
 	return figtuple
+
+#=================================================
+# skymap projections
+#=================================================
+def hp_mollweide(map, unit="", title=""):
+	"""
+	a wrapper for the healpy mollview functionality
+	"""
+	fig = plt.figure()
+	hp.mollview(map, fig=fig.number, flip="geo", unit=unit, title=title)
+	return fig, fig.gca()
 
 #===================================================================================================
 # WRITE ME
