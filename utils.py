@@ -7,9 +7,7 @@ from numpy import linalg
 import healpy as hp
 import pickle
 
-print """Write a general method for "resample()" that allows us to both upsample and downsample data correctly
-Write a "window" option for FFT so that we avoid low-frequency noise artefacts introduced by the DFT
-"""
+from pylal import Fr
 
 #=================================================
 #
@@ -188,123 +186,25 @@ def files_from_cache(cache, start, stop, suffix=".gwf"):
 
 	return files
 
-#========================
-# fft and psd utilities
-#========================
-def dft(vec, dt=1.0):
-	"""
-	computes the DFT of vec
-	returns the one-sides spectrum
-	"""
-	N = len(vec)
-
-	dft_vec = np.fft.fft(vec) / N
-	freqs = np.fft.fftfreq(N, d=dt)
-
-	freqs = np.fft.fftshift(freqs)
-	truth = freqs>=0
-
-	return np.fft.fftshift(dft_vec)[truth], freqs[truth]
-
 ###
-def idft(dft_vec, dt=1.0, seglen=1.0):
+def vec_from_frames(frames, start, stop, verbose=False):
 	"""
-	computes the inverse DFT of vec
-	takes in the one-sided spectrum
+	returns a numpy array of the data inculded in frames between start and stop
+	CURRENTLY ASSUME CONTIGUOUS DATA, but we should check this
+
+	meant to be used with files_from_cache
 	"""
-	N = len(dft_vec)
-
-	n = dt*seglen
-	vec = np.emtpy(n, complex)
-	vec[:N] = dft_vec
-	if n%2: ### odd number of points
-		vec[N:] = np.conjugate(vec[1:])[::-1]
-	else: ### even number of points
-		vec[N:] = np.conjugate(dft_vec)[::-1]
-
-	vec = np.fft.ifft( vec * N )
-	time = np.arange(0, seglen, dt)
-
-	return vec, time
-
-###
-def estimate_psd(vec, num_segs=1, overlap=0, dt=None):
-	"""
-	estimates the PSD using a DFT
-	divides vec into "num_segs" with "overlap" shared entries between neighbors
-	returns the average PSD from these samples
-
-	WARNING: your logic on how to split segments may be fragile...
-
-	"""
-	N = len(vec)
-	if overlap > N - num_segs:
-		raise ValueError, "overlap is too big!"
-
-	n = 1.0*N/num_segs + (num_segs-1.0)/num_segs * overlap ### number of elements per segment
-
-	n = int(n)
-	overlap = int(overlap)
-
-	### compute dfts for each segment separately
-	psds = np.empty((n/2, num_segs), complex)
-	for segNo in xrange(num_segs):
-		start = segNo*(n-overlap)
-		psd, freqs = dft(vec[start:start+n], dt=dt)
-		psds[:,segNo], freqs = dft(vec[start:start+n], dt=dt)
-	
-	### average
-	mean_psd = np.sum(psds.real**2 + psds.imag**2, axis=1) / num_segs
-
-	return mean_psd, freqs
-
-###
-def resample(vec, dt, new_dt, method="average"):
-	"""
-	vec = time-series array
-	dt = current time spacing
-	new_dt = desired time spacing
-	"""
-	if method == "interpolate":
-		return __resample_interp(vec, dt, new_dt)
-
-	elif method == "average":
-		return __resample_average(vec, dt, new_dt)
-
-	else:
-		raise ValueError, "method=%s not understood"%method
-
-###
-def __resample_interp(vec, dt, new_dt):
-	"""
-	resample by linear interpolation. This is known to be a bad idea
-	"""
-	N = len(vec)
-	return np.interp( np.arange(o, N*dt, new_dt), np.arange(0, N*dt, dt), vec), new_dt
-
-###
-def __resample_average(vec, dt, new_dt):
-	"""
-	averages neighbouring points to downsample the time series
-	if len(vec) is odd, we pad with a zero.
-	"""
-	if dt > new_dt:
-		raise ValueError, "cannot average samples to a higher sampling rate"
-
-	N = len(vec)
-	if N%2:
-		vec = np.concatenate([vec, np.zeros(1)])
-		N += 1
-
-	if dt == new_dt: ### we're done
-		return vec, dt
-	elif (new_dt/dt)%2: ### bad shape
-		raise ValueError, "new_dt/dt must be a power of 2"
-
-	else: ### recursive call to downsample
-		new_vec = np.sum(np.reshape(vec, (N/2, 2)), axis=1) * 0.5 ### average neighbouring points
-		return __resample_average(new_vec, dt*2, new_dt) ### recursive call with new resampled data
-
+	vecs = []
+	dt = 0
+	for frame, strt, dur in frames:
+		if verbose: print frame
+		s = max(strt, start)
+		d = min(start+dur,stop) - s
+		vec, gpstart, offset, dt, _, _ = Fr.frgetvect1d(frame, ifo_chan, start=s, span=d)
+		vecs.append( vec )
+	vec = np.concatenate(vecs)
+	return vec, dt
+ 
 #========================
 # timing utilities
 #========================
