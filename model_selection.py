@@ -408,3 +408,21 @@ def waterfill(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_t
 			break
 
 	return old_model, old_logB
+
+###
+def waterfill_mp(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth, num_proc=1, max_proc=1, max_array_size=100):
+        """
+	multi-processing version of waterfill
+	parallelization achieved through computation of individual-bin log_bayes factors
+        """
+        if num_proc==1:
+                return waterfill(posterior, thetas, phis, log_posterior_elements, n_pol_eff, freq_truth)
+	else:
+		raise StandardError, "WRITE ME"
+
+	"""
+	how can we parallelize this?
+	we can compute individual bins log_bayes separately... probably need a helper function rather than a bunch of processes pointing to log_posterior_elements_to_log_bayes() (save on communication time)?
+	the rest of this algorithm is pretty sequential. Maybe it can't be parallelized well?
+	"""
+
