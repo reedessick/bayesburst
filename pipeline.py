@@ -9,6 +9,7 @@ import numpy as np
 import pickle
 
 import utils
+import dft
 import detector_cache
 import priors
 import posteriors
@@ -57,6 +58,8 @@ if opts.tag:
 if opts.diagnostic_plots:
 	opts.diagnostic = True
 
+opts.output_dir += "/%d/"%int(opts.gps)
+
 if not os.path.exists(opts.output_dir):
 	os.makedirs(opts.output_dir)
 
@@ -69,7 +72,7 @@ if opts.time:
 #=================================================
 if opts.verbose: 
 	print "\n----------------------------------\n"
-	print "loading config from ", opts.config
+	print "loading config from :", opts.config
 	if opts.time:
 		to = time.time()
 
@@ -93,17 +96,41 @@ if opts.verbose:
 	if opts.time:
 		to = time.time()
 
+resample_method=config.get("fft","resample_method") ### method for downsampling
+
 seglen = config.getfloat("fft","seglen")
-df = 1.0/seglen
 fs = config.getfloat("fft","fs")
+padding = config.getfloat("fft","padding")
+
+df = 1.0/seglen
 freqs=np.arange(0, fs/2, df)
 n_freqs = len(freqs)
 
-flow = config.getfloat("fft","flow") ### currently only used in plotting and model selection
-                                     ### any speed-up associated with skipping these bins in 
-                                     ### log posterior elements is currently unavailable
+### low frequency range for the analysis
+if config.has_option("fft","flow"):
+	flow = config.getfloat("fft","flow") ### currently only used in plotting and model selection
+        	                             ### any speed-up associated with skipping these bins in 
+                	                     ### log posterior elements is currently unavailable
 
-freq_truth = freqs >= flow
+	if flow < 1.0/seglen:
+		if opts.verbose:
+			print "WARNING: seglen is too short to reach flow=%f. changing flow->1/seglen=%f"%(flow,1.0/seglen)
+		flow=1.0/seglen
+else:
+	flow = 1.0/seglen
+
+### high frequency range for the analysis
+if config.has_option("fft","fhigh"):
+	fhigh = config.getfloat("fft","fhigh")
+	if fhigh > 0.5*fs:
+		if opts.verbose:
+			print "WARNING: fs is too low to reach fhigh=%f. changing fhigh->fs/2=%f"%(fhigh, 0.5*fs)
+		fhigh = 0.5*fs
+else:
+	fhigh = 0.5*fs
+
+### window of frequencies we want to analyze
+freq_truth = (freqs >= flow)*(freqs <= fhigh) 
 
 if opts.time:
 	print "\t", time.time()-to
@@ -119,7 +146,7 @@ if opts.verbose:
 
 ifos = eval(config.get("network","ifos"))
 n_ifo = len(ifos)
-network = utils.Network([detector_cache.detectors[ifo] for ifo in ifos], freqs=freqs, Np=n_pol)
+network = utils.Network([detector_cache.detectors[ifo] for ifo in ifos], freqs=freqs, Np=n_pol) ### we use freqs for now, but will update this based on the data
 
 if opts.time:
         print "\t", time.time()-to
@@ -147,17 +174,17 @@ elif config.has_option("noise","cache"): ### estimate PSD's from noise frames
 	noise_chans = eval(config.get("noise","channels"))
 
 	### pull out parameters for PSD estimation
-	fs = config.getfloat("psd_estimation","fs")
-	seglen= config.getfloat("psd_estimation","seglen")
+	psd_fs = config.getfloat("psd_estimation","fs")
+	psd_seglen= config.getfloat("psd_estimation","seglen")
+	psd_padding = config.getfloat("psd_estimation","padding")
 	overlap = config.getfloat("psd_estimation","overlap")
-	if overlap >= seglen:
+	if overlap >= psd_seglen:
 		raise ValueError, "overlap must be less than seglen in psd_estimation"
 	num_segs = config.getint("psd_estimation","num_segs")
 	
-	duration = (num_segs*seglen - (num_segs-1)*overlap) ### amount of time used for PSD estimation
+	duration = (num_segs*psd_seglen - (num_segs-1)*overlap) ### amount of time used for PSD estimation
 	dseg = 0.5*config.getfloat("fft","seglen") ### buffer for fft used to compute noise, inj, etc
 
-	from pylal import Fr
 	for ifo in ifos:
 
 		ifo_chan = noise_chans[ifo]
@@ -171,33 +198,18 @@ elif config.has_option("noise","cache"): ### estimate PSD's from noise frames
 
 		if opts.time:
 			print "\t", time.time()-to
-
-		### read vectors from files
-		### FIXME: we assume data is continuous, which may not be the case!
-		### we also assume that data is sampled at a constant rate
-		vecs = []
-		dt = 0
-		for frame, start, dur in frames:
-			if opts.verbose:
-				print "\t", frame
-				if opts.time:
-					to = time.time()
-			s = max(start,(opts.gps-dseg)-duration)
-			d = min(start+dur,(opts.gps-dseg))-s
-			vec, gpstart, offset, dt, _, _ = Fr.frgetvect1d(frame, ifo_chan, start=s, span=d)
-			if opts.time:
-				print "\t\t", time.time()-to
-			vecs.append( vec )
-		vec = np.concatenate(vecs)
+		
+		vec, dt = utils.vec_from_frames(frames, opts.gps-dseg-duration, opts.gps-dseg, verbose=opts.verbose)
 		N = len(vec)
 
 		### downsample data to fs?
-		_dt = 1.0/fs
+		### IF WE WANT TO DO THIS, WE SHOULD DO THIS WITHIN THE PSD ESTIMATION?
+		_dt = 1.0/psd_fs
 		if opts.verbose:
                 	print "downsampling time-domain data : dt=%fe-6 -> dt=%fe-6"%(dt*1e6, _dt*1e6)
 			if opts.time:
 				to = time.time()
-		vec, dt = utils.resample(vec, dt, _dt)
+		vec, dt = dft.resample(vec, dt, _dt, method=resample_method)
 		if opts.time:
 			print "\t", time.time()-to
 			
@@ -210,18 +222,22 @@ elif config.has_option("noise","cache"): ### estimate PSD's from noise frames
 			print "estimating PSD with %d segments"%num_segs
 			if opts.time:
 				to = time.time()
-		psd, psd_freqs = utils.estimate_psd(vec, num_segs=num_segs, overlap=overlap/dt, dt=dt)
+		psd, psd_freqs = dft.estimate_psd(vec, num_segs=num_segs, overlap=overlap/dt, dt=dt)
 		if opts.time:
 			print "\t", time.time()-to
+
+		if config.has_option("psd_estimation","smooth"): ### smooth psd estimate by averaging neighboring bins
+			N = len(psd)
+			smooth = config.getint("psd_estimation","smooth")
+
+			psd = np.sum(np.reshape(psd, (N/smooth, smooth)), axis=1)/smooth
+			psd_freqs = np.sum(np.reshape(psd_freqs, (N/smooth,smooth)), axis=1)/smooth
 
 		### update network object
 		network.detectors[ifo].set_psd(psd, freqs=psd_freqs)
 
 else:
 	raise StandardError, "could not estimate PSDs. Please either supply a cache of ascii files or a cache of noise frames in the configuration file."
-
-if opts.time:
-	print "\t", time.time()-to
 
 ### dump psd's to numpy arrays if requested
 if opts.diagnostic:
@@ -253,7 +269,7 @@ if opts.diagnostic:
 			ax.set_ylabel("PSD [1/Hz]")
 			ax.set_xscale('log')
 			ax.set_yscale('log')
-			ax.set_xlim(xmin=flow, xmax=np.max(psd_obj.get_freqs()))
+			ax.set_xlim(xmin=flow, xmax=fhigh)
 			ax.grid(True, which="both")
 
 			fig.savefig(psd_figname)
@@ -290,11 +306,8 @@ elif config.has_option("noise", "cache"):
         noise_chans = eval(config.get("noise","channels"))
 
         ### pull out parameters for PSD estimation
-        fs = config.getfloat("fft","fs")
-        seglen= config.getfloat("fft","seglen")
         dseg = 0.5*seglen
 
-        from pylal import Fr
         for ifo_ind, ifo in enumerate(ifos):
 
                 ifo_chan = noise_chans[ifo]
@@ -309,24 +322,8 @@ elif config.has_option("noise", "cache"):
                 if opts.time:
                         print "\t", time.time()-to
 
-                ### read vectors from files
-                ### FIXME: we assume data is continuous, which may not be the case!
-                ### we also assume that data is sampled at a constant rate
-                vecs = []
-                dt = 0
-                for frame, start, dur in frames:
-                        if opts.verbose:
-                                print "\t", frame
-                                if opts.time:
-                                        to = time.time()
-                        s = max(start, opts.gps-dseg)
-                        d = min(start+dur, opts.gps+dseg)-s
-                        vec, gpstart, _, dt, _, _ = Fr.frgetvect1d(frame, ifo_chan, start=s, span=d)
-                        if opts.time:
-                                print "\t\t", time.time()-to
-                        vecs.append( vec )
-                vec = np.concatenate(vecs)
-                N = len(vec)
+		vec, dt = utils.vec_from_frames(frames, opts.gps-dseg, opts.gps+dseg, vebose=opts.verbose)
+		N = len(vec)
 
                 ### downsample data to fs?
                 _dt = 1.0/fs
@@ -334,7 +331,7 @@ elif config.has_option("noise", "cache"):
                         print "downsampling time-domain data : dt=%fe-6 -> dt=%fe-6"%(dt*1e6, _dt*1e6)
 			if opts.time:
 				to = time.time()
-                vec, dt = utils.resample(vec, dt, _dt)
+                vec, dt = dft.resample(vec, dt, _dt, method=resample_method)
                 if opts.time:
                         print "\t", time.time()-to
 
@@ -342,11 +339,14 @@ elif config.has_option("noise", "cache"):
                 if len(vec)*dt != seglen:
                         raise ValueError, "len(vec)*dt = %f != %f = seglen"%(len(vec)*dt, seglen)
 
+		### compute windowing function
+		win = dft.window(vec, kind="tukey", alpha=2*padding/seglen)
+
                 ### store noise
-                dft_vec, dft_freqs = utils.dft(vec, dt=dt)
+                dft_vec, dft_freqs = dft.dft(vec*win, dt=dt)
                 if np.any(dft_freqs != freqs):
                         raise ValueError, "frequencies from utils.dft do not agree with freqs defined by hand"
-                noise[:,ifo_ind] = dft_vec * np.exp(2j*np.pi*opts.gps*freqs) ### add phase shift for start time
+                noise[:,ifo_ind] = dft_vec
 
 else:
         if opts.verbose:
@@ -374,12 +374,11 @@ if opts.diagnostic:
 			print "plotting noise : %s"%noise_figname
 			if opts.time:
 				to = time.time()
-		fig, axs = viz.data(freqs, noise, ifos, units="$1/\sqrt{\mathrm{Hz}}$")
+		fig, axs = viz.data(freqs[freq_truth], noise[freq_truth], ifos, units="$1/\sqrt{\mathrm{Hz}}$")
 
-		xmax = np.max(freqs)
 		for ax in axs:
 			ax.grid(True, which="both")
-			ax.set_xlim(xmax=xmax)
+			ax.set_xlim(xmin=flow, xmax=fhigh)
 			ax.legend(loc="best")
 		ax.set_xlabel("frequency [Hz]")
 
@@ -387,6 +386,28 @@ if opts.diagnostic:
 		viz.plt.close(fig)
 		if opts.time:
 			print "\t", time.time()-to
+
+		### log axes
+                noise_figname = "%s/noise-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+                if opts.verbose:
+                        print "plotting noise : %s"%noise_figname
+                        if opts.time:
+                                to = time.time()
+                fig, axs = viz.data(freqs[freq_truth], noise.real[freq_truth]**2+noise.imag[freq_truth]**2, ifos, units="$1/\mathrm{Hz}$")
+
+                for ax in axs:
+                        ax.grid(True, which="both")
+			ax.set_xscale('log')
+			ax.set_yscale('log')
+                        ax.set_xlim(xmin=flow, xmax=fhigh)
+#                        ax.legend(loc="best")
+                ax.set_xlabel("frequency [Hz]")
+
+                fig.savefig(noise_figname)
+                viz.plt.close(fig)
+                if opts.time:
+                        print "\t", time.time()-to
+
 
 #=================================================
 ### load injection
@@ -441,11 +462,8 @@ elif config.has_option("injection","cache"): ### read injection frame
         inj_chans = eval(config.get("injection","channels"))
 
         ### pull out parameters for PSD estimation
-        fs = config.getfloat("fft","fs")
-        seglen= config.getfloat("fft","seglen")
         dseg = 0.5*seglen
 
-        from pylal import Fr
         for ifo_ind, ifo in enumerate(ifos):
 
                 ifo_chan = inj_chans[ifo]
@@ -460,23 +478,7 @@ elif config.has_option("injection","cache"): ### read injection frame
                 if opts.time:
                         print "\t", time.time()-to
 
-                ### read vectors from files
-                ### FIXME: we assume data is continuous, which may not be the case!
-                ### we also assume that data is sampled at a constant rate
-                vecs = []
-                dt = 0
-                for frame, start, dur in frames:
-                        if opts.verbose:
-                                print "\t", frame
-                                if opts.time:
-                                        to = time.time()
-                        s = max(start, opts.gps-dseg)
-                        d = min(start+dur, opts.gps+dseg)-s
-                        vec, gpstart, _, dt, _, _ = Fr.frgetvect1d(frame, ifo_chan, start=s, span=d)
-                        if opts.time:
-                                print "\t\t", time.time()-to
-                        vecs.append( vec )
-                vec = np.concatenate(vecs)
+		vec, dt = utils.vec_from_frames(frames, opts.gsp-dseg, opts.gps+dseg, verbose=opts.verbose)
                 N = len(vec)
 
                 ### downsample data to fs?
@@ -485,7 +487,7 @@ elif config.has_option("injection","cache"): ### read injection frame
                         print "downsampling time-domain data : dt=%fe-6 -> dt=%fe-6"%(dt*1e6, _dt*1e6)
 			if opts.time:
 				to = time.time()
-                vec, dt = utils.resample(vec, dt, _dt)
+                vec, dt = dft.resample(vec, dt, _dt, method=resample_method)
                 if opts.time:
                         print "\t", time.time()-to
 
@@ -493,11 +495,14 @@ elif config.has_option("injection","cache"): ### read injection frame
                 if len(vec)*dt != seglen:
                         raise ValueError, "len(vec)*dt = %f != %f = seglen"%(len(vec)*dt, seglen)
 
+                ### compute windowing function
+                win = dft.window(vec, kind="tukey", alpha=2*padding/seglen)
+
                 ### store injection
-                dft_vec, dft_freqs = utils.dft(vec, dt=dt)
+                dft_vec, dft_freqs = dft.dft(vec*win, dt=dt)
                 if np.any(dft_freqs != freqs):
                         raise ValueError, "frequencies from utils.dft do not agree with freqs defined by hand"
-                inj[:,ifo_ind] = dft_vec * np.exp(2j*np.pi*opts.gps*freqs) ### add phase shift for start time
+                inj[:,ifo_ind] = dft_vec 
 
 elif opts.xmlfilename: ### read injection from xmlfile
         if opts.sim_id==None:
@@ -597,6 +602,24 @@ if opts.diagnostic:
         if opts.time:
                 print "\t", time.time()-to
 
+	### snr
+	snr_filename = "%s/snr%s_%d.txt"%(opts.output_dir, opts.tag, int(opts.gps))
+	if opts.verbose:
+		print "writing snrs to %s"%snr_filename
+		if opts.time:
+			to = time.time()
+	snrs = network.snrs(inj)
+	snr_net = np.sum(snrs**2)**0.5
+	snr_string =  " ".join([str(snr_net)]+[str(s) for s in snrs])
+	file_obj = open(snr_filename, "w")
+	print >> file_obj, " ".join(["network"]+network.detector_names_list())
+	print >> file_obj, snr_string
+	file_obj.close()
+	if opts.verbose:
+		print "\t%s"%snr_string
+		if opts.time:
+			print "\t", time.time()-to
+
 	if opts.diagnostic_plots:
 	        ### plot injection
         	inj_figname = "%spng"%inj_filename[:-3]
@@ -604,12 +627,11 @@ if opts.diagnostic:
         	        print "plotting injections : %s"%inj_figname
                 	if opts.time:
                         	to = time.time()
-	        fig, axs = viz.data(freqs, inj, ifos, units="$1/\sqrt{\mathrm{Hz}}$")
+	        fig, axs = viz.data(freqs[freq_truth], inj[freq_truth], ifos, units="$1/\sqrt{\mathrm{Hz}}$")
         
-		xmax = np.max(freqs)
         	for ax in axs:
                 	ax.grid(True, which="both")
-			ax.set_xlim(xmax=xmax)
+			ax.set_xlim(xmin=flow, xmax=fhigh)
 			ax.legend(loc="best")
 	        ax.set_xlabel("frequency [Hz]")
 
@@ -617,6 +639,123 @@ if opts.diagnostic:
         	viz.plt.close(fig)
 	        if opts.time:
         	        print "\t", time.time()-to
+
+		### log axis
+		inj_figname = "%s/injections-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+		if opts.verbose:
+                        print "plotting injections : %s"%inj_figname
+                        if opts.time:
+                                to = time.time()
+                fig, axs = viz.data(freqs[freq_truth], inj.real[freq_truth]**2+inj.imag[freq_truth]**2, ifos, units="$1/\mathrm{Hz}$")
+
+                for ax in axs:
+                        ax.grid(True, which="both")
+			ax.set_xscale('log')
+			ax.set_yscale('log')
+                        ax.set_xlim(xmin=flow, xmax=fhigh)
+#			ax.legend(loc="best")
+                ax.set_xlabel("frequency [Hz]")
+
+                fig.savefig(inj_figname)
+                viz.plt.close(fig)
+                if opts.time:
+                        print "\t", time.time()-to
+
+#=================================================
+# some diagnostic plotting
+#=================================================
+if opts.diagnostic_plots:
+	data_figname = "%s/data%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+	if opts.verbose:
+		print "\n----------------------------------\n"
+		print "plotting data : %s"%inj_figname
+		if opts.time:
+                	to = time.time()
+	fig, axs = viz.data(freqs[freq_truth], noise[freq_truth]+inj[freq_truth], ifos, units="$1/\sqrt{\mathrm{Hz}}$")
+
+        for ax in axs:
+        	ax.grid(True, which="both")
+                ax.set_xlim(xmin=flow, xmax=fhigh)
+                ax.legend(loc="best")
+	ax.set_xlabel("frequency [Hz]")
+
+	fig.savefig(data_figname)
+        viz.plt.close(fig)
+        if opts.time:
+        	print "\t", time.time()-to
+
+	### log axis
+        data_figname = "%s/data-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+        if opts.verbose:
+        	print "plotting injections : %s"%inj_figname
+                if opts.time:
+                	to = time.time()
+	fig, axs = viz.data(freqs[freq_truth], inj.real[freq_truth]**2+inj.imag[freq_truth]**2 + noise[freq_truth].real**2+noise[freq_truth].imag**2, ifos, units="$1/\mathrm{Hz}$")
+
+        for ax in axs:
+        	ax.grid(True, which="both")
+                ax.set_xscale('log')
+                ax.set_yscale('log')
+                ax.set_xlim(xmin=flow, xmax=fhigh)
+#		ax.legend(loc="best")
+	ax.set_xlabel("frequency [Hz]")
+
+	fig.savefig(data_figname)
+	viz.plt.close(fig)
+	if opts.time:
+		print "\t", time.time()-to
+
+
+##### WRITE a whitened version that references PSD's!
+
+#=================================================
+# set frequencies for the analysis
+#=================================================
+### SELECT OFF ONLY THOSE FREQUENCIES THAT BELONG TO freq_truth AND USE THOSE THROUGHOUT THE REST OF THIS.
+### network object is instantiated with freqs=freqs, so we'll need to update that
+### We can choose which frequencies we search based on a simple SNR calculation (a-la cWB?)
+### This is primarily a computational concern, but it can have important impacts for parameter estimation if we aren't careful.
+if opts.verbose:
+	print "\n----------------------------------\n"
+	print "selecting only those frequencies within [flow, fhigh]"
+	if opts.time:
+		to = time.time()
+
+analysis_freqs = freqs[freq_truth]
+analysis_inj = inj[freq_truth]
+analysis_noise = noise[freq_truth]
+
+analysis_freq_truth = np.ones_like(analysis_freqs, bool)
+analysis_n_freqs = len(analysis_freq_truth)
+
+if opts.verbose:
+	print "\tn_freqs : %d -> %d"%(n_freqs, analysis_n_freqs)
+	if opts.time:
+		print "\t", time.time()-to
+
+### update network object!
+network.freqs=analysis_freqs
+
+
+
+
+
+
+#=============================================================================================================
+#
+# CLEAN UP VARIABLES THAT ARE NO LONGER NEEDED
+# eg: data from outside the analysis_frequency range
+# intermediate data products, etc.
+# THIS WILL HELP WITH MEMORY REQUIREMENTS
+#
+#=============================================================================================================
+
+
+
+
+
+
+
 
 #=================================================
 ### build angprior
@@ -660,9 +799,9 @@ n_gaus = max(1, int(round((log10_max-log10_min)*n_gaus_per_dec,0)))
 
 variances=np.logspace(log10_min, log10_max, n_gaus)**2
 
-pareto_means, pareto_covariance, pareto_amps = priors.pareto(pareto_a, n_freqs, n_pol, variances)
+pareto_means, pareto_covariance, pareto_amps = priors.pareto(pareto_a, analysis_n_freqs, n_pol, variances)
 
-hprior = priors.hPrior(freqs, pareto_means, pareto_covariance, amplitudes=pareto_amps, n_gaus=n_gaus, n_pol=n_pol)
+hprior = priors.hPrior(analysis_freqs, pareto_means, pareto_covariance, amplitudes=pareto_amps, n_gaus=n_gaus, n_pol=n_pol)
 
 if opts.time:
 	print "\t", time.time()-to
@@ -712,7 +851,7 @@ if opts.verbose:
         print "setting data"
         if opts.time:
                 to=time.time()
-posterior.set_data( noise+inj )
+posterior.set_data( analysis_noise+analysis_inj )
 posterior.set_dataB()
 if opts.time:
         print "\t", time.time()-to
@@ -750,22 +889,23 @@ if opts.verbose:
 		to = time.time()
 ###
 if selection=="waterfill":
-	model, log_bayes = model_selection.waterfill(posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, freq_truth)
+	model, log_bayes = model_selection.waterfill_mp(posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, analysis_freq_truth, num_proc=model_selection_num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 elif selection=="log_bayes_cut":
 	if not config.has_option("model_selection","log_bayes_thr"):
 		raise ValueError, "must supply \"log_bayes_thr\" in config file with \"selection=log_bayes_cut\""
 	log_bayes_thr = config.getfloat("model_selection","log_bayes_thr")
-
-	model, log_bayes = model_selection_mp.log_bayes_cut(posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, freq_truth, num_proc=model_selection_num_proc, max_proc=max_proc, max_array_size=max_array_size)
+	if opts.verbose:
+		print "\tlog_bayes_thr =", log_bayes_thr
+	model, log_bayes = model_selection.log_bayes_cut_mp(log_bayes_thr, posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, analysis_freq_truth, joint_log_bayes=True, num_proc=model_selection_num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 ###
 elif selection=="fixed_bandwidth":
 	if not config.has_option("model_selection","n_bins"):
 		raise ValueError, "must supply \"n_bins\" in config file with \"selection=fixed_bandwidth\""
-	n_bins = config.getint("model_selectin","n_bins")
+	n_bins = config.getint("model_selection","n_bins")
 
-	model, log_bayes = model_selection.fixed_bandwidth_mp(posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, freq_truth, n_bins=n_bins, num_proc=model_selection_num_proc, max_proc=max_proc, max_array_size=max_array_size)
+	model, log_bayes = model_selection.fixed_bandwidth_mp(posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, analysis_freq_truth, n_bins=n_bins, num_proc=model_selection_num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 ###
 elif selection=="variable_bandwidth":
@@ -781,14 +921,17 @@ elif selection=="variable_bandwidth":
 		raise ValueError, "must supply \"dn_bins\" in config file with \"selection=variable_bandwidth\""
 	dn_bins = config.getint("model_selection","dn_bins")
 
-	model, log_bayes = model_selection.variable_bandwidth_mp(posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=model_selection_num_proc, max_proc=max_proc, max_array_size=max_array_size)
+	model, log_bayes = model_selection.variable_bandwidth_mp(posterior, posterior.theta, posterior.phi, log_posterior_elements, n_pol_eff, analysis_freq_truth, min_n_bins=min_n_bins, max_n_bins=max_n_bins, dn_bins=dn_bins, num_proc=model_selection_num_proc, max_proc=max_proc, max_array_size=max_array_size)
 
 ###
 else:
 	raise ValueError, "selection=%s not understood"%selection
 
-if opts.time:
-	print "\t", time.time()-to
+if opts.verbose:
+	print "n_bins : %d / %d"%(np.sum(model), len(model))
+	print "logB   : %f"%log_bayes
+	if opts.time:
+		print "\t", time.time()-to
 
 #=================================================
 # compute final posterior
@@ -804,6 +947,32 @@ log_posterior = posterior.log_posterior_mp(posterior.theta, posterior.phi, log_p
 
 if opts.time:
 	print "\t", time.time()-to
+
+### generate plots
+if opts.diagnostic_plots:
+	### log-posterior
+	log_figname = "%s/posterior-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+	if opts.verbose:
+		print "plotting : %s"%log_figname
+		if opts.time:
+			to = time.time()
+	fig, ax = viz.hp_mollweide(log_posterior, unit="log(prob/pix)")
+	fig.savefig(log_figname)
+	viz.plt.close(fig)
+	if opts.time:
+		print "\t", time.time()-to
+
+	### posterior
+	pst_figname = "%s/posterior%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+	if opts.verbose:
+		print "plotting : %s"%pst_figname
+		if opts.time:
+			to = time.time()
+	fig, ax = viz.hp_mollweide(np.exp(log_posterior), unit="prob/pix")
+	fig.savefig(pst_figname)
+	viz.plt.close(fig)
+	if opts.time:
+		print "\t", time.time()-to
 
 #=================================================
 ### save output
@@ -855,10 +1024,10 @@ if opts.diagnostic:
                 print "writing mle_strain to %s"%mle_filename
                 if opts.time:
                         to = time.time()
-        file_obj = open(mle_filename, "w")
-        pickle.dump((map_theta, map_phi), file_obj)
-        pickle.dump(mle_strain, file_obj)
-        file.close()
+        pkl_obj = open(mle_filename, "w")
+        pickle.dump((map_theta, map_phi), pkl_obj)
+        pickle.dump(mle_strain, pkl_obj)
+        pkl_obj.close()
         if opts.time:
                 print "\t", time.time()-to
 
@@ -869,17 +1038,83 @@ if opts.diagnostic:
                         print "projecting mle_strain and plotting : %s"%mle_figname
                         if opts.time:
                                 to = time.time()
-                fig, axs = viz.project(posterior.network, freqs, mle_strain, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
 
-                xmax = np.max(freqs)
+                fig, axs = viz.project(posterior.network, analysis_freqs, mle_strain, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
+
                 for ax in axs:
                         ax.grid(True, which="both")
-                        ax.set_xlim(xmax=xmax)
+                        ax.set_xlim(xmin=flow, xmax=fhigh)
                         ax.legend(loc="best")
                 ax.set_xlabel("frequency [Hz]")
 
                 fig.savefig(mle_figname)
                 viz.plt.close(fig)
                 if opts.time:
-                        print "\t", time.time()
+                        print "\t", time.time()-to
 
+		### log
+		mle_figname = "%s/mle-strain-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+                if opts.verbose:
+                        print "projecting mle_strain and plotting : %s"%mle_figname
+                        if opts.time:
+                                to = time.time()
+
+                fig, axs = viz.project(posterior.network, analysis_freqs, mle_strain.real**2+mle_strain.imag**2, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
+
+                for ax in axs:
+                        ax.grid(True, which="both")
+			ax.set_yscale('log')
+			ax.set_xscale('log')
+                        ax.set_xlim(xmin=flow, xmax=fhigh)
+                        ax.legend(loc="best")
+                ax.set_xlabel("frequency [Hz]")
+
+                fig.savefig(mle_figname)
+                viz.plt.close(fig)
+                if opts.time:
+                        print "\t", time.time()-to
+
+		### model
+		model_figname = "%s/model-strain%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+		if opts.verbose:
+			print "projecting mle_strain and plotting : %s"%mle_figname
+                        if opts.time:
+                                to = time.time()
+
+                h = np.zeros_like(mle_strain, complex)
+                h[model,:] = mle_strain[model,:] ### only include those bins selected by the model!
+
+                fig, axs = viz.project(posterior.network, analysis_freqs, h, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
+
+                for ax in axs:
+                        ax.grid(True, which="both")
+                        ax.set_xlim(xmin=flow, xmax=fhigh)
+                        ax.legend(loc="best")
+                ax.set_xlabel("frequency [Hz]")
+
+                fig.savefig(model_figname)
+                viz.plt.close(fig)
+                if opts.time:
+                        print "\t", time.time()-to
+
+		### model log
+                model_figname = "%s/model-strain-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+                if opts.verbose:
+                        print "projecting mle_strain and plotting : %s"%mle_figname
+                        if opts.time:
+                                to = time.time()
+
+                fig, axs = viz.project(posterior.network, analysis_freqs, h.real**2+h.imag**2, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
+
+                for ax in axs:
+                        ax.grid(True, which="both")
+			ax.set_yscale('log')
+			ax.set_xscale('log')
+                        ax.set_xlim(xmin=flow, xmax=fhigh)
+                        ax.legend(loc="best")
+                ax.set_xlabel("frequency [Hz]")
+
+                fig.savefig(model_figname)
+                viz.plt.close(fig)
+                if opts.time:
+                        print "\t", time.time()-to
