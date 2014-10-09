@@ -343,13 +343,13 @@ class PSD(object):
 		return np.interp(freqs, self.freqs, self.psd)
 
 	###
-	def draw_noise(self, freqs, N):
+	def draw_noise(self, freqs):
 		"""
 		draws a noise realization at the specified frequencies
 		"""
 		n_freqs = len(freqs)
 
-		vars = self.interpolate(freqs) / N
+		vars = self.interpolate(freqs) 
 		amp = np.random.normal(size=(n_freqs))
 		phs = np.random.random(n_freqs)*2*np.pi
 
