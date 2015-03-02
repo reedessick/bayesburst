@@ -25,7 +25,7 @@ from optparse import OptionParser
 
 parser = OptionParser(usage=usage)
 
-parser.add_option("", "-v", "--verbose", default=False, action="store_true")
+parser.add_option("-v", "--verbose", default=False, action="store_true")
 
 parser.add_option("", "--network", default="HL", type="string", help="which network to run")
 
@@ -42,7 +42,7 @@ parser.add_option("", "--zero-noise", default=False, action="store_true")
 parser.add_option("", "--skip-plots", default=False, action="store_true")
 parser.add_option("", "--skip-fits", default=False, action="store_true")
 
-parser.add_option("", "--grid", default=False, action="store_true")
+parser.add_option("-g", "--grid", default=False, action="store_true")
 
 parser.add_option("-o", "--output-dir", default="./", type="string")
 parser.add_option("-t", "--tag", default="", type="string")

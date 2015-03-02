@@ -39,7 +39,7 @@ parser.add_option("-c", "--config", default="./config.ini", type="string", help=
 
 parser.add_option("-g", "--gps", default=0, type="float", help="central time of this analysis")
 
-parser.add_option("-x", "--xmlfilename", default=False, type="float", help="an injection xml file")
+parser.add_option("-x", "--xmlfilename", default=False, type="string", help="an injection xml file")
 parser.add_option("-i", "--sim-id", default=False, type="int", help="the injection id in the xml file")
 
 parser.add_option("-d", "--diagnostic", default=False, action="store_true", help="output some diagnostic data to check the pipeline's functionality")
@@ -388,26 +388,26 @@ if opts.diagnostic:
 			print "\t", time.time()-to
 
 		### log axes
-                noise_figname = "%s/noise-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
-                if opts.verbose:
-                        print "plotting noise : %s"%noise_figname
-                        if opts.time:
-                                to = time.time()
-                fig, axs = viz.data(freqs[freq_truth], noise.real[freq_truth]**2+noise.imag[freq_truth]**2, ifos, units="$1/\mathrm{Hz}$")
+		if np.any(noise.real[freq_truth]**2+noise.imag[freq_truth]**2 > 0):
+	                noise_figname = "%s/noise-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+			if opts.verbose:
+	                        print "plotting noise : %s"%noise_figname
+        	                if opts.time:
+                	                to = time.time()
+	                fig, axs = viz.data(freqs[freq_truth], noise.real[freq_truth]**2+noise.imag[freq_truth]**2, ifos, units="$1/\mathrm{Hz}$")
 
-                for ax in axs:
-                        ax.grid(True, which="both")
-			ax.set_xscale('log')
-			ax.set_yscale('log')
-                        ax.set_xlim(xmin=flow, xmax=fhigh)
-#                        ax.legend(loc="best")
-                ax.set_xlabel("frequency [Hz]")
-
-                fig.savefig(noise_figname)
-                viz.plt.close(fig)
-                if opts.time:
-                        print "\t", time.time()-to
-
+        	        for ax in axs:
+                	        ax.grid(True, which="both")
+				ax.set_xscale('log')
+				ax.set_yscale('log')
+        	                ax.set_xlim(xmin=flow, xmax=fhigh)
+#               	         ax.legend(loc="best")
+	                ax.set_xlabel("frequency [Hz]")
+	
+        	        fig.savefig(noise_figname)
+                	viz.plt.close(fig)
+	                if opts.time:
+        	                print "\t", time.time()-to
 
 #=================================================
 ### load injection
@@ -513,17 +513,20 @@ elif opts.xmlfilename: ### read injection from xmlfile
                 if opts.time:
                         to = time.time()
 
+	from glue.ligolw import ligolw
         from glue.ligolw import lsctables
         from glue.ligolw import utils as ligolw_utils
 
+	lsctables.use_in(ligolw.LIGOLWContentHandler)
+
         ### we specialize to sim_burst tables for now...
-        table_name = "sim_burst"
+        table_name = lsctables.SimBurstTable.tableName
 
         ### load xmlfile and find row corresponding to the specified entry
-        xmldoc = utils.load_filename(opts.xmlfilename)
+        xmldoc = ligolw_utils.load_filename(opts.xmlfilename, contenthandler=ligolw.LIGOLWContentHandler)
         tbl = lsctables.table.get_table(xmldoc, table_name)
         for row in tbl:
-                if row.simulation_id == opts.sim_id:
+                if str(row.simulation_id) == "sim_burst:simulation_id:%d"%opts.sim_id: ### FRAGILE AND NOT PRETTY
                         break
         else:
                 raise ValueError, "could not find sim_id=%d in %s"%(opts.sim_id, opts.xmlfilename)
@@ -548,7 +551,7 @@ elif opts.xmlfilename: ### read injection from xmlfile
                 wavefunc = injections.gaussian_f
                 waveargs = {"to":t, "tau":tau, "alpha":alpha, "hrss":hrss}
 
-        elif row.waveform == "SineGaussian":
+        elif (row.waveform == "SineGaussian") or (row.waveform == "SineGaussianF"): 
                 t = row.time_geocent_gps + row.time_geocent_gps_ns*1e-9
                 tau = row.duration
                 fo = row.frequency
@@ -565,6 +568,10 @@ elif opts.xmlfilename: ### read injection from xmlfile
                 gmst = row.time_geocent_gmst
                 theta = np.pi/2 - dec
                 phi = (ra-gmst)%(2*np.pi)
+
+		if tau != tau: ### tau == nan (i.e.: not set) Compute using q
+			q = row.q
+			tau = q / (2**0.5 * np.pi * fo)
 
                 wavefunc = injections.sinegaussian_f
                 waveargs = {"to":t, "phio":phio, "fo":fo, "tau":tau, "alpha":alpha, "hrss":hrss}
@@ -641,25 +648,26 @@ if opts.diagnostic:
         	        print "\t", time.time()-to
 
 		### log axis
-		inj_figname = "%s/injections-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
-		if opts.verbose:
-                        print "plotting injections : %s"%inj_figname
-                        if opts.time:
-                                to = time.time()
-                fig, axs = viz.data(freqs[freq_truth], inj.real[freq_truth]**2+inj.imag[freq_truth]**2, ifos, units="$1/\mathrm{Hz}$")
+		if np.any(inj.real[freq_truth]**2+inj.imag[freq_truth]**2 > 0):
+			inj_figname = "%s/injections-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+			if opts.verbose:
+                	        print "plotting injections : %s"%inj_figname
+                        	if opts.time:
+                                	to = time.time()
+	                fig, axs = viz.data(freqs[freq_truth], inj.real[freq_truth]**2+inj.imag[freq_truth]**2, ifos, units="$1/\mathrm{Hz}$")
 
-                for ax in axs:
-                        ax.grid(True, which="both")
-			ax.set_xscale('log')
-			ax.set_yscale('log')
-                        ax.set_xlim(xmin=flow, xmax=fhigh)
-#			ax.legend(loc="best")
-                ax.set_xlabel("frequency [Hz]")
-
-                fig.savefig(inj_figname)
-                viz.plt.close(fig)
-                if opts.time:
-                        print "\t", time.time()-to
+        	        for ax in axs:
+                	        ax.grid(True, which="both")
+				ax.set_xscale('log')
+				ax.set_yscale('log')
+        	                ax.set_xlim(xmin=flow, xmax=fhigh)
+#				ax.legend(loc="best")
+	                ax.set_xlabel("frequency [Hz]")
+	
+        	        fig.savefig(inj_figname)
+                	viz.plt.close(fig)
+	                if opts.time:
+        	                print "\t", time.time()-to
 
 #=================================================
 # some diagnostic plotting
@@ -685,25 +693,26 @@ if opts.diagnostic_plots:
         	print "\t", time.time()-to
 
 	### log axis
-        data_figname = "%s/data-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
-        if opts.verbose:
-        	print "plotting injections : %s"%inj_figname
-                if opts.time:
-                	to = time.time()
-	fig, axs = viz.data(freqs[freq_truth], inj.real[freq_truth]**2+inj.imag[freq_truth]**2 + noise[freq_truth].real**2+noise[freq_truth].imag**2, ifos, units="$1/\mathrm{Hz}$")
+	if np.any(inj.real[freq_truth]**2+inj.imag[freq_truth]**2 + noise[freq_truth].real**2+noise[freq_truth].imag**2 > 0):
+	        data_figname = "%s/data-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+	        if opts.verbose:
+        		print "plotting injections : %s"%inj_figname
+                	if opts.time:
+                		to = time.time()
+		fig, axs = viz.data(freqs[freq_truth], inj.real[freq_truth]**2+inj.imag[freq_truth]**2 + noise[freq_truth].real**2+noise[freq_truth].imag**2, ifos, units="$1/\mathrm{Hz}$")
 
-        for ax in axs:
-        	ax.grid(True, which="both")
-                ax.set_xscale('log')
-                ax.set_yscale('log')
-                ax.set_xlim(xmin=flow, xmax=fhigh)
-#		ax.legend(loc="best")
-	ax.set_xlabel("frequency [Hz]")
+        	for ax in axs:
+	        	ax.grid(True, which="both")
+        	        ax.set_xscale('log')
+                	ax.set_yscale('log')
+	                ax.set_xlim(xmin=flow, xmax=fhigh)
+#			ax.legend(loc="best")
+		ax.set_xlabel("frequency [Hz]")
 
-	fig.savefig(data_figname)
-	viz.plt.close(fig)
-	if opts.time:
-		print "\t", time.time()-to
+		fig.savefig(data_figname)
+		viz.plt.close(fig)
+		if opts.time:
+			print "\t", time.time()-to
 
 
 ##### WRITE a whitened version that references PSD's!
@@ -1053,26 +1062,27 @@ if opts.diagnostic:
                         print "\t", time.time()-to
 
 		### log
-		mle_figname = "%s/mle-strain-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
-                if opts.verbose:
-                        print "projecting mle_strain and plotting : %s"%mle_figname
-                        if opts.time:
-                                to = time.time()
+		if np.any(mle_strain.real**2+mle_strain.imag**2 > 0):
+			mle_figname = "%s/mle-strain-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+	                if opts.verbose:
+        	                print "projecting mle_strain and plotting : %s"%mle_figname
+                	        if opts.time:
+                        	        to = time.time()
 
-                fig, axs = viz.project(posterior.network, analysis_freqs, mle_strain.real**2+mle_strain.imag**2, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
+	                fig, axs = viz.project(posterior.network, analysis_freqs, mle_strain.real**2+mle_strain.imag**2, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
 
-                for ax in axs:
-                        ax.grid(True, which="both")
-			ax.set_yscale('log')
-			ax.set_xscale('log')
-                        ax.set_xlim(xmin=flow, xmax=fhigh)
-                        ax.legend(loc="best")
-                ax.set_xlabel("frequency [Hz]")
+        	        for ax in axs:
+                	        ax.grid(True, which="both")
+				ax.set_yscale('log')
+				ax.set_xscale('log')
+        	                ax.set_xlim(xmin=flow, xmax=fhigh)
+                	        ax.legend(loc="best")
+	                ax.set_xlabel("frequency [Hz]")
 
-                fig.savefig(mle_figname)
-                viz.plt.close(fig)
-                if opts.time:
-                        print "\t", time.time()-to
+        	        fig.savefig(mle_figname)
+                	viz.plt.close(fig)
+	                if opts.time:
+        	                print "\t", time.time()-to
 
 		### model
 		model_figname = "%s/model-strain%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
@@ -1098,23 +1108,26 @@ if opts.diagnostic:
                         print "\t", time.time()-to
 
 		### model log
-                model_figname = "%s/model-strain-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
-                if opts.verbose:
-                        print "projecting mle_strain and plotting : %s"%mle_figname
-                        if opts.time:
-                                to = time.time()
+		if np.any(h.real**2+h.imag**2 > 0):
+	                model_figname = "%s/model-strain-log%s_%d.png"%(opts.output_dir, opts.tag, int(opts.gps))
+        	        if opts.verbose:
+                	        print "projecting mle_strain and plotting : %s"%mle_figname
+                        	if opts.time:
+                                	to = time.time()
 
-                fig, axs = viz.project(posterior.network, analysis_freqs, h.real**2+h.imag**2, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
+	                fig, axs = viz.project(posterior.network, analysis_freqs, h.real**2+h.imag**2, map_theta, map_phi, posterior.psi, posterior.data, units="$1/\sqrt{\mathrm{Hz}}$")
+	
+        	        for ax in axs:
+                	        ax.grid(True, which="both")
+				ax.set_yscale('log')
+				ax.set_xscale('log')
+        	                ax.set_xlim(xmin=flow, xmax=fhigh)
+                	        ax.legend(loc="best")
+	                ax.set_xlabel("frequency [Hz]")
 
-                for ax in axs:
-                        ax.grid(True, which="both")
-			ax.set_yscale('log')
-			ax.set_xscale('log')
-                        ax.set_xlim(xmin=flow, xmax=fhigh)
-                        ax.legend(loc="best")
-                ax.set_xlabel("frequency [Hz]")
+        	        fig.savefig(model_figname)
+                	viz.plt.close(fig)
+	                if opts.time:
+        	                print "\t", time.time()-to
 
-                fig.savefig(model_figname)
-                viz.plt.close(fig)
-                if opts.time:
-                        print "\t", time.time()-to
+

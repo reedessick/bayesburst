@@ -609,8 +609,9 @@ class Network(object):
 		                                                       ### strong chance this is wrong...
 
 		for ifo_ind, detector in enumerate(detectors_list):
-			noise[:,ifo_ind] = detector.get_psd().draw_noise(self.freqs, N)
-		return noise
+			noise[:,ifo_ind] = detector.get_psd().draw_noise(self.freqs)
+
+		return N*noise
 
 	###
 	def ang_res(self, f, degrees=False):
