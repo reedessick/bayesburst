@@ -23,6 +23,8 @@ from optparse import OptionParser
 
 parser = OptionParser(usage=usage)
 
+parser.add_option("", "--network", default="HL", type="string", help="which network to run")
+
 parser.add_option("", "--hPrior", default=False, action="store_true")
 parser.add_option("", "--malmquist-hPrior", default=False, action="store_true")
 parser.add_option("", "--hPrior_pareto", default=False, action="store_true")
@@ -111,8 +113,16 @@ n_pix = hp.nside2npix(nside)
 prior_type="uniform"
 
 ### set up stuff for ap_angprior
-network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
-#network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+if opts.network == "HL":
+        network = utils.Network([detector_cache.LHO, detector_cache.LLO], freqs=freqs, Np=n_pol)
+elif opts.network == "HV":
+        network = utils.Network([detector_cache.LHO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+elif opts.network == "LV":
+        network = utils.Network([detector_cache.Virgo, detector_cache.LLO], freqs=freqs, Np=n_pol)
+elif opts.network == "HLV":
+        network = utils.Network([detector_cache.LHO, detector_cache.LLO, detector_cache.Virgo], freqs=freqs, Np=n_pol)
+else:
+        raise ValueError, "--network=%s not understood"%opts.network
 
 n_ifo = len(network.detectors)
 

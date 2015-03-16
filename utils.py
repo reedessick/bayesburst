@@ -7,6 +7,8 @@ from numpy import linalg
 import healpy as hp
 import pickle
 
+from pylal import Fr
+
 #=================================================
 #
 #            general utilities
@@ -167,6 +169,42 @@ def load_toacache(filename):
 	file_obj.close()
 	return toacache
 
+###
+def files_from_cache(cache, start, stop, suffix=".gwf"):
+	"""
+	selects files from a cache file
+	files must have some overlap with [start, stop] to be included
+	"""
+	files = []
+	file_obj = open(cache, "r")
+	for line in file_obj:
+		line = line.strip()
+		s, d = [float(l) for l in line.strip(suffix).split("-")[-2:]]
+		if (s+d >= start) and (s < stop):
+			files.append( (line, s, d) )
+	file_obj.close()
+
+	return files
+
+###
+def vec_from_frames(frames, start, stop, verbose=False):
+	"""
+	returns a numpy array of the data inculded in frames between start and stop
+	CURRENTLY ASSUME CONTIGUOUS DATA, but we should check this
+
+	meant to be used with files_from_cache
+	"""
+	vecs = []
+	dt = 0
+	for frame, strt, dur in frames:
+		if verbose: print frame
+		s = max(strt, start)
+		d = min(start+dur,stop) - s
+		vec, gpstart, offset, dt, _, _ = Fr.frgetvect1d(frame, ifo_chan, start=s, span=d)
+		vecs.append( vec )
+	vec = np.concatenate(vecs)
+	return vec, dt
+ 
 #========================
 # timing utilities
 #========================
@@ -287,10 +325,10 @@ class PSD(object):
 		if freqs!=None:
 			if len(freqs)!=len(psd):
 				raise ValueError, "len(freqs) != len(psd)"
-			self.freqs = freqs
-			self.psd = psd
+			self.freqs = freqs[:]
+			self.psd = psd[:]
 		else:
-			self.psd=psd
+			self.psd=psd[:] 
 
 	###
 	def get_psd(self):
@@ -305,13 +343,13 @@ class PSD(object):
 		return np.interp(freqs, self.freqs, self.psd)
 
 	###
-	def draw_noise(self, freqs, N):
+	def draw_noise(self, freqs):
 		"""
 		draws a noise realization at the specified frequencies
 		"""
 		n_freqs = len(freqs)
 
-		vars = self.interpolate(freqs) / N
+		vars = self.interpolate(freqs) 
 		amp = np.random.normal(size=(n_freqs))
 		phs = np.random.random(n_freqs)*2*np.pi
 
@@ -571,8 +609,9 @@ class Network(object):
 		                                                       ### strong chance this is wrong...
 
 		for ifo_ind, detector in enumerate(detectors_list):
-			noise[:,ifo_ind] = detector.get_psd().draw_noise(self.freqs, N)
-		return noise
+			noise[:,ifo_ind] = detector.get_psd().draw_noise(self.freqs)
+
+		return N*noise
 
 	###
 	def ang_res(self, f, degrees=False):
