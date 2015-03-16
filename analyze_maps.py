@@ -31,6 +31,8 @@ opts, args = parser.parse_args()
 if opts.pvalue:
 	theta, phi = [float(l) for l in opts.pvalue.split(",")]
 
+opts.credible_interval = sorted(opts.credible_interval)
+
 #==========================================================
 if opts.degrees:
 	unit = "deg"
@@ -62,14 +64,14 @@ for arg in args:
 
 	### compute statistics and report them
 	if opts.pvalue:
-		print "\t cdf(%s) = %.3f\%"%(opts.pvalue, stats.p_value(post, theta, phi, nside=nside)*100)
+		print "\t cdf(%s) = %.3f %s"%(opts.pvalue, stats.p_value(post, theta, phi, nside=nside)*100, "%")
 	# entropy -> size
 	if opts.entropy:
 		print "\t entropy = %.3f %s"%(pixarea*np.exp(stats.entropy(post, nside)), areaunit)
 
 	# CR -> size, max(dtheta)
-	for CR, conf in zip(stats.credible_region(posterior, opts.credible_interval), opts.credible_interval):
-		print "\t %.3f\% CR :\t size= %.3f %s"%(conf*100, pixarea*len(CR), areaunit)
+	for CR, conf in zip(stats.credible_region(post, opts.credible_interval), opts.credible_interval):
+		print "\t %.3f %s CR :\t size= %.3f %s"%(conf*100, "%", pixarea*len(CR), areaunit)
 		if not opts.no_credible_interval_dtheta:
 			print "\t \t max(dtheta) = %.3f %s"%(angle_conversion*np.arccos(stats.min_all_cos_dtheta(CR, nside, nest=False)), unit)
 		if not opts.no_disjoint_regions:

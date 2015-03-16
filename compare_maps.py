@@ -16,6 +16,8 @@ parser = OptionParser(usage=usage, description=description)
 
 parser.add_option("-v", "--verbose", default=False, action="store_true")
 
+parser.add_option("-d", "--degrees", default=False, action="store_true")
+
 parser.add_option("", "--fidelity", default=False, action="store_true", help="compute the fidelity between maps")
 parser.add_option("", "--symKL", default=False, action="store_true", help="compute symmetric KLdivergence between maps")
 parser.add_option("", "--mse", default=False, action="store_true", help="compute the mean square error between maps")
@@ -28,8 +30,15 @@ parser.add_option("-c", "--credible-interval", default=[], type='float', action=
 
 opts, args = parser.parse_args()
 
-maps = dict( (label, {'fits':fits}) for arg in args for label, fits in arg.split(',') )
-label = sorted(maps.keys())
+opts.credible_interval = sorted(opts.credible_interval)
+
+maps = {}
+for arg in args:
+	label, fits = arg.split(",")
+	maps[label] = {"fits":fits}
+#maps = dict( (label, {'fits':fits}) for arg in args for label, fits in arg.split(',') )
+
+labels = sorted(maps.keys())
 
 #==========================================================
 
@@ -65,13 +74,13 @@ for label in labels:
 
 for ind, label1 in enumerate(labels):
 	d1 = maps[label1]
-	post1 = d1['fits']
+	post1 = d1['post']
 	nside1 = d1['nside']
 	
-	for label2 in enumerate(labels[ind+1:]):
+	for label2 in labels[ind+1:]:
 
 		d2 = maps[label2]
-		post2 = d2['fits']
+		post2 = d2['post']
 		nside2 = d2['nside']
 
 		print "%s vs %s"%(label1, label2)
@@ -84,7 +93,7 @@ for ind, label1 in enumerate(labels):
 			if opts.verbose:
 				print "resampling %s : %d -> %d"%(label2, nside2, nside1)
 			post1 = stats.resample(post2, nside1, nest=False)
-		elif nsid1 > nside:
+		elif nside1 > nside:
 			if opts.verbose:
 				print "resampling %s : %d -> %d"%(label1, nside1, nside2)
 			post2 = stats.resample(post1, nside2, nest=False)
@@ -93,17 +102,17 @@ for ind, label1 in enumerate(labels):
 		if opts.fidelity:
 			print "\t fidelity : %.5f"%(stats.fidelity(post1, post2))
 
-		if opts.symKLdivergence:
+		if opts.symKL:
 			print "\t symmetric KL divergence : %.5f"%stats.symmetric_KLdivergence(post1, post2)
 
 		if opts.mse:
-			print "\t mean square error : %.5f"%stats.mse(post1, post2)
+			print "\t mean square error : %.5e"%stats.mse(post1, post2)
 
 		if opts.peak_snr:
-			print "\t peak SNR : %.5f"%stats.peak_snr(post1, post2)
+			print "\t peak SNR : (%.5f, %.5f)"%(stats.peak_snr(post1, post2))
 
-		if opts.structural-similarity:
-			print "\t structural_similarity : %.5f"%stats.structural_similarity(post1, post2)
+		if opts.structural_similarity:
+			print "\t structural similarity : %.5f"%stats.structural_similarity(post1, post2)
 
 		if opts.pearson:
 			print "\t pearson : %.5f"%stats.pearson(post1, post2)
@@ -114,10 +123,10 @@ for ind, label1 in enumerate(labels):
 		
 		for conf, pix1, pix2 in zip(opts.credible_interval, stats.credible_region(post1, opts.credible_interval), stats.credible_region(post2, opts.credible_interval) ):
 			conf100 = 100*conf
-			print "\t %.3f\% CR : %s = %.3f %s"%(conf100, label1, pixarea*len(pix1) , areaunit)
-			print "\t %.3f\% CR : %s = %.3f %s"%(conf100, label2, pixarea*len(pix2) , areaunit)
+			print "\t %.3f %s CR : %s = %.3f %s"%(conf100, "%", label1, pixarea*len(pix1) , areaunit)
+			print "\t %.3f %s CR : %s = %.3f %s"%(conf100, "%", label2, pixarea*len(pix2) , areaunit)
 			i, u = stats.geometric_overlap(pix1, pix2, nside=nside, degrees=opts.degrees)
-			print "\t %.3f\% CR : intersection = %.3f %s"%(conf100, i, areaunit)
-			print "\t %.3f\% CR : union = %.3f %s"%(conf100, u, areaunit)
+			print "\t %.3f %s CR : intersection = %.3f %s"%(conf100, "%", i, areaunit)
+			print "\t %.3f %s CR : union = %.3f %s"%(conf100, "%", u, areaunit)
 
 
