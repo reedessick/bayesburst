@@ -60,6 +60,34 @@ def resample(posterior, new_nside, nest=False):
 #		return new_posterior
 
 ###
+def _to_cumulative(posterior):
+	"""
+	returns a map corresponding to cumulative probabilities at each pixel
+	assumes ``greedy binning'' algorithm
+	"""
+	cum = np.zeros_like( posterior )
+	c = 0.0
+	for i in posterior.argsort()[::-1]:
+		c += posterior[i]
+		cum[i] = c
+	return cum
+
+###
+def credible_region(posterior, conf):
+	"""
+	returns a list of pixels that correspond the minimum credible region
+	"""
+	if isinstance(conf, (int,float)):
+		conf = [conf]
+	if np.any(conf < 0) or np.any(conf > 1):
+		raise ValueError("conf must be between 0 and 1")
+	
+	cum = to_cumulative(posterior)
+	
+	ind = np.arange(len(posterior))
+	return [ind[cum<=c] for c in conf] ### return indecies corresponding to confidence levels
+
+###
 def p_value(posterior, theta, phi, nside=None):
 	"""
 	computes the p-value at which a given point was found
