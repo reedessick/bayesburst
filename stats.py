@@ -41,26 +41,8 @@ def resample(posterior, new_nside, nest=False):
 	"""
 	return hp.ud_grade(posterior, new_nside, power=-2)
 
-#	npix = len(posterior)
-#	new_npix = hp.nside2npix(new_nside)
-#	if npix == new_npix:
-#		return posterior
-#	elif npix < new_npix:
-#		### upsample by assiging a fraction of the probability to each new pixel
-#		nside = hp.npix2nside(npix)
-#		new_t, new_p = hp.pix2ang(new_nside, np.arange(new_npix), nest=nest) # location of new pixels
-#		return posterior[hp.ang2pix(nside, new_t, new_p, nest=nest)]*1.0*npix/new_npix
-#	else: #npix > new_npix
-#		### downsample by assigning the sum of containted probability to each new pixel
-#                nside = hp.npix2nside(npix)
-#		new_posterior = np.zeros((new_npix,))
-#		for ipix, post in enumerate(posterior): ### iterate over old posterior and add contributions to new posterior
-#			t, p = hp.pix2ang(nside, ipix)
-#			new_posterior[hp.ang2pix(new_nside, t, p, nest=nest)] += post
-#		return new_posterior
-
 ###
-def _to_cumulative(posterior):
+def __to_cumulative(posterior):
 	"""
 	returns a map corresponding to cumulative probabilities at each pixel
 	assumes ``greedy binning'' algorithm
@@ -78,11 +60,13 @@ def credible_region(posterior, conf):
 	returns a list of pixels that correspond the minimum credible region
 	"""
 	if isinstance(conf, (int,float)):
-		conf = [conf]
+		conf = np.array([conf])
+	elif not isinstance(conf, np.ndarray):
+		conf = np.array(conf)
 	if np.any(conf < 0) or np.any(conf > 1):
 		raise ValueError("conf must be between 0 and 1")
 	
-	cum = to_cumulative(posterior)
+	cum = __to_cumulative(posterior)
 	
 	ind = np.arange(len(posterior))
 	return [ind[cum<=c] for c in conf] ### return indecies corresponding to confidence levels
@@ -176,36 +160,6 @@ def size_modes(posterior, theta, phi, nside=None, nest=False, degrees=False):
 	pix = list(np.arange(npix)[posterior>=posterior[hp.ang2pix(nside, theta, phi, nest=nest)]])
 	return [len(_)*hp.nside2pixarea(nside, degrees=degrees) for _ in __into_modes(nside, pix)]
 
-###
-'''
-def __into_modes(nside, pix):
-	"""
-	divides the list of pixels (pix) into simply connected modes
-	"""
-	modes = []
-	while len(pix):
-		
-		print len(modes)
-
-		mode = [pix.pop(0)] ### take the first pixel
-		to_check = mode[:]
-		while len(to_check): # there are pixels in this mode we have to check
-
-			print "\t", len(mode)
-
-			ipix = to_check.pop() # take one pixel from those to be checked.
-			for neighbour in hp.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
-				# try to find pixel in skymap
-				try:
-#					_ipix = pix.pop( pix.index( neighbour ) ) ### find pixel in skymap and remove it
-					pix.remove( neighbour ) ### find pixel in skymap and remove it
-					mode.append( neighbour ) # add pixel to this mode
-					to_check.append( neighbour ) # add pixel to to_check
-				except ValueError: # neighbour not in list
-					pass
-		modes.append( mode )
-	return modes
-'''
 def __into_modes(nside, pix):
 	"""
 	divides the list of pixels (pix) into simply connected modes
@@ -215,8 +169,6 @@ def __into_modes(nside, pix):
 
 	truth = np.zeros((npix,),bool)
 	truth[pix] = True
-#	truth = np.zeros((npix,),int)
-#	truth[pix] = 1
 
 	pixnums = np.arange(npix) ### convenient array we establish once
 
@@ -224,8 +176,6 @@ def __into_modes(nside, pix):
 	while truth.any():
 		ipix = pixnums[truth][0] ### take the first pixel
 		truth[ipix] = False ### remove it from the global set
-#		ipix = pixnums[truth>0][0] ### take the first pixel
-#		truth[ipix] = 0 ### remove it from the global set
 		mode = [ipix]
 		to_check = [ipix] ### add it to the list of things to check
 
