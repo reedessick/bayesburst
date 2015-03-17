@@ -31,11 +31,11 @@ parser.add_option("-c", "--credible-interval", default=[], type='float', action=
 parser.add_option("", "--graceid", default=[], type="string", action="append", help="will upload annotations to GraceDB events. if used, there must be one graceid per argment. DO NOT USE UNLESS YOU HAVE LALSuite AND PERMISSION TO ANNOTATE GraceDB!")
 
 parser.add_option('', '--gdb-url', default='https://gracedb.ligo.org/api', type='string')
+parser.add_option('', '--tag-as-sky-loc', default=False, action='store_true')
 
 opts, args = parser.parse_args()
 
 if opts.graceid:
-	raise StandardError("WRITE CONNECTION TO GRACEDB. NEED TO ANNOTATE THE EVENTS. POST COMPARISON TO EACH graceid INVOLVED, but do not duplicate if they are the same graceid.")
         from ligo.gracedb.rest import GraceDb
         gracedb = gracedb = GraceDb(opts.gdb_url)
 
@@ -92,12 +92,16 @@ for ind, label1 in enumerate(labels):
 	d1 = maps[label1]
 	post1 = d1['post']
 	nside1 = d1['nside']
-	
+	if opts.graceid:
+		gid1 = d1['graceid']
+
 	for label2 in labels[ind+1:]:
 
 		d2 = maps[label2]
 		post2 = d2['post']
 		nside2 = d2['nside']
+		if opts.graceid:
+			gid2 = d2['graceid']
 
 		print "%s vs %s"%(label1, label2)
 		
@@ -113,36 +117,53 @@ for ind, label1 in enumerate(labels):
 			if opts.verbose:
 				print "resampling %s : %d -> %d"%(label1, nside1, nside2)
 			post2 = stats.resample(post1, nside2, nest=False)
-		
+	
+		messages = []
+	
 		### compute statistics
 		if opts.fidelity:
-			print "\t fidelity : %.5f"%(stats.fidelity(post1, post2))
+			messages.append( "fidelity : %.5f"%(stats.fidelity(post1, post2)) )
 
 		if opts.symKL:
-			print "\t symmetric KL divergence : %.5f"%stats.symmetric_KLdivergence(post1, post2)
+			messages.append( "symmetric KL divergence : %.5f"%stats.symmetric_KLdivergence(post1, post2) )
 
 		if opts.mse:
-			print "\t mean square error : %.5e"%stats.mse(post1, post2)
+			messages.append( "mean square error : %.5e"%stats.mse(post1, post2) )
 
 		if opts.peak_snr:
-			print "\t peak SNR : (%.5f, %.5f)"%(stats.peak_snr(post1, post2))
+			messages.append( "peak SNR : (%.5f, %.5f)"%(stats.peak_snr(post1, post2)) )
 
 		if opts.structural_similarity:
-			print "\t structural similarity : %.5f"%stats.structural_similarity(post1, post2)
+			messages.append( "structural similarity : %.5f"%stats.structural_similarity(post1, post2) )
 
 		if opts.pearson:
-			print "\t pearson : %.5f"%stats.pearson(post1, post2)
+			messages.append( "pearson : %.5f"%stats.pearson(post1, post2) )
 
 		if opts.dot:
-			print "\t dot : %.5f"%stats.dot(post1, post2)
+			messages.append( "dot : %.5f"%stats.dot(post1, post2) )
 
 		
 		for conf, pix1, pix2 in zip(opts.credible_interval, stats.credible_region(post1, opts.credible_interval), stats.credible_region(post2, opts.credible_interval) ):
-			conf100 = 100*conf
-			print "\t %.3f %s CR : %s = %.3f %s"%(conf100, "%", label1, pixarea*len(pix1) , areaunit)
-			print "\t %.3f %s CR : %s = %.3f %s"%(conf100, "%", label2, pixarea*len(pix2) , areaunit)
-			i, u = stats.geometric_overlap(pix1, pix2, nside=nside, degrees=opts.degrees)
-			print "\t %.3f %s CR : intersection = %.3f %s"%(conf100, "%", i, areaunit)
-			print "\t %.3f %s CR : union = %.3f %s"%(conf100, "%", u, areaunit)
+			header = "%.3f %s CR"%(conf*100, "%")
 
+			messages.append( "%s : %s = %.3f %s"%(header, label1, pixarea*len(pix1) , areaunit) )
+			messages.append( "%s : %s = %.3f %s"%(header, label2, pixarea*len(pix2) , areaunit) )
+
+			i, u = stats.geometric_overlap(pix1, pix2, nside=nside, degrees=opts.degrees)
+			messages.append( "%s : intersection = %.3f %s"%(header, i, areaunit) )
+			messages.append( "%s : union = %.3f %s"%(header, u, areaunit) )
+
+		for message in messages:
+			print "\t", message
+
+		if opts.graceid: ### upload to gracedb
+			for gid in list(set(gid1, gid2)): ### if gid's are identical, only report once
+				for message in messages:
+					if opts.tag_as_sky_loc:
+			                        gracedb.writeLog(gid, message="(%s,%s) : %s"%(label1, label2, message), filename=None, tagname="sky_loc")
+					else:
+						gracedb.writeLog(gid, message="(%s,%s) : %s"%(label1, label2, message), filename=None)
+			
+
+		
 

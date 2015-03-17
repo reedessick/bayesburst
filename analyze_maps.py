@@ -29,6 +29,7 @@ parser.add_option("", "--no-disjoint-regions", default=False, action="store_true
 parser.add_option("", "--graceid", default=[], type="string", action="append", help="will upload annotations to GraceDB events. if used, there must be one graceid per argument. DO NOT USE UNLESS YOU HAVE LALSuite AND PERMISSION TO ANNOTATE GraceDB!")
 
 parser.add_option('', '--gdb-url', default='https://gracedb.ligo.org/api', type='string')
+parser.add_option('', '--tag-as-sky-loc', default=False, action='store_true')
 
 opts, args = parser.parse_args()
 
@@ -81,7 +82,7 @@ for ind, arg in enumerate(args):
 		
 	# entropy -> size
 	if opts.entropy:
-		entropy = pixarea*np.exp(stats.entropy(post, nside))
+		entropy = pixarea * 2**(stats.entropy(post, base=2.0))
 		messages.append( "entropy = %.3f %s"%(entropy, areaunit) )
 
 	# CR -> size, max(dtheta)
@@ -105,7 +106,10 @@ for ind, arg in enumerate(args):
 	if opts.graceid: ### upload to GraceDB
 		gid = opts.graceid[ind] 
 		for message in messages:
-			gracedb.writeLog(gid, message="%s : %s"%(label, message), filename=None, tagname="sky_loc")
+			if opts.tag_as_sky_loc:
+				gracedb.writeLog(gid, message="%s : %s"%(label, message), filename=None, tagname="sky_loc")
+			else:
+				gracedb.writeLog(gid, message="%s : %s"%(label, message), filename=None)
 
 		
 
