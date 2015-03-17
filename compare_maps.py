@@ -75,8 +75,10 @@ for label in labels:
         fits = d['fits']
         if opts.verbose:
                 print "reading map from", fits
-        post = hp.read_map(fits)
+	post, header = hp.read_map( fits, h=True )
         npix = len(post)
+        if (dict(header)['ORDERING']=='NEST'): ### convert to RING ordering
+		post = hp.nest2ring(nside, post)
         nside = hp.npix2nside(npix)
         if opts.verbose:
                 print "\tnside=%d"%nside
@@ -112,11 +114,11 @@ for ind, label1 in enumerate(labels):
 		if nside2 > nside:
 			if opts.verbose:
 				print "resampling %s : %d -> %d"%(label2, nside2, nside1)
-			post1 = stats.resample(post2, nside1, nest=False)
+			post1 = stats.resample(post2, nside1)
 		elif nside1 > nside:
 			if opts.verbose:
 				print "resampling %s : %d -> %d"%(label1, nside1, nside2)
-			post2 = stats.resample(post1, nside2, nest=False)
+			post2 = stats.resample(post1, nside2)
 	
 		messages = []
 	

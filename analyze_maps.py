@@ -67,7 +67,8 @@ for ind, arg in enumerate(args):
 
 	if opts.verbose:
 		print "\treading map from %s"%(fits)
-	post = hp.read_map( fits )
+	post, header = hp.read_map( fits, h=True )
+	NEST = (dict(header)['ORDERING']=='NEST')
 	npix = len(post)
 	nside = hp.npix2nside(npix)
 
@@ -93,11 +94,11 @@ for ind, arg in enumerate(args):
 		messages.append( "%s: size= %.3f %s"%(header, size, areaunit) )
 
 		if not opts.no_credible_interval_dtheta:
-			max_dtheta = angle_conversion*np.arccos(stats.min_all_cos_dtheta(CR, nside, nest=False))
+			max_dtheta = angle_conversion*np.arccos(stats.min_all_cos_dtheta(CR, nside, nest=NEST))
 			messages.append( "%s: max(dtheta) = %.3f %s"%(header, max_dtheta, unit) )
 
 		if not opts.no_disjoint_regions:
-			sizes = sorted([len(_)*pixarea for _ in stats.__into_modes(nside, CR)])
+			sizes = sorted([len(_)*pixarea for _ in stats.__into_modes(nside, CR, nest=NEST)])
 			messages.append( "%s: disjoint regions : (%s) %s"%(header, ", ".join(["%.3f"%x for x in sizes]), areaunit ) )
 
 	for message in messages:
