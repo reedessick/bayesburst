@@ -28,15 +28,31 @@ parser.add_option("", "--dot", default=False, action="store_true", help="compute
 
 parser.add_option("-c", "--credible-interval", default=[], type='float', action='append', help='compute the overlap and intersection of the credible intervals reported in the maps')
 
+parser.add_option("", "--graceid", default=[], type="string", action="append", help="will upload annotations to GraceDB events. if used, there must be one graceid per argment. DO NOT USE UNLESS YOU HAVE LALSuite AND PERMISSION TO ANNOTATE GraceDB!")
+
+parser.add_option('', '--gdb-url', default='https://gracedb.ligo.org/api', type='string')
+
 opts, args = parser.parse_args()
+
+if opts.graceid:
+	raise StandardError("WRITE CONNECTION TO GRACEDB. NEED TO ANNOTATE THE EVENTS. POST COMPARISON TO EACH graceid INVOLVED, but do not duplicate if they are the same graceid.")
+        from ligo.gracedb.rest import GraceDb
+        gracedb = gracedb = GraceDb(opts.gdb_url)
+
+if opts.graceid and len(opts.gracedb)!=len(args):
+        raise ValueError("when supplying --graceid, you must supply the same number of graceid entries and fits files")
 
 opts.credible_interval = sorted(opts.credible_interval)
 
 maps = {}
-for arg in args:
-	label, fits = arg.split(",")
-	maps[label] = {"fits":fits}
-#maps = dict( (label, {'fits':fits}) for arg in args for label, fits in arg.split(',') )
+if opts.graceid:
+	for gid, arg in args:
+		label, fits = arg.split(",")
+		maps[label] = {"fits":fits, "graceid":gid}
+else:
+	for arg in args:
+		label, fits = arg.split(",")
+		maps[label] = {"fits":fits}
 
 labels = sorted(maps.keys())
 

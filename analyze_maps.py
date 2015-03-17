@@ -26,7 +26,18 @@ parser.add_option("-c", "--credible-interval", default=[], type='float', action=
 parser.add_option("", "--no-credible-interval-dtheta", default=False, action="store_true", help='does not compute max(dtheta) for each confidence region. This may be desired if computational speed is an issue, because the max(dtheta) algorithm scales as Npix^2.')
 parser.add_option("", "--no-disjoint-regions", default=False, action="store_true", help="does not compute number,size of disjoint regions for each confidence region.")
 
+parser.add_option("", "--graceid", default=[], type="string", action="append", help="will upload annotations to GraceDB events. if used, there must be one graceid per argument. DO NOT USE UNLESS YOU HAVE LALSuite AND PERMISSION TO ANNOTATE GraceDB!")
+
+parser.add_option('', '--gdb-url', default='https://gracedb.ligo.org/api', type='string')
+
 opts, args = parser.parse_args()
+
+if opts.graceid:
+	from ligo.gracedb.rest import GraceDb
+	gracedb = gracedb = GraceDb(opts.gdb_url)
+
+if opts.graceid and len(opts.gracedb)!=len(args):
+        raise ValueError("when supplying --graceid, you must supply the same number of graceid entries and fits files")
 
 if opts.pvalue:
 	theta, phi = [float(l) for l in opts.pvalue.split(",")]
@@ -47,8 +58,9 @@ else:
 
 #==========================================================
 
-for arg in args:
+for ind, arg in enumerate(args):
 	label, fits = arg.split(',')
+	messages = []
 
 	print label
 
@@ -64,16 +76,37 @@ for arg in args:
 
 	### compute statistics and report them
 	if opts.pvalue:
-		print "\t cdf(%s) = %.3f %s"%(opts.pvalue, stats.p_value(post, theta, phi, nside=nside)*100, "%")
+		pvalue = stats.p_value(post, theta, phi, nside=nside)
+		messages.append( "cdf(%s) = %.3f %s"%(opts.pvalue, pvalue*100, "%") )
+		
 	# entropy -> size
 	if opts.entropy:
-		print "\t entropy = %.3f %s"%(pixarea*np.exp(stats.entropy(post, nside)), areaunit)
+		entropy = pixarea*np.exp(stats.entropy(post, nside))
+		messages.append( "entropy = %.3f %s"%(entropy, areaunit) )
 
 	# CR -> size, max(dtheta)
+	cr = {}
 	for CR, conf in zip(stats.credible_region(post, opts.credible_interval), opts.credible_interval):
-		print "\t %.3f %s CR :\t size= %.3f %s"%(conf*100, "%", pixarea*len(CR), areaunit)
+		header = "%.3f %s CR"%(conf*100, "%")
+		size = pixarea*len(CR)
+		messages.append( "%s: size= %.3f %s"%(header, size, areaunit) )
+
 		if not opts.no_credible_interval_dtheta:
-			print "\t \t max(dtheta) = %.3f %s"%(angle_conversion*np.arccos(stats.min_all_cos_dtheta(CR, nside, nest=False)), unit)
+			max_dtheta = angle_conversion*np.arccos(stats.min_all_cos_dtheta(CR, nside, nest=False))
+			messages.append( "%s: max(dtheta) = %.3f %s"%(header, max_dtheta, unit) )
+
 		if not opts.no_disjoint_regions:
 			sizes = sorted([len(_)*pixarea for _ in stats.__into_modes(nside, CR)])
-			print "\t \t disjoint regions : (%s) %s"%(", ".join(["%.3f"%x for x in sizes]), areaunit )
+			messages.append( "%s: disjoint regions : (%s) %s"%(header, ", ".join(["%.3f"%x for x in sizes]), areaunit ) )
+
+	for message in messages:
+		print "\t", message
+
+	if opts.graceid: ### upload to GraceDB
+		gid = opts.graceid[ind] 
+		for message in messages:
+			gracedb.writeLog(gid, message="%s : %s"%(label, message), filename=None, tagname="sky_loc")
+
+		
+
+
