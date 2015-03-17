@@ -147,7 +147,7 @@ def num_modes(posterior, theta, phi, nside=None, nest=False):
 	if not nside:
 		nside = hp.npix2nside(npix)
 	pix = list(np.arange(npix)[posterior>=posterior[hp.ang2pix(nside, theta, phi, nest=nest)]]) ## get list of pixels
-	return len( __into_modes(nside, pix) )
+	return len( __into_modes(nside, pix, nest=nest) )
 
 ### 
 def size_modes(posterior, theta, phi, nside=None, nest=False, degrees=False):
@@ -160,7 +160,7 @@ def size_modes(posterior, theta, phi, nside=None, nest=False, degrees=False):
 	pix = list(np.arange(npix)[posterior>=posterior[hp.ang2pix(nside, theta, phi, nest=nest)]])
 	return [len(_)*hp.nside2pixarea(nside, degrees=degrees) for _ in __into_modes(nside, pix)]
 
-def __into_modes(nside, pix):
+def __into_modes(nside, pix, nest=False):
 	"""
 	divides the list of pixels (pix) into simply connected modes
 	"""
@@ -182,7 +182,7 @@ def __into_modes(nside, pix):
 		while len(to_check): # there are pixels in this mode we have to check
 			ipix = to_check.pop() # take one pixel from those to be checked.
 
-			for neighbour in hp.get_all_neighbours(nside, ipix):# get neighbors as rtheta, rphi
+			for neighbour in hp.get_all_neighbours(nside, ipix, nest=nest):# get neighbors as rtheta, rphi
 
 				if neighbour == -1: ### when neighbour == -1, there is no corresponding pixel in this direction
 					pass
