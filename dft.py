@@ -211,7 +211,7 @@ def estimate_psd(vec, num_segs=1, overlap=0, dt=1.0):
         psds = np.empty((n/2, num_segs), complex)
         for segNo in xrange(num_segs):
                 start = segNo*(n-overlap)
-                psd, freqs = dft(vec[start:start+n], dt=dt)
+#                psd, freqs = dft(vec[start:start+n], dt=dt)
                 psds[:,segNo], freqs = dft(vec[start:start+n], dt=dt)
 
         ### average
